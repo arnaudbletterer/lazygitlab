@@ -609,29 +609,38 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
                             Span::raw(" says:"),
                         ]));
 
-                        // If it's a code comment, show the context
+                        // If it's a code comment, show the context (file and line number)
                         if let Some(pos) = &note.position {
                             if let (Some(path), Some(line)) = (&pos.new_path, pos.new_line) {
                                 lines.push(Line::from(vec![
-                                    Span::styled(format!("  Code at {}:{}", path, line), Style::default().fg(Color::Yellow)),
+                                    Span::styled(format!("  (Code at {}:{})", path, line), Style::default().fg(Color::Yellow)),
+                                ]));
+                            } else if let Some(path) = &pos.new_path {
+                                // Fallback if line number is missing, but path is present
+                                lines.push(Line::from(vec![
+                                    Span::styled(format!("  (Code in file: {})", path), Style::default().fg(Color::Yellow)),
                                 ]));
                             }
+                        } else if let Some(note_type) = &note.note_type {
+                            // General comment or other types
+                            lines.push(Line::from(vec![
+                                Span::styled(format!("[{}]", note_type), Style::default().fg(Color::Gray)),
+                            ]));
                         }
-                    } else {
+                        } else {
                         // Indented reply
                         lines.push(Line::from(vec![
                             Span::raw("  "),
                             Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Blue)),
                             Span::raw(" replied:"),
                         ]));
-                    }
-                    lines.push(Line::from(format!("  {}", note.body)));
-                    lines.push(Line::from(""));
-                }
-                ListItem::new(lines)
-            })
-            .collect();
-
+                        }
+                        lines.push(Line::from(format!("  {}", note.body)));
+                        lines.push(Line::from(""));
+                        }
+                        ListItem::new(lines)
+                        })
+                        .collect();
         let comments_style = if !app.input_mode {
             Style::default().fg(Color::Yellow)
         } else {
