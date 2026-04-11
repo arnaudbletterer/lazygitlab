@@ -21,11 +21,26 @@ struct Project {
 struct MergeRequest {
     #[allow(dead_code)]
     id: u64,
+    iid: u64,
+    project_id: u64,
     title: String,
+    description: Option<String>,
     author: Author,
     web_url: String,
     state: String,
     references: References,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct Discussion {
+    id: String,
+    notes: Vec<Note>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct Note {
+    body: String,
+    author: Author,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -46,6 +61,12 @@ enum MenuSelection {
     Pipelines,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ViewMode {
+    List,
+    Detail,
+}
+
 struct App {
     should_quit: bool,
     menu_state: ListState,
@@ -57,6 +78,9 @@ struct App {
     merge_requests: Vec<MergeRequest>,
     mrs_state: ListState,
     focus_on_menu: bool,
+    view_mode: ViewMode,
+    selected_mr: Option<MergeRequest>,
+    discussions: Vec<Discussion>,
 }
 
 impl App {
@@ -86,6 +110,9 @@ impl App {
             merge_requests: Vec::new(),
             mrs_state,
             focus_on_menu: true,
+            view_mode: ViewMode::List,
+            selected_mr: None,
+            discussions: Vec::new(),
         }
     }
 
@@ -178,10 +205,69 @@ impl App {
         Ok(())
     }
 
+    async fn fetch_discussions(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let endpoint = api::projects::merge_requests::discussions::MergeRequestDiscussions::builder()
+            .project(project_id)
+            .merge_request(mr_iid)
+            .build()?;
+        let discussions: Vec<Discussion> = endpoint.query_async(&self.gitlab).await?;
+        self.discussions = discussions;
+        Ok(())
+    }
+
+    async fn enter(&mut self) {
+        if self.focus_on_menu {
+            self.focus_on_menu = false;
+        } else {
+            match self.active_selection {
+                MenuSelection::MergeRequests => {
+                    if let Some(i) = self.mrs_state.selected() {
+                        if let Some(mr) = self.merge_requests.get(i) {
+                            self.selected_mr = Some(mr.clone());
+                            let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                            self.view_mode = ViewMode::Detail;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn back(&mut self) {
+        if self.view_mode == ViewMode::Detail {
+            self.view_mode = ViewMode::List;
+            self.selected_mr = None;
+            self.discussions.clear();
+        } else if !self.focus_on_menu {
+            self.focus_on_menu = true;
+        }
+    }
+
+    fn open_in_vscode(&self) {
+        if let Some(mr) = &self.selected_mr {
+            // Using the browser to open the GitLab MR which can then trigger VS Code
+            // or use a direct vscode URI if preferred.
+            // For now, let's open the web_url.
+            let _ = std::process::Command::new("powershell")
+                .arg("-Command")
+                .arg(format!("Start-Process '{}'", mr.web_url))
+                .spawn();
+        }
+    }
+
     async fn refresh(&mut self) {
         match self.active_selection {
             MenuSelection::Projects => { let _ = self.fetch_projects().await; }
-            MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
+            MenuSelection::MergeRequests => { 
+                if self.view_mode == ViewMode::Detail {
+                    if let Some(mr) = &self.selected_mr {
+                        let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                    }
+                } else {
+                    let _ = self.fetch_merge_requests().await; 
+                }
+            }
             _ => {}
         }
     }
@@ -241,6 +327,9 @@ where
                         KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                         KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
                         KeyCode::Char('r') => app.refresh().await,
+                        KeyCode::Enter => app.enter().await,
+                        KeyCode::Backspace | KeyCode::Esc => app.back(),
+                        KeyCode::Char('v') => app.open_in_vscode(),
                         _ => {}
                     }
                 }
@@ -251,12 +340,17 @@ where
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
+    if app.view_mode == ViewMode::Detail {
+        render_detail_view(f, app);
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(f.area());
 
-    let header = Paragraph::new(" LazyGitlab | [j/k] Nav [Tab] Switch [r] Refresh [q] Quit ")
+    let header = Paragraph::new(" LazyGitlab | [j/k] Nav [Tab] Switch [Enter] Detail [r] Refresh [q] Quit ")
         .block(Block::default().borders(Borders::ALL).title(" Controls "))
         .style(Style::default().fg(Color::Cyan));
     f.render_widget(header, chunks[0]);
@@ -324,5 +418,54 @@ fn ui(f: &mut Frame, app: &mut App) {
                 .block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style));
             f.render_widget(placeholder, main_chunks[1]);
         }
+    }
+}
+
+fn render_detail_view(f: &mut Frame, app: &mut App) {
+    if let Some(mr) = &app.selected_mr {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(f.area());
+
+        let header = Paragraph::new(" LazyGitlab | [Esc/Backspace] Back [v] VS Code [r] Refresh [q] Quit ")
+            .block(Block::default().borders(Borders::ALL).title(" Controls "))
+            .style(Style::default().fg(Color::Cyan));
+        f.render_widget(header, chunks[0]);
+
+        let details_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(10), Constraint::Min(0)])
+            .split(chunks[1]);
+
+        let description = mr.description.as_deref().unwrap_or("No description provided.");
+        let mr_info = Paragraph::new(format!(
+            "Title: {}\nAuthor: @{}\nState: {}\nURL: {}\n\nDescription:\n{}",
+            mr.title, mr.author.username, mr.state, mr.web_url, description
+        ))
+        .block(Block::default().borders(Borders::ALL).title(format!(" MR: {} ", mr.references.full)))
+        .wrap(Wrap { trim: true });
+        f.render_widget(mr_info, details_chunks[0]);
+
+        let comments_list: Vec<ListItem> = app.discussions
+            .iter()
+            .flat_map(|d| &d.notes)
+            .map(|n| {
+                let text = vec![
+                    Line::from(vec![
+                        Span::styled(format!("@{}", n.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::raw(" says:"),
+                    ]),
+                    Line::from(n.body.as_str()),
+                    Line::from(""),
+                ];
+                ListItem::new(text)
+            })
+            .collect();
+
+        let comments = List::new(comments_list)
+            .block(Block::default().borders(Borders::ALL).title(" Discussions "));
+        
+        f.render_widget(comments, details_chunks[1]);
     }
 }
