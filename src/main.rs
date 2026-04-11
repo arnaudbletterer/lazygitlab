@@ -1,13 +1,42 @@
-use std::{io, time::Duration};
+use std::{io, time::Duration, borrow::Cow};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
 };
 use ratatui::{prelude::*, widgets::*};
-use gitlab::{AsyncGitlab, api::{self, AsyncQuery}};
+use gitlab::{AsyncGitlab, api::{self, AsyncQuery, Endpoint}};
+use gitlab::api::endpoint_prelude::Method;
 use serde::Deserialize;
 use dotenvy::dotenv;
+
+#[derive(Debug, Clone)]
+struct AddDiscussionNote {
+    project: u64,
+    merge_request: u64,
+    discussion: String,
+    body: String,
+}
+
+impl Endpoint for AddDiscussionNote {
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        format!(
+            "projects/{}/merge_requests/{}/discussions/{}/notes",
+            self.project, self.merge_request, self.discussion,
+        )
+        .into()
+    }
+
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("body", &self.body);
+        params.into_body()
+    }
+}
 
 #[derive(Debug, Deserialize, Clone)]
 struct Project {
@@ -39,8 +68,24 @@ struct Discussion {
 
 #[derive(Debug, Deserialize, Clone)]
 struct Note {
+    id: u64,
     body: String,
     author: Author,
+    #[serde(rename = "type")]
+    note_type: Option<String>,
+    position: Option<Position>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct Position {
+    #[allow(dead_code)]
+    base_sha: String,
+    #[allow(dead_code)]
+    start_sha: String,
+    #[allow(dead_code)]
+    head_sha: String,
+    new_path: Option<String>,
+    new_line: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -81,6 +126,9 @@ struct App {
     view_mode: ViewMode,
     selected_mr: Option<MergeRequest>,
     discussions: Vec<Discussion>,
+    discussion_state: ListState,
+    input_mode: bool,
+    reply_input: String,
 }
 
 impl App {
@@ -93,6 +141,9 @@ impl App {
 
         let mut mrs_state = ListState::default();
         mrs_state.select(Some(0));
+
+        let mut discussion_state = ListState::default();
+        discussion_state.select(Some(0));
 
         Self {
             should_quit: false,
@@ -113,10 +164,14 @@ impl App {
             view_mode: ViewMode::List,
             selected_mr: None,
             discussions: Vec::new(),
+            discussion_state,
+            input_mode: false,
+            reply_input: String::new(),
         }
     }
 
     fn move_down(&mut self) {
+        if self.input_mode { return; }
         if self.focus_on_menu {
             let i = match self.menu_state.selected() {
                 Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 },
@@ -125,31 +180,45 @@ impl App {
             self.menu_state.select(Some(i));
             self.active_selection = self.menu_items[i].1;
         } else {
-            match self.active_selection {
-                MenuSelection::Projects => {
-                    if !self.projects.is_empty() {
-                        let i = match self.projects_state.selected() {
-                            Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
-                            None => 0,
-                        };
-                        self.projects_state.select(Some(i));
+            match self.view_mode {
+                ViewMode::List => {
+                    match self.active_selection {
+                        MenuSelection::Projects => {
+                            if !self.projects.is_empty() {
+                                let i = match self.projects_state.selected() {
+                                    Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
+                                    None => 0,
+                                };
+                                self.projects_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::MergeRequests => {
+                            if !self.merge_requests.is_empty() {
+                                let i = match self.mrs_state.selected() {
+                                    Some(i) => if i >= self.merge_requests.len() - 1 { 0 } else { i + 1 },
+                                    None => 0,
+                                };
+                                self.mrs_state.select(Some(i));
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                MenuSelection::MergeRequests => {
-                    if !self.merge_requests.is_empty() {
-                        let i = match self.mrs_state.selected() {
-                            Some(i) => if i >= self.merge_requests.len() - 1 { 0 } else { i + 1 },
+                ViewMode::Detail => {
+                    if !self.discussions.is_empty() {
+                        let i = match self.discussion_state.selected() {
+                            Some(i) => if i >= self.discussions.len() - 1 { 0 } else { i + 1 },
                             None => 0,
                         };
-                        self.mrs_state.select(Some(i));
+                        self.discussion_state.select(Some(i));
                     }
                 }
-                _ => {}
             }
         }
     }
 
     fn move_up(&mut self) {
+        if self.input_mode { return; }
         if self.focus_on_menu {
             let i = match self.menu_state.selected() {
                 Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 },
@@ -158,26 +227,39 @@ impl App {
             self.menu_state.select(Some(i));
             self.active_selection = self.menu_items[i].1;
         } else {
-            match self.active_selection {
-                MenuSelection::Projects => {
-                    if !self.projects.is_empty() {
-                        let i = match self.projects_state.selected() {
-                            Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
-                            None => 0,
-                        };
-                        self.projects_state.select(Some(i));
+            match self.view_mode {
+                ViewMode::List => {
+                    match self.active_selection {
+                        MenuSelection::Projects => {
+                            if !self.projects.is_empty() {
+                                let i = match self.projects_state.selected() {
+                                    Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.projects_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::MergeRequests => {
+                            if !self.merge_requests.is_empty() {
+                                let i = match self.mrs_state.selected() {
+                                    Some(i) => if i == 0 { self.merge_requests.len() - 1 } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.mrs_state.select(Some(i));
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                MenuSelection::MergeRequests => {
-                    if !self.merge_requests.is_empty() {
-                        let i = match self.mrs_state.selected() {
-                            Some(i) => if i == 0 { self.merge_requests.len() - 1 } else { i - 1 },
+                ViewMode::Detail => {
+                    if !self.discussions.is_empty() {
+                        let i = match self.discussion_state.selected() {
+                            Some(i) => if i == 0 { self.discussions.len() - 1 } else { i - 1 },
                             None => 0,
                         };
-                        self.mrs_state.select(Some(i));
+                        self.discussion_state.select(Some(i));
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -211,31 +293,70 @@ impl App {
             .merge_request(mr_iid)
             .build()?;
         let discussions: Vec<Discussion> = endpoint.query_async(&self.gitlab).await?;
+        // Sort or filter if needed
         self.discussions = discussions;
         Ok(())
     }
 
+    async fn post_reply(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.reply_input.is_empty() { return Ok(()); }
+        
+        if let Some(mr) = &self.selected_mr {
+            if let Some(disc_idx) = self.discussion_state.selected() {
+                if let Some(disc) = self.discussions.get(disc_idx) {
+                    let endpoint = AddDiscussionNote {
+                        project: mr.project_id,
+                        merge_request: mr.iid,
+                        discussion: disc.id.clone(),
+                        body: self.reply_input.clone(),
+                    };
+                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                    self.reply_input.clear();
+                    self.input_mode = false;
+                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn enter(&mut self) {
+        if self.input_mode {
+            let _ = self.post_reply().await;
+            return;
+        }
+
         if self.focus_on_menu {
             self.focus_on_menu = false;
         } else {
-            match self.active_selection {
-                MenuSelection::MergeRequests => {
-                    if let Some(i) = self.mrs_state.selected() {
-                        if let Some(mr) = self.merge_requests.get(i) {
-                            self.selected_mr = Some(mr.clone());
-                            let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
-                            self.view_mode = ViewMode::Detail;
+            match self.view_mode {
+                ViewMode::List => {
+                    match self.active_selection {
+                        MenuSelection::MergeRequests => {
+                            if let Some(i) = self.mrs_state.selected() {
+                                if let Some(mr) = self.merge_requests.get(i) {
+                                    self.selected_mr = Some(mr.clone());
+                                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                                    self.discussion_state.select(Some(0)); // Default to first discussion
+                                    self.view_mode = ViewMode::Detail;
+                                }
+                            }
                         }
+                        _ => {}
                     }
                 }
-                _ => {}
+                ViewMode::Detail => {
+                    self.input_mode = true;
+                }
             }
         }
     }
 
     fn back(&mut self) {
-        if self.view_mode == ViewMode::Detail {
+        if self.input_mode {
+            self.input_mode = false;
+            self.reply_input.clear();
+        } else if self.view_mode == ViewMode::Detail {
             self.view_mode = ViewMode::List;
             self.selected_mr = None;
             self.discussions.clear();
@@ -295,6 +416,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initial fetch
     let _ = app.fetch_projects().await;
+    let _ = app.fetch_merge_requests().await;
 
     // Pass execution to the app loop
     let res = run_app(&mut terminal, &mut app).await;
@@ -321,16 +443,26 @@ where
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => app.should_quit = true,
-                        KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                        KeyCode::Up | KeyCode::Char('k') => app.move_up(),
-                        KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
-                        KeyCode::Char('r') => app.refresh().await,
-                        KeyCode::Enter => app.enter().await,
-                        KeyCode::Backspace | KeyCode::Esc => app.back(),
-                        KeyCode::Char('v') => app.open_in_vscode(),
-                        _ => {}
+                    if app.input_mode {
+                        match key.code {
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Esc => app.back(),
+                            KeyCode::Char(c) => app.reply_input.push(c),
+                            KeyCode::Backspace => { app.reply_input.pop(); }
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('q') => app.should_quit = true,
+                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
+                            KeyCode::Char('r') => app.refresh().await,
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Backspace | KeyCode::Esc => app.back(),
+                            KeyCode::Char('v') => app.open_in_vscode(),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -372,10 +504,16 @@ fn ui(f: &mut Frame, app: &mut App) {
         Style::default()
     };
 
+    let (sidebar_highlight_style, sidebar_symbol) = if app.focus_on_menu {
+        (Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD), ">> ")
+    } else {
+        (Style::default(), "   ")
+    };
+
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(" Menu ").border_style(sidebar_style))
-        .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD))
-        .highlight_symbol(">> ");
+        .highlight_style(sidebar_highlight_style)
+        .highlight_symbol(sidebar_symbol);
 
     f.render_stateful_widget(list, main_chunks[0], &mut app.menu_state);
 
@@ -384,6 +522,12 @@ fn ui(f: &mut Frame, app: &mut App) {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
+    };
+
+    let (content_highlight_style, content_symbol) = if !app.focus_on_menu {
+        (Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD), "> ")
+    } else {
+        (Style::default(), "  ")
     };
 
     match app.active_selection {
@@ -395,8 +539,8 @@ fn ui(f: &mut Frame, app: &mut App) {
             
             let projects_list = List::new(projects)
                 .block(Block::default().borders(Borders::ALL).title(" Projects ").border_style(content_style))
-                .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD))
-                .highlight_symbol("> ");
+                .highlight_style(content_highlight_style)
+                .highlight_symbol(content_symbol);
             
             f.render_stateful_widget(projects_list, main_chunks[1], &mut app.projects_state);
         }
@@ -408,8 +552,8 @@ fn ui(f: &mut Frame, app: &mut App) {
             
             let mrs_list = List::new(mrs)
                 .block(Block::default().borders(Borders::ALL).title(" My Merge Requests (Created) ").border_style(content_style))
-                .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD))
-                .highlight_symbol("> ");
+                .highlight_style(content_highlight_style)
+                .highlight_symbol(content_symbol);
             
             f.render_stateful_widget(mrs_list, main_chunks[1], &mut app.mrs_state);
         }
@@ -425,47 +569,92 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
     if let Some(mr) = &app.selected_mr {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(8),
+                Constraint::Min(0),
+                Constraint::Length(if app.input_mode { 3 } else { 0 }),
+            ])
             .split(f.area());
 
-        let header = Paragraph::new(" LazyGitlab | [Esc/Backspace] Back [v] VS Code [r] Refresh [q] Quit ")
+        let header_text = if app.input_mode {
+            " Typing reply... [Enter] Post [Esc] Cancel "
+        } else {
+            " [j/k] Nav Disc [Enter] Reply [Esc] Back [v] VS Code [r] Refresh [q] Quit "
+        };
+
+        let header = Paragraph::new(format!(" LazyGitlab | {}", header_text))
             .block(Block::default().borders(Borders::ALL).title(" Controls "))
             .style(Style::default().fg(Color::Cyan));
         f.render_widget(header, chunks[0]);
 
-        let details_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(10), Constraint::Min(0)])
-            .split(chunks[1]);
-
         let description = mr.description.as_deref().unwrap_or("No description provided.");
         let mr_info = Paragraph::new(format!(
-            "Title: {}\nAuthor: @{}\nState: {}\nURL: {}\n\nDescription:\n{}",
+            "Title: {}\nAuthor: @{}\nState: {}\nURL: {}\n\nDescription: {}",
             mr.title, mr.author.username, mr.state, mr.web_url, description
         ))
         .block(Block::default().borders(Borders::ALL).title(format!(" MR: {} ", mr.references.full)))
         .wrap(Wrap { trim: true });
-        f.render_widget(mr_info, details_chunks[0]);
+        f.render_widget(mr_info, chunks[1]);
 
         let comments_list: Vec<ListItem> = app.discussions
             .iter()
-            .flat_map(|d| &d.notes)
-            .map(|n| {
-                let text = vec![
-                    Line::from(vec![
-                        Span::styled(format!("@{}", n.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::raw(" says:"),
-                    ]),
-                    Line::from(n.body.as_str()),
-                    Line::from(""),
-                ];
-                ListItem::new(text)
+            .map(|d| {
+                let mut lines = Vec::new();
+                for (i, note) in d.notes.iter().enumerate() {
+                    if i == 0 {
+                        // Header for the first note in discussion
+                        lines.push(Line::from(vec![
+                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                            Span::raw(" says:"),
+                        ]));
+
+                        // If it's a code comment, show the context
+                        if let Some(pos) = &note.position {
+                            if let (Some(path), Some(line)) = (&pos.new_path, pos.new_line) {
+                                lines.push(Line::from(vec![
+                                    Span::styled(format!("  Code at {}:{}", path, line), Style::default().fg(Color::Yellow)),
+                                ]));
+                            }
+                        }
+                    } else {
+                        // Indented reply
+                        lines.push(Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Blue)),
+                            Span::raw(" replied:"),
+                        ]));
+                    }
+                    lines.push(Line::from(format!("  {}", note.body)));
+                    lines.push(Line::from(""));
+                }
+                ListItem::new(lines)
             })
             .collect();
 
+        let comments_style = if !app.input_mode {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+
+        let (disc_highlight_style, disc_symbol) = if !app.input_mode {
+            (Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD), "> ")
+        } else {
+            (Style::default(), "  ")
+        };
+
         let comments = List::new(comments_list)
-            .block(Block::default().borders(Borders::ALL).title(" Discussions "));
-        
-        f.render_widget(comments, details_chunks[1]);
+            .block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(comments_style))
+            .highlight_style(disc_highlight_style)
+            .highlight_symbol(disc_symbol);
+
+        f.render_stateful_widget(comments, chunks[2], &mut app.discussion_state);
+        if app.input_mode {
+            let input = Paragraph::new(app.reply_input.as_str())
+                .style(Style::default().fg(Color::Yellow))
+                .block(Block::default().borders(Borders::ALL).title(" Reply "));
+            f.render_widget(input, chunks[3]);
+        }
     }
 }
