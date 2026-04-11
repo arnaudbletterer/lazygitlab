@@ -17,6 +17,27 @@ struct Project {
     path_with_namespace: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct MergeRequest {
+    #[allow(dead_code)]
+    id: u64,
+    title: String,
+    author: Author,
+    web_url: String,
+    state: String,
+    references: References,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct References {
+    full: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct Author {
+    username: String,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum MenuSelection {
     Projects,
@@ -33,6 +54,8 @@ struct App {
     gitlab: AsyncGitlab,
     projects: Vec<Project>,
     projects_state: ListState,
+    merge_requests: Vec<MergeRequest>,
+    mrs_state: ListState,
     focus_on_menu: bool,
 }
 
@@ -43,6 +66,9 @@ impl App {
         
         let mut projects_state = ListState::default();
         projects_state.select(Some(0));
+
+        let mut mrs_state = ListState::default();
+        mrs_state.select(Some(0));
 
         Self {
             should_quit: false,
@@ -57,6 +83,8 @@ impl App {
             gitlab,
             projects: Vec::new(),
             projects_state,
+            merge_requests: Vec::new(),
+            mrs_state,
             focus_on_menu: true,
         }
     }
@@ -70,12 +98,26 @@ impl App {
             self.menu_state.select(Some(i));
             self.active_selection = self.menu_items[i].1;
         } else {
-            if !self.projects.is_empty() {
-                let i = match self.projects_state.selected() {
-                    Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
-                    None => 0,
-                };
-                self.projects_state.select(Some(i));
+            match self.active_selection {
+                MenuSelection::Projects => {
+                    if !self.projects.is_empty() {
+                        let i = match self.projects_state.selected() {
+                            Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
+                            None => 0,
+                        };
+                        self.projects_state.select(Some(i));
+                    }
+                }
+                MenuSelection::MergeRequests => {
+                    if !self.merge_requests.is_empty() {
+                        let i = match self.mrs_state.selected() {
+                            Some(i) => if i >= self.merge_requests.len() - 1 { 0 } else { i + 1 },
+                            None => 0,
+                        };
+                        self.mrs_state.select(Some(i));
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -89,12 +131,26 @@ impl App {
             self.menu_state.select(Some(i));
             self.active_selection = self.menu_items[i].1;
         } else {
-            if !self.projects.is_empty() {
-                let i = match self.projects_state.selected() {
-                    Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
-                    None => 0,
-                };
-                self.projects_state.select(Some(i));
+            match self.active_selection {
+                MenuSelection::Projects => {
+                    if !self.projects.is_empty() {
+                        let i = match self.projects_state.selected() {
+                            Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
+                            None => 0,
+                        };
+                        self.projects_state.select(Some(i));
+                    }
+                }
+                MenuSelection::MergeRequests => {
+                    if !self.merge_requests.is_empty() {
+                        let i = match self.mrs_state.selected() {
+                            Some(i) => if i == 0 { self.merge_requests.len() - 1 } else { i - 1 },
+                            None => 0,
+                        };
+                        self.mrs_state.select(Some(i));
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -110,6 +166,24 @@ impl App {
         let projects: Vec<Project> = endpoint.query_async(&self.gitlab).await?;
         self.projects = projects;
         Ok(())
+    }
+
+    async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let endpoint = api::merge_requests::MergeRequests::builder()
+            .scope(api::merge_requests::MergeRequestScope::CreatedByMe)
+            .state(api::merge_requests::MergeRequestState::Opened)
+            .build()?;
+        let mrs: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
+        self.merge_requests = mrs;
+        Ok(())
+    }
+
+    async fn refresh(&mut self) {
+        match self.active_selection {
+            MenuSelection::Projects => { let _ = self.fetch_projects().await; }
+            MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
+            _ => {}
+        }
     }
 }
 
@@ -166,9 +240,7 @@ where
                         KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                         KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                         KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
-                        KeyCode::Char('r') => {
-                            let _ = app.fetch_projects().await;
-                        }
+                        KeyCode::Char('r') => app.refresh().await,
                         _ => {}
                     }
                 }
@@ -233,6 +305,19 @@ fn ui(f: &mut Frame, app: &mut App) {
                 .highlight_symbol("> ");
             
             f.render_stateful_widget(projects_list, main_chunks[1], &mut app.projects_state);
+        }
+        MenuSelection::MergeRequests => {
+            let mrs: Vec<ListItem> = app.merge_requests
+                .iter()
+                .map(|mr| ListItem::new(format!("[{}] {} - {} by @{}", mr.state, mr.references.full, mr.title, mr.author.username)))
+                .collect();
+            
+            let mrs_list = List::new(mrs)
+                .block(Block::default().borders(Borders::ALL).title(" My Merge Requests (Created) ").border_style(content_style))
+                .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD))
+                .highlight_symbol("> ");
+            
+            f.render_stateful_widget(mrs_list, main_chunks[1], &mut app.mrs_state);
         }
         _ => {
             let placeholder = Paragraph::new(format!("Content for {:?}", app.active_selection))
