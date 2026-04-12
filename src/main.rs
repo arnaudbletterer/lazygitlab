@@ -64,6 +64,22 @@ struct MergeRequest {
 struct Discussion {
     id: String,
     notes: Vec<Note>,
+    #[serde(skip)]
+    collapsed: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct MRDiff {
+    old_path: String,
+    new_path: String,
+    diff: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LineType {
+    Addition,
+    Removal,
+    Unchanged,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -74,6 +90,8 @@ struct Note {
     #[serde(rename = "type")]
     note_type: Option<String>,
     position: Option<Position>,
+    #[serde(skip)]
+    context: Option<Vec<(u64, String, LineType, bool)>>, // (line_number, content, type, is_target)
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -85,7 +103,9 @@ struct Position {
     #[allow(dead_code)]
     head_sha: String,
     new_path: Option<String>,
+    old_path: Option<String>,
     new_line: Option<u64>,
+    old_line: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -280,7 +300,6 @@ impl App {
     async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = api::merge_requests::MergeRequests::builder()
             .scope(api::merge_requests::MergeRequestScope::CreatedByMe)
-            .state(api::merge_requests::MergeRequestState::Opened)
             .build()?;
         let mrs: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
         self.merge_requests = mrs;
@@ -288,14 +307,111 @@ impl App {
     }
 
     async fn fetch_discussions(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::projects::merge_requests::MergeRequestDiffs;
+
         let endpoint = api::projects::merge_requests::discussions::MergeRequestDiscussions::builder()
             .project(project_id)
             .merge_request(mr_iid)
             .build()?;
-        let discussions: Vec<Discussion> = endpoint.query_async(&self.gitlab).await?;
-        // Sort or filter if needed
+        let mut discussions: Vec<Discussion> = endpoint.query_async(&self.gitlab).await?;
+        
+        for (i, d) in discussions.iter_mut().enumerate() {
+            d.collapsed = i != 0;
+        }
+
+        let diff_endpoint = MergeRequestDiffs::builder()
+            .project(project_id)
+            .merge_request(mr_iid)
+            .build()?;
+        let mr_diffs: Vec<MRDiff> = diff_endpoint.query_async(&self.gitlab).await?;
+
+        for discussion in &mut discussions {
+            for note in &mut discussion.notes {
+                if let Some(pos) = &note.position {
+                    let path = pos.new_path.as_ref().or(pos.old_path.as_ref());
+                    if let (Some(path), Some(target)) = (path, pos.new_line.or(pos.old_line)) {
+                        if let Some(mr_diff) = mr_diffs.iter().find(|d| d.new_path == *path || d.old_path == *path) {
+                            let mut context = Vec::new();
+                            let mut current_old_line = 0;
+                            let mut current_new_line = 0;
+                            
+                            let mut all_diff_lines = Vec::new();
+
+                            for line in mr_diff.diff.lines() {
+                                if line.starts_with("@@") {
+                                    // Parse @@ -old_start,old_len +new_start,new_len @@
+                                    let parts: Vec<&str> = line.split_whitespace().collect();
+                                    if parts.len() >= 3 {
+                                        let old_info = parts[1].trim_start_matches('-');
+                                        let new_info = parts[2].trim_start_matches('+');
+                                        current_old_line = old_info.split(',').next().unwrap_or("0").parse().unwrap_or(0);
+                                        current_new_line = new_info.split(',').next().unwrap_or("0").parse().unwrap_or(0);
+                                    }
+                                    continue;
+                                }
+
+                                let (ltype, ln) = if line.starts_with('+') {
+                                    let l = (LineType::Addition, current_new_line);
+                                    current_new_line += 1;
+                                    l
+                                } else if line.starts_with('-') {
+                                    let l = (LineType::Removal, current_old_line);
+                                    current_old_line += 1;
+                                    l
+                                } else {
+                                    let l = (LineType::Unchanged, if pos.new_line.is_some() { current_new_line } else { current_old_line });
+                                    current_old_line += 1;
+                                    current_new_line += 1;
+                                    l
+                                };
+
+                                all_diff_lines.push((ln, line.to_string(), ltype));
+                            }
+
+                            // Find the target line in all_diff_lines
+                            if let Some(target_idx) = all_diff_lines.iter().position(|(ln, _, lt)| {
+                                *ln == target && (
+                                    (pos.new_line.is_some() && *lt == LineType::Addition) ||
+                                    (pos.old_line.is_some() && *lt == LineType::Removal) ||
+                                    (*lt == LineType::Unchanged)
+                                )
+                            }) {
+                                let start = target_idx.saturating_sub(3);
+                                let end = (target_idx + 4).min(all_diff_lines.len());
+                                
+                                for (i, (ln, content, ltype)) in all_diff_lines[start..end].iter().enumerate() {
+                                    let is_target = (start + i) == target_idx;
+                                    // Strip the + or - from content if present, we'll add it back in UI
+                                    let clean_content = if content.starts_with('+') || content.starts_with('-') {
+                                        &content[1..]
+                                    } else if content.starts_with(' ') {
+                                        &content[1..]
+                                    } else {
+                                        content
+                                    };
+                                    context.push((*ln, clean_content.to_string(), ltype.clone(), is_target));
+                                }
+                            }
+                            
+                            if !context.is_empty() {
+                                note.context = Some(context);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.discussions = discussions;
         Ok(())
+    }
+
+    fn toggle_discussion(&mut self) {
+        if let Some(i) = self.discussion_state.selected() {
+            if let Some(d) = self.discussions.get_mut(i) {
+                d.collapsed = !d.collapsed;
+            }
+        }
     }
 
     async fn post_reply(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -458,6 +574,7 @@ where
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
                             KeyCode::Char('r') => app.refresh().await,
+                            KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,
                             KeyCode::Backspace | KeyCode::Esc => app.back(),
                             KeyCode::Char('v') => app.open_in_vscode(),
@@ -580,7 +697,7 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
         let header_text = if app.input_mode {
             " Typing reply... [Enter] Post [Esc] Cancel "
         } else {
-            " [j/k] Nav Disc [Enter] Reply [Esc] Back [v] VS Code [r] Refresh [q] Quit "
+            " [j/k] Nav [Space] Collapse/Expand [Enter] Reply [Esc] Back [v] VS Code [r] Refresh [q] Quit "
         };
 
         let header = Paragraph::new(format!(" LazyGitlab | {}", header_text))
@@ -601,46 +718,89 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
             .iter()
             .map(|d| {
                 let mut lines = Vec::new();
-                for (i, note) in d.notes.iter().enumerate() {
-                    if i == 0 {
-                        // Header for the first note in discussion
-                        lines.push(Line::from(vec![
-                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                            Span::raw(" says:"),
-                        ]));
+                
+                if d.collapsed {
+                    if let Some(note) = d.notes.first() {
+                        let path_info = if let Some(pos) = &note.position {
+                            format!(" [{}]", pos.new_path.as_deref().or(pos.old_path.as_deref()).unwrap_or("?"))
+                        } else {
+                            "".to_string()
+                        };
+                        let replies = if d.notes.len() > 1 { format!(" (+{} replies)", d.notes.len() - 1) } else { "".to_string() };
+                        let body_preview = note.body.chars().take(50).collect::<String>();
+                        let preview_dots = if note.body.len() > 50 { "..." } else { "" };
 
-                        // If it's a code comment, show the context (file and line number)
-                        if let Some(pos) = &note.position {
-                            if let (Some(path), Some(line)) = (&pos.new_path, pos.new_line) {
+                        lines.push(Line::from(vec![
+                            Span::styled("[+] ", Style::default().fg(Color::Yellow)),
+                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta)),
+                            Span::raw(path_info),
+                            Span::raw(": "),
+                            Span::styled(format!("{}{}", body_preview, preview_dots), Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC)),
+                            Span::styled(replies, Style::default().fg(Color::Blue)),
+                        ]));
+                    }
+                } else {
+                    for (i, note) in d.notes.iter().enumerate() {
+                        if i == 0 {
+                            // Header for the first note in discussion
+                            lines.push(Line::from(vec![
+                                Span::styled("[-] ", Style::default().fg(Color::Yellow)),
+                                Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                                Span::raw(" says:"),
+                            ]));
+    
+                            // If it's a code comment, show the context
+                            if let Some(pos) = &note.position {
+                                let path = pos.new_path.as_deref().or(pos.old_path.as_deref()).unwrap_or("unknown");
                                 lines.push(Line::from(vec![
-                                    Span::styled(format!("  (Code at {}:{})", path, line), Style::default().fg(Color::Yellow)),
+                                    Span::styled(format!("  File: {}", path), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                                 ]));
-                            } else if let Some(path) = &pos.new_path {
-                                // Fallback if line number is missing, but path is present
+    
+                                if let Some(context) = &note.context {
+                                    for (ln, content, ltype, is_target) in context {
+                                        let (style, prefix) = match ltype {
+                                            LineType::Addition => (Style::default().fg(Color::Green), "+"),
+                                            LineType::Removal => (Style::default().fg(Color::Red), "-"),
+                                            LineType::Unchanged => (Style::default().fg(Color::Gray), " "),
+                                        };
+    
+                                        let final_style = if *is_target {
+                                            style.add_modifier(Modifier::BOLD).bg(Color::Rgb(40, 40, 40))
+                                        } else {
+                                            style
+                                        };
+    
+                                        lines.push(Line::from(vec![
+                                            Span::styled(format!("  {}{:>4} | ", prefix, ln), final_style),
+                                            Span::styled(content, final_style),
+                                        ]));
+                                    }
+                                } else if let Some(line) = pos.new_line.or(pos.old_line) {
+                                    lines.push(Line::from(vec![
+                                        Span::styled(format!("  (Line: {})", line), Style::default().fg(Color::Yellow)),
+                                    ]));
+                                }
+                            } else if let Some(note_type) = &note.note_type {
+                                // General comment or other types
                                 lines.push(Line::from(vec![
-                                    Span::styled(format!("  (Code in file: {})", path), Style::default().fg(Color::Yellow)),
+                                    Span::styled(format!("[{}]", note_type), Style::default().fg(Color::Gray)),
                                 ]));
                             }
-                        } else if let Some(note_type) = &note.note_type {
-                            // General comment or other types
-                            lines.push(Line::from(vec![
-                                Span::styled(format!("[{}]", note_type), Style::default().fg(Color::Gray)),
-                            ]));
-                        }
                         } else {
-                        // Indented reply
-                        lines.push(Line::from(vec![
-                            Span::raw("  "),
-                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Blue)),
-                            Span::raw(" replied:"),
-                        ]));
+                            // Indented reply
+                            lines.push(Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Blue)),
+                                Span::raw(" replied:"),
+                            ]));
                         }
                         lines.push(Line::from(format!("  {}", note.body)));
                         lines.push(Line::from(""));
-                        }
-                        ListItem::new(lines)
-                        })
-                        .collect();
+                    }
+                }
+                ListItem::new(lines)
+            })
+            .collect();
         let comments_style = if !app.input_mode {
             Style::default().fg(Color::Yellow)
         } else {
