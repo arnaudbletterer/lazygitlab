@@ -40,16 +40,12 @@ impl Endpoint for AddDiscussionNote {
 
 #[derive(Debug, Deserialize, Clone)]
 struct Project {
-    #[allow(dead_code)]
-    id: u64,
     name: String,
     path_with_namespace: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 struct MergeRequest {
-    #[allow(dead_code)]
-    id: u64,
     iid: u64,
     project_id: u64,
     title: String,
@@ -66,6 +62,7 @@ struct Discussion {
     notes: Vec<Note>,
     #[serde(skip)]
     collapsed: bool,
+    resolved: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -84,7 +81,6 @@ enum LineType {
 
 #[derive(Debug, Deserialize, Clone)]
 struct Note {
-    id: u64,
     body: String,
     author: Author,
     #[serde(rename = "type")]
@@ -92,16 +88,11 @@ struct Note {
     position: Option<Position>,
     #[serde(skip)]
     context: Option<Vec<(u64, String, LineType, bool)>>, // (line_number, content, type, is_target)
+    resolvable: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 struct Position {
-    #[allow(dead_code)]
-    base_sha: String,
-    #[allow(dead_code)]
-    start_sha: String,
-    #[allow(dead_code)]
-    head_sha: String,
     new_path: Option<String>,
     old_path: Option<String>,
     new_line: Option<u64>,
@@ -132,6 +123,34 @@ enum ViewMode {
     Detail,
 }
 
+struct Theme {
+    pub border: Color,
+    pub highlight_bg: Color,
+    pub highlight_fg: Color,
+    pub header: Color,
+    pub author: Color,
+    pub dim: Color,
+    pub addition: Color,
+    pub removal: Color,
+    pub unchanged: Color,
+}
+
+impl Theme {
+    fn default() -> Self {
+        Self {
+            border: Color::Green,
+            highlight_bg: Color::Blue,
+            highlight_fg: Color::White,
+            header: Color::Cyan,
+            author: Color::Magenta,
+            dim: Color::Rgb(100, 100, 100),
+            addition: Color::Green,
+            removal: Color::Red,
+            unchanged: Color::Gray,
+        }
+    }
+}
+
 struct App {
     should_quit: bool,
     menu_state: ListState,
@@ -149,6 +168,7 @@ struct App {
     discussion_state: ListState,
     input_mode: bool,
     reply_input: String,
+    theme: Theme,
 }
 
 impl App {
@@ -187,6 +207,7 @@ impl App {
             discussion_state,
             input_mode: false,
             reply_input: String::new(),
+            theme: Theme::default(),
         }
     }
 
@@ -315,8 +336,15 @@ impl App {
             .build()?;
         let mut discussions: Vec<Discussion> = endpoint.query_async(&self.gitlab).await?;
         
-        for (i, d) in discussions.iter_mut().enumerate() {
-            d.collapsed = i != 0;
+        let mut first_open_found = false;
+        for d in discussions.iter_mut() {
+            let is_resolved = d.resolved.unwrap_or(false);
+            if !is_resolved && !first_open_found {
+                d.collapsed = false;
+                first_open_found = true;
+            } else {
+                d.collapsed = true;
+            }
         }
 
         let diff_endpoint = MergeRequestDiffs::builder()
@@ -601,7 +629,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     let header = Paragraph::new(" LazyGitlab | [j/k] Nav [Tab] Switch [Enter] Detail [r] Refresh [q] Quit ")
         .block(Block::default().borders(Borders::ALL).title(" Controls "))
-        .style(Style::default().fg(Color::Cyan));
+        .style(Style::default().fg(app.theme.header));
     f.render_widget(header, chunks[0]);
 
     let main_chunks = Layout::default()
@@ -616,13 +644,13 @@ fn ui(f: &mut Frame, app: &mut App) {
         .collect();
 
     let sidebar_style = if app.focus_on_menu {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(app.theme.border)
     } else {
         Style::default()
     };
 
     let (sidebar_highlight_style, sidebar_symbol) = if app.focus_on_menu {
-        (Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD), ">> ")
+        (Style::default().bg(app.theme.highlight_bg).fg(app.theme.highlight_fg).add_modifier(Modifier::BOLD), ">> ")
     } else {
         (Style::default(), "   ")
     };
@@ -636,13 +664,13 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Main Content
     let content_style = if !app.focus_on_menu {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(app.theme.border)
     } else {
         Style::default()
     };
 
     let (content_highlight_style, content_symbol) = if !app.focus_on_menu {
-        (Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD), "> ")
+        (Style::default().bg(app.theme.highlight_bg).fg(app.theme.highlight_fg).add_modifier(Modifier::BOLD), "> ")
     } else {
         (Style::default(), "  ")
     };
@@ -702,7 +730,7 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
 
         let header = Paragraph::new(format!(" LazyGitlab | {}", header_text))
             .block(Block::default().borders(Borders::ALL).title(" Controls "))
-            .style(Style::default().fg(Color::Cyan));
+            .style(Style::default().fg(app.theme.header));
         f.render_widget(header, chunks[0]);
 
         let description = mr.description.as_deref().unwrap_or("No description provided.");
@@ -719,6 +747,13 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
             .map(|d| {
                 let mut lines = Vec::new();
                 
+                let is_resolved = d.resolved.unwrap_or(false);
+                let (prefix_style, author_style, body_style) = if is_resolved {
+                    (Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim).add_modifier(Modifier::ITALIC))
+                } else {
+                    (Style::default().fg(app.theme.border), Style::default().fg(app.theme.author), Style::default().fg(app.theme.unchanged).add_modifier(Modifier::ITALIC))
+                };
+
                 if d.collapsed {
                     if let Some(note) = d.notes.first() {
                         let path_info = if let Some(pos) = &note.position {
@@ -730,22 +765,40 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
                         let body_preview = note.body.chars().take(50).collect::<String>();
                         let preview_dots = if note.body.len() > 50 { "..." } else { "" };
 
+                        let resolution = if is_resolved {
+                            Span::styled(" [Resolved]", Style::default().fg(app.theme.dim))
+                        } else if d.notes.iter().any(|n| n.resolvable.unwrap_or(false)) {
+                            Span::styled(" [Open]", Style::default().fg(app.theme.removal))
+                        } else {
+                            Span::raw("")
+                        };
+
                         lines.push(Line::from(vec![
-                            Span::styled("[+] ", Style::default().fg(Color::Yellow)),
-                            Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta)),
+                            Span::styled("[+] ", prefix_style),
+                            Span::styled(format!("@{}", note.author.username), author_style),
                             Span::raw(path_info),
+                            resolution,
                             Span::raw(": "),
-                            Span::styled(format!("{}{}", body_preview, preview_dots), Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC)),
-                            Span::styled(replies, Style::default().fg(Color::Blue)),
+                            Span::styled(format!("{}{}", body_preview, preview_dots), body_style),
+                            Span::styled(replies, if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.highlight_bg) }),
                         ]));
                     }
                 } else {
+                    let resolution = if is_resolved {
+                        Span::styled(" [Resolved]", Style::default().fg(app.theme.dim))
+                    } else if d.notes.iter().any(|n| n.resolvable.unwrap_or(false)) {
+                        Span::styled(" [Open]", Style::default().fg(app.theme.removal))
+                    } else {
+                        Span::raw("")
+                    };
+
                     for (i, note) in d.notes.iter().enumerate() {
                         if i == 0 {
                             // Header for the first note in discussion
                             lines.push(Line::from(vec![
-                                Span::styled("[-] ", Style::default().fg(Color::Yellow)),
-                                Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                                Span::styled("[-] ", prefix_style),
+                                Span::styled(format!("@{}", note.author.username), author_style.add_modifier(Modifier::BOLD)),
+                                resolution.clone(),
                                 Span::raw(" says:"),
                             ]));
     
@@ -753,19 +806,19 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
                             if let Some(pos) = &note.position {
                                 let path = pos.new_path.as_deref().or(pos.old_path.as_deref()).unwrap_or("unknown");
                                 lines.push(Line::from(vec![
-                                    Span::styled(format!("  File: {}", path), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                                    Span::styled(format!("  File: {}", path), Style::default().fg(if is_resolved { app.theme.dim } else { app.theme.border }).add_modifier(Modifier::BOLD)),
                                 ]));
     
                                 if let Some(context) = &note.context {
                                     for (ln, content, ltype, is_target) in context {
                                         let (style, prefix) = match ltype {
-                                            LineType::Addition => (Style::default().fg(Color::Green), "+"),
-                                            LineType::Removal => (Style::default().fg(Color::Red), "-"),
-                                            LineType::Unchanged => (Style::default().fg(Color::Gray), " "),
+                                            LineType::Addition => (Style::default().fg(if is_resolved { app.theme.dim } else { app.theme.addition }), "+"),
+                                            LineType::Removal => (Style::default().fg(if is_resolved { app.theme.dim } else { app.theme.removal }), "-"),
+                                            LineType::Unchanged => (Style::default().fg(app.theme.dim), " "),
                                         };
     
                                         let final_style = if *is_target {
-                                            style.add_modifier(Modifier::BOLD).bg(Color::Rgb(40, 40, 40))
+                                            style.add_modifier(Modifier::BOLD).bg(if is_resolved { Color::Rgb(40, 40, 40) } else { Color::Rgb(60, 60, 60) })
                                         } else {
                                             style
                                         };
@@ -777,24 +830,28 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
                                     }
                                 } else if let Some(line) = pos.new_line.or(pos.old_line) {
                                     lines.push(Line::from(vec![
-                                        Span::styled(format!("  (Line: {})", line), Style::default().fg(Color::Yellow)),
+                                        Span::styled(format!("  (Line: {})", line), Style::default().fg(if is_resolved { app.theme.dim } else { app.theme.border })),
                                     ]));
                                 }
                             } else if let Some(note_type) = &note.note_type {
                                 // General comment or other types
                                 lines.push(Line::from(vec![
-                                    Span::styled(format!("[{}]", note_type), Style::default().fg(Color::Gray)),
+                                    Span::styled(format!("[{}]", note_type), Style::default().fg(app.theme.dim)),
                                 ]));
                             }
                         } else {
                             // Indented reply
                             lines.push(Line::from(vec![
                                 Span::raw("  "),
-                                Span::styled(format!("@{}", note.author.username), Style::default().fg(Color::Blue)),
+                                Span::styled(format!("@{}", note.author.username), if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.highlight_bg) }),
                                 Span::raw(" replied:"),
                             ]));
                         }
-                        lines.push(Line::from(format!("  {}", note.body)));
+                        let body_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default() };
+                        lines.push(Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(&note.body, body_style),
+                        ]));
                         lines.push(Line::from(""));
                     }
                 }
@@ -802,13 +859,13 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
             })
             .collect();
         let comments_style = if !app.input_mode {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(app.theme.border)
         } else {
             Style::default()
         };
 
         let (disc_highlight_style, disc_symbol) = if !app.input_mode {
-            (Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD), "> ")
+            (Style::default().bg(app.theme.highlight_bg).fg(app.theme.highlight_fg).add_modifier(Modifier::BOLD), "> ")
         } else {
             (Style::default(), "  ")
         };
@@ -821,7 +878,7 @@ fn render_detail_view(f: &mut Frame, app: &mut App) {
         f.render_stateful_widget(comments, chunks[2], &mut app.discussion_state);
         if app.input_mode {
             let input = Paragraph::new(app.reply_input.as_str())
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.theme.border))
                 .block(Block::default().borders(Borders::ALL).title(" Reply "));
             f.render_widget(input, chunks[3]);
         }
