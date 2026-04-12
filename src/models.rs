@@ -77,7 +77,6 @@ pub struct Author {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MenuSelection {
-    Projects,
     MergeRequests,
     Issues,
     Pipelines,
@@ -85,7 +84,6 @@ pub enum MenuSelection {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ViewMode {
-    ProjectSelection,
     List,
     Detail,
 }
@@ -99,6 +97,7 @@ pub struct App {
     pub projects: Vec<Project>,
     pub projects_state: ListState,
     pub selected_project: Option<Project>,
+    pub show_project_popup: bool,
     pub merge_requests: Vec<MergeRequest>,
     pub mrs_state: ListState,
     pub focus_on_menu: bool,

@@ -8,12 +8,12 @@ pub struct Theme {
     pub dim: Color,
     pub addition: Color,
     pub removal: Color,
-    pub unchanged: Color,
     pub opened: Color,
     pub merged: Color,
     pub closed: Color,
     pub shortcut_key: Color,
     pub shortcut_desc: Color,
+    pub unchanged: Color,
 }
 
 impl Theme {
@@ -25,12 +25,12 @@ impl Theme {
             dim: Color::Rgb(100, 100, 100),
             addition: Color::Green,
             removal: Color::Red,
-            unchanged: Color::Gray,
             opened: Color::Red,
             merged: Color::Blue,
             closed: Color::Rgb(150, 150, 150),
             shortcut_key: Color::Cyan,
             shortcut_desc: Color::White,
+            unchanged: Color::Gray,
         }
     }
 }
@@ -58,11 +58,28 @@ fn render_shortcuts(f: &mut Frame, area: Rect, shortcuts: Vec<(&str, &str)>, the
     f.render_widget(p, area);
 }
 
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
 pub fn ui(f: &mut Frame, app: &mut App) {
     match app.view_mode {
-        ViewMode::ProjectSelection => {
-            render_project_selection(f, app);
-        }
         ViewMode::List => {
             render_list_view(f, app);
         }
@@ -70,13 +87,19 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             render_detail_view(f, app);
         }
     }
+
+    if app.show_project_popup {
+        render_project_popup(f, app);
+    }
 }
 
-fn render_project_selection(f: &mut Frame, app: &mut App) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
-        .split(f.area());
+fn render_project_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 40, f.area());
+    
+    // Clear the background
+    let clear = Block::default().bg(Color::Black);
+    f.render_widget(Clear, area);
+    f.render_widget(clear, area);
 
     let projects: Vec<ListItem> = app.projects
         .iter()
@@ -84,19 +107,11 @@ fn render_project_selection(f: &mut Frame, app: &mut App) {
         .collect();
 
     let list = List::new(projects)
-        .block(Block::default().borders(Borders::ALL).title(" Select a GitLab Project ").border_style(Style::default().fg(app.theme.border)))
+        .block(Block::default().borders(Borders::ALL).title(" Select Project ").border_style(Style::default().fg(app.theme.border)))
         .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
-    f.render_stateful_widget(list, chunks[0], &mut app.projects_state);
-
-    let shortcuts = vec![
-        ("j/k", "nav"),
-        ("enter", "select"),
-        ("r", "refresh"),
-        ("q", "quit"),
-    ];
-    render_shortcuts(f, chunks[1], shortcuts, &app.theme);
+    f.render_stateful_widget(list, area, &mut app.projects_state);
 }
 
 fn render_list_view(f: &mut Frame, app: &mut App) {
@@ -105,14 +120,23 @@ fn render_list_view(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
 
-    let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("None");
-    
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
         .split(chunks[0]);
 
-    // Sidebar
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(main_chunks[0]);
+
+    // Status Panel (Top Left)
+    let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("None");
+    let status_info = Paragraph::new(format!("Project: {}", proj_name))
+        .block(Block::default().borders(Borders::ALL).title(" Status ").border_style(Style::default().fg(app.theme.unchanged)));
+    f.render_widget(status_info, left_chunks[0]);
+
+    // Sidebar (Menu)
     let items: Vec<ListItem> = app.menu_items
         .iter()
         .map(|(name, _)| ListItem::new(name.as_str()))
@@ -131,11 +155,11 @@ fn render_list_view(f: &mut Frame, app: &mut App) {
     };
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(format!(" Project: {} ", proj_name)).border_style(sidebar_style))
+        .block(Block::default().borders(Borders::ALL).title(" Menu ").border_style(sidebar_style))
         .highlight_style(sidebar_highlight_style)
         .highlight_symbol(if app.focus_on_menu { ">> " } else { "   " });
 
-    f.render_stateful_widget(list, main_chunks[0], &mut app.menu_state);
+    f.render_stateful_widget(list, left_chunks[1], &mut app.menu_state);
 
     // Main Content
     let content_style = if !app.focus_on_menu {
@@ -150,48 +174,40 @@ fn render_list_view(f: &mut Frame, app: &mut App) {
         Style::default()
     };
 
-    match app.active_selection {
-        MenuSelection::Projects => {
-            // Already selected, but we can show all projects here too
-            let projects: Vec<ListItem> = app.projects
-                .iter()
-                .map(|p| ListItem::new(format!("{} ({})", p.name, p.path_with_namespace)))
-                .collect();
-            
-            let projects_list = List::new(projects)
-                .block(Block::default().borders(Borders::ALL).title(" All Projects ").border_style(content_style))
-                .highlight_style(content_highlight_style)
-                .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
-            
-            f.render_stateful_widget(projects_list, main_chunks[1], &mut app.projects_state);
-        }
-        MenuSelection::MergeRequests => {
-            let mrs: Vec<ListItem> = app.merge_requests
-                .iter()
-                .map(|mr| {
-                    let disp_state = &mr.state;
-                    let state_style = get_status_style(disp_state, &app.theme);
-                    
-                    Line::from(vec![
-                        Span::styled(format!("[{}]", disp_state), state_style),
-                        Span::raw(format!(" {} - {} by ", mr.references.full, mr.title)),
-                        Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
-                    ])
-                })
-                .map(ListItem::from)
-                .collect();
-            
-            let mrs_list = List::new(mrs)
-                .block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style))
-                .highlight_style(content_highlight_style)
-                .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
-            
-            f.render_stateful_widget(mrs_list, main_chunks[1], &mut app.mrs_state);
-        }
-        _ => {
-            let placeholder = Paragraph::new(format!("Content for {:?}", app.active_selection))
-                .block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style));
-            f.render_widget(placeholder, main_chunks[1]);
+    if app.selected_project.is_none() {
+        let placeholder = Paragraph::new("\n\n  No project selected.\n  Press Ctrl+R to select a project.")
+            .block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style));
+        f.render_widget(placeholder, main_chunks[1]);
+    } else {
+        match app.active_selection {
+            MenuSelection::MergeRequests => {
+                let mrs: Vec<ListItem> = app.merge_requests
+                    .iter()
+                    .map(|mr| {
+                        let disp_state = &mr.state;
+                        let state_style = get_status_style(disp_state, &app.theme);
+                        
+                        Line::from(vec![
+                            Span::styled(format!("[{}]", disp_state), state_style),
+                            Span::raw(format!(" {} - {} by ", mr.references.full, mr.title)),
+                            Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
+                        ])
+                    })
+                    .map(ListItem::from)
+                    .collect();
+                
+                let mrs_list = List::new(mrs)
+                    .block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style))
+                    .highlight_style(content_highlight_style)
+                    .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
+                
+                f.render_stateful_widget(mrs_list, main_chunks[1], &mut app.mrs_state);
+            }
+            _ => {
+                let placeholder = Paragraph::new(format!("Content for {:?}", app.active_selection))
+                    .block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style));
+                f.render_widget(placeholder, main_chunks[1]);
+            }
         }
     }
 

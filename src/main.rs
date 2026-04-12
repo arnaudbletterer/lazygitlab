@@ -34,9 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = App::new(client);
     
-    // Initial fetch
+    // Initial fetch for projects list
     let _ = app.fetch_projects().await;
-    let _ = app.fetch_merge_requests().await;
 
     // Pass execution to the app loop
     let res = run_app(&mut terminal, &mut app).await;
