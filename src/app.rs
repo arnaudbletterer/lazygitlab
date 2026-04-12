@@ -33,6 +33,34 @@ impl Endpoint for AddDiscussionNote {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ResolveDiscussion {
+    pub project: u64,
+    pub merge_request: u64,
+    pub discussion: String,
+    pub resolved: bool,
+}
+
+impl Endpoint for ResolveDiscussion {
+    fn method(&self) -> Method {
+        Method::PUT
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        format!(
+            "projects/{}/merge_requests/{}/discussions/{}",
+            self.project, self.merge_request, self.discussion,
+        )
+        .into()
+    }
+
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("resolved", self.resolved);
+        params
+    }
+}
+
 impl App {
     pub fn new(gitlab: AsyncGitlab) -> Self {
         let mut menu_state = ListState::default();
@@ -320,6 +348,25 @@ impl App {
                     let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
                     self.reply_input.clear();
                     self.input_mode = false;
+                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn resolve_discussion(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            if let Some(disc_idx) = self.discussion_state.selected() {
+                if let Some(disc) = self.discussions.get(disc_idx) {
+                    let is_resolved = disc.resolved.unwrap_or(false);
+                    let endpoint = ResolveDiscussion {
+                        project: mr.project_id,
+                        merge_request: mr.iid,
+                        discussion: disc.id.clone(),
+                        resolved: !is_resolved,
+                    };
+                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
                     let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
                 }
             }

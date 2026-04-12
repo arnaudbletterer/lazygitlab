@@ -4,7 +4,6 @@ use crate::models::{App, ViewMode, MenuSelection, LineType};
 pub struct Theme {
     pub border: Color,
     pub highlight_bg: Color,
-    pub header: Color,
     pub author: Color,
     pub dim: Color,
     pub addition: Color,
@@ -13,6 +12,8 @@ pub struct Theme {
     pub opened: Color,
     pub merged: Color,
     pub closed: Color,
+    pub shortcut_key: Color,
+    pub shortcut_desc: Color,
 }
 
 impl Theme {
@@ -20,7 +21,6 @@ impl Theme {
         Self {
             border: Color::Green,
             highlight_bg: Color::Blue,
-            header: Color::Cyan,
             author: Color::Magenta,
             dim: Color::Rgb(100, 100, 100),
             addition: Color::Green,
@@ -29,6 +29,8 @@ impl Theme {
             opened: Color::Red,
             merged: Color::Blue,
             closed: Color::Rgb(150, 150, 150),
+            shortcut_key: Color::Cyan,
+            shortcut_desc: Color::White,
         }
     }
 }
@@ -42,6 +44,20 @@ pub fn get_status_style(status: &str, theme: &Theme) -> Style {
     }
 }
 
+fn render_shortcuts(f: &mut Frame, area: Rect, shortcuts: Vec<(&str, &str)>, theme: &Theme) {
+    let mut spans = Vec::new();
+    for (i, (key, desc)) in shortcuts.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(", ", Style::default().fg(theme.shortcut_desc)));
+        }
+        spans.push(Span::styled(*key, Style::default().fg(theme.shortcut_key)));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(*desc, Style::default().fg(theme.shortcut_desc)));
+    }
+    let p = Paragraph::new(Line::from(spans));
+    f.render_widget(p, area);
+}
+
 pub fn ui(f: &mut Frame, app: &mut App) {
     if app.view_mode == ViewMode::Detail {
         render_detail_view(f, app);
@@ -50,18 +66,13 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
-
-    let header = Paragraph::new(" LazyGitlab | [j/k] Nav [Tab] Switch [Enter] Detail [r] Refresh [q] Quit ")
-        .block(Block::default().borders(Borders::ALL).title(" Controls "))
-        .style(Style::default().fg(app.theme.header));
-    f.render_widget(header, chunks[0]);
 
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
-        .split(chunks[1]);
+        .split(chunks[0]);
 
     // Sidebar
     let items: Vec<ListItem> = app.menu_items
@@ -119,9 +130,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             let mrs: Vec<ListItem> = app.merge_requests
                 .iter()
                 .map(|mr| {
-                    let state_style = get_status_style(&mr.state, &app.theme);
+                    let disp_state = &mr.state;
+                    let state_style = get_status_style(disp_state, &app.theme);
+                    
                     Line::from(vec![
-                        Span::styled(format!("[{}]", mr.state), state_style),
+                        Span::styled(format!("[{}]", disp_state), state_style),
                         Span::raw(format!(" {} - {} by ", mr.references.full, mr.title)),
                         Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
                     ])
@@ -142,6 +155,15 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             f.render_widget(placeholder, main_chunks[1]);
         }
     }
+
+    let shortcuts = vec![
+        ("j/k", "nav"),
+        ("tab", "switch"),
+        ("enter", "detail"),
+        ("r", "refresh"),
+        ("q", "quit"),
+    ];
+    render_shortcuts(f, chunks[1], shortcuts, &app.theme);
 }
 
 pub fn render_detail_view(f: &mut Frame, app: &mut App) {
@@ -149,23 +171,12 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
                 Constraint::Length(8),
                 Constraint::Min(0),
                 Constraint::Length(if app.input_mode { 3 } else { 0 }),
+                Constraint::Length(1),
             ])
             .split(f.area());
-
-        let header_text = if app.input_mode {
-            " Typing reply... [Enter] Post [Esc] Cancel "
-        } else {
-            " [j/k] Nav [Space] Collapse/Expand [Enter] Reply [Esc] Back [v] VS Code [r] Refresh [q] Quit "
-        };
-
-        let header = Paragraph::new(format!(" LazyGitlab | {}", header_text))
-            .block(Block::default().borders(Borders::ALL).title(" Controls "))
-            .style(Style::default().fg(app.theme.header));
-        f.render_widget(header, chunks[0]);
 
         let state_style = get_status_style(&mr.state, &app.theme);
         let description = mr.description.as_deref().unwrap_or("No description provided.");
@@ -180,7 +191,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         let mr_info_widget = Paragraph::new(mr_info_spans)
             .block(Block::default().borders(Borders::ALL).title(format!(" MR: {} ", mr.references.full)))
             .wrap(Wrap { trim: true });
-        f.render_widget(mr_info_widget, chunks[1]);
+        f.render_widget(mr_info_widget, chunks[0]);
 
         let selected_idx = app.discussion_state.selected();
 
@@ -320,12 +331,31 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         let comments = List::new(comments_list)
             .block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(comments_style));
 
-        f.render_stateful_widget(comments, chunks[2], &mut app.discussion_state);
+        f.render_stateful_widget(comments, chunks[1], &mut app.discussion_state);
         if app.input_mode {
             let input = Paragraph::new(app.reply_input.as_str())
                 .style(Style::default().fg(app.theme.border))
                 .block(Block::default().borders(Borders::ALL).title(" Reply "));
-            f.render_widget(input, chunks[3]);
+            f.render_widget(input, chunks[2]);
         }
+
+        let shortcuts = if app.input_mode {
+            vec![
+                ("enter", "post"),
+                ("esc", "cancel"),
+            ]
+        } else {
+            vec![
+                ("j/k", "nav"),
+                ("space", "expand"),
+                ("s", "resolve"),
+                ("enter", "reply"),
+                ("esc", "back"),
+                ("v", "vscode"),
+                ("r", "refresh"),
+                ("q", "quit"),
+            ]
+        };
+        render_shortcuts(f, chunks[3], shortcuts, &app.theme);
     }
 }

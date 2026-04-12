@@ -78,6 +78,7 @@ where
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
                             KeyCode::Char('r') => app.refresh().await,
+                            KeyCode::Char('s') => { let _ = app.resolve_discussion().await; }
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,
                             KeyCode::Backspace | KeyCode::Esc => app.back(),
