@@ -88,10 +88,11 @@ impl App {
             gitlab,
             projects: Vec::new(),
             projects_state,
+            selected_project: None,
             merge_requests: Vec::new(),
             mrs_state,
-            focus_on_menu: true,
-            view_mode: ViewMode::List,
+            focus_on_menu: false, // Start with focus on content for project selection
+            view_mode: ViewMode::ProjectSelection,
             selected_mr: None,
             discussions: Vec::new(),
             discussion_state,
@@ -103,16 +104,26 @@ impl App {
 
     pub fn move_down(&mut self) {
         if self.input_mode { return; }
-        if self.focus_on_menu {
-            let i = match self.menu_state.selected() {
-                Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 },
-                None => 0,
-            };
-            self.menu_state.select(Some(i));
-            self.active_selection = self.menu_items[i].1;
-        } else {
-            match self.view_mode {
-                ViewMode::List => {
+        
+        match self.view_mode {
+            ViewMode::ProjectSelection => {
+                if !self.projects.is_empty() {
+                    let i = match self.projects_state.selected() {
+                        Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.projects_state.select(Some(i));
+                }
+            }
+            ViewMode::List => {
+                if self.focus_on_menu {
+                    let i = match self.menu_state.selected() {
+                        Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.menu_state.select(Some(i));
+                    self.active_selection = self.menu_items[i].1;
+                } else {
                     match self.active_selection {
                         MenuSelection::Projects => {
                             if !self.projects.is_empty() {
@@ -135,14 +146,14 @@ impl App {
                         _ => {}
                     }
                 }
-                ViewMode::Detail => {
-                    if !self.discussions.is_empty() {
-                        let i = match self.discussion_state.selected() {
-                            Some(i) => if i >= self.discussions.len() - 1 { 0 } else { i + 1 },
-                            None => 0,
-                        };
-                        self.discussion_state.select(Some(i));
-                    }
+            }
+            ViewMode::Detail => {
+                if !self.discussions.is_empty() {
+                    let i = match self.discussion_state.selected() {
+                        Some(i) => if i >= self.discussions.len() - 1 { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.discussion_state.select(Some(i));
                 }
             }
         }
@@ -150,16 +161,26 @@ impl App {
 
     pub fn move_up(&mut self) {
         if self.input_mode { return; }
-        if self.focus_on_menu {
-            let i = match self.menu_state.selected() {
-                Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 },
-                None => 0,
-            };
-            self.menu_state.select(Some(i));
-            self.active_selection = self.menu_items[i].1;
-        } else {
-            match self.view_mode {
-                ViewMode::List => {
+        
+        match self.view_mode {
+            ViewMode::ProjectSelection => {
+                if !self.projects.is_empty() {
+                    let i = match self.projects_state.selected() {
+                        Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
+                        None => 0,
+                    };
+                    self.projects_state.select(Some(i));
+                }
+            }
+            ViewMode::List => {
+                if self.focus_on_menu {
+                    let i = match self.menu_state.selected() {
+                        Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 },
+                        None => 0,
+                    };
+                    self.menu_state.select(Some(i));
+                    self.active_selection = self.menu_items[i].1;
+                } else {
                     match self.active_selection {
                         MenuSelection::Projects => {
                             if !self.projects.is_empty() {
@@ -182,21 +203,23 @@ impl App {
                         _ => {}
                     }
                 }
-                ViewMode::Detail => {
-                    if !self.discussions.is_empty() {
-                        let i = match self.discussion_state.selected() {
-                            Some(i) => if i == 0 { self.discussions.len() - 1 } else { i - 1 },
-                            None => 0,
-                        };
-                        self.discussion_state.select(Some(i));
-                    }
+            }
+            ViewMode::Detail => {
+                if !self.discussions.is_empty() {
+                    let i = match self.discussion_state.selected() {
+                        Some(i) => if i == 0 { self.discussions.len() - 1 } else { i - 1 },
+                        None => 0,
+                    };
+                    self.discussion_state.select(Some(i));
                 }
             }
         }
     }
 
     pub fn toggle_focus(&mut self) {
-        self.focus_on_menu = !self.focus_on_menu;
+        if self.view_mode == ViewMode::List {
+            self.focus_on_menu = !self.focus_on_menu;
+        }
     }
 
     pub async fn fetch_projects(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -209,10 +232,18 @@ impl App {
     }
 
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = api::merge_requests::MergeRequests::builder()
-            .scope(api::merge_requests::MergeRequestScope::CreatedByMe)
-            .build()?;
-        let mrs: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
+        let mrs: Vec<MergeRequest> = if let Some(project) = &self.selected_project {
+            let endpoint = api::projects::merge_requests::MergeRequests::builder()
+                .project(project.id)
+                .build()?;
+            endpoint.query_async(&self.gitlab).await?
+        } else {
+            let endpoint = api::merge_requests::MergeRequests::builder()
+                .scope(api::merge_requests::MergeRequestScope::CreatedByMe)
+                .build()?;
+            endpoint.query_async(&self.gitlab).await?
+        };
+        
         self.merge_requests = mrs;
         Ok(())
     }
@@ -374,18 +405,46 @@ impl App {
         Ok(())
     }
 
+    pub async fn select_project(&mut self) {
+        if let Some(i) = self.projects_state.selected() {
+            if let Some(project) = self.projects.get(i) {
+                self.selected_project = Some(project.clone());
+                self.view_mode = ViewMode::List;
+                self.active_selection = MenuSelection::MergeRequests;
+                self.menu_state.select(Some(1)); // Start on MRs tab
+                self.focus_on_menu = true;
+                let _ = self.fetch_merge_requests().await;
+            }
+        }
+    }
+
+    pub fn switch_project(&mut self) {
+        self.selected_project = None;
+        self.view_mode = ViewMode::ProjectSelection;
+        self.focus_on_menu = false;
+        self.merge_requests.clear();
+        self.discussions.clear();
+        self.selected_mr = None;
+    }
+
     pub async fn enter(&mut self) {
         if self.input_mode {
             let _ = self.post_reply().await;
             return;
         }
 
-        if self.focus_on_menu {
-            self.focus_on_menu = false;
-        } else {
-            match self.view_mode {
-                ViewMode::List => {
+        match self.view_mode {
+            ViewMode::ProjectSelection => {
+                self.select_project().await;
+            }
+            ViewMode::List => {
+                if self.focus_on_menu {
+                    self.focus_on_menu = false;
+                } else {
                     match self.active_selection {
+                        MenuSelection::Projects => {
+                            self.select_project().await;
+                        }
                         MenuSelection::MergeRequests => {
                             if let Some(i) = self.mrs_state.selected() {
                                 if let Some(mr) = self.merge_requests.get(i) {
@@ -399,9 +458,9 @@ impl App {
                         _ => {}
                     }
                 }
-                ViewMode::Detail => {
-                    self.input_mode = true;
-                }
+            }
+            ViewMode::Detail => {
+                self.input_mode = true;
             }
         }
     }
@@ -414,8 +473,10 @@ impl App {
             self.view_mode = ViewMode::List;
             self.selected_mr = None;
             self.discussions.clear();
-        } else if !self.focus_on_menu {
+        } else if self.view_mode == ViewMode::List && !self.focus_on_menu {
             self.focus_on_menu = true;
+        } else if self.view_mode == ViewMode::List && self.focus_on_menu {
+            self.switch_project();
         }
     }
 
@@ -429,18 +490,20 @@ impl App {
     }
 
     pub async fn refresh(&mut self) {
-        match self.active_selection {
-            MenuSelection::Projects => { let _ = self.fetch_projects().await; }
-            MenuSelection::MergeRequests => { 
-                if self.view_mode == ViewMode::Detail {
-                    if let Some(mr) = &self.selected_mr {
-                        let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
-                    }
-                } else {
-                    let _ = self.fetch_merge_requests().await; 
+        match self.view_mode {
+            ViewMode::ProjectSelection => { let _ = self.fetch_projects().await; }
+            ViewMode::List => {
+                match self.active_selection {
+                    MenuSelection::Projects => { let _ = self.fetch_projects().await; }
+                    MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
+                    _ => {}
                 }
             }
-            _ => {}
+            ViewMode::Detail => {
+                if let Some(mr) = &self.selected_mr {
+                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                }
+            }
         }
     }
 }

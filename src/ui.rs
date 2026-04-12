@@ -59,16 +59,54 @@ fn render_shortcuts(f: &mut Frame, area: Rect, shortcuts: Vec<(&str, &str)>, the
 }
 
 pub fn ui(f: &mut Frame, app: &mut App) {
-    if app.view_mode == ViewMode::Detail {
-        render_detail_view(f, app);
-        return;
+    match app.view_mode {
+        ViewMode::ProjectSelection => {
+            render_project_selection(f, app);
+        }
+        ViewMode::List => {
+            render_list_view(f, app);
+        }
+        ViewMode::Detail => {
+            render_detail_view(f, app);
+        }
     }
+}
 
+fn render_project_selection(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
 
+    let projects: Vec<ListItem> = app.projects
+        .iter()
+        .map(|p| ListItem::new(format!("{} ({})", p.name, p.path_with_namespace)))
+        .collect();
+
+    let list = List::new(projects)
+        .block(Block::default().borders(Borders::ALL).title(" Select a GitLab Project ").border_style(Style::default().fg(app.theme.border)))
+        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
+
+    f.render_stateful_widget(list, chunks[0], &mut app.projects_state);
+
+    let shortcuts = vec![
+        ("j/k", "nav"),
+        ("enter", "select"),
+        ("r", "refresh"),
+        ("q", "quit"),
+    ];
+    render_shortcuts(f, chunks[1], shortcuts, &app.theme);
+}
+
+fn render_list_view(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(f.area());
+
+    let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("None");
+    
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
@@ -93,7 +131,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     };
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Menu ").border_style(sidebar_style))
+        .block(Block::default().borders(Borders::ALL).title(format!(" Project: {} ", proj_name)).border_style(sidebar_style))
         .highlight_style(sidebar_highlight_style)
         .highlight_symbol(if app.focus_on_menu { ">> " } else { "   " });
 
@@ -114,13 +152,14 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     match app.active_selection {
         MenuSelection::Projects => {
+            // Already selected, but we can show all projects here too
             let projects: Vec<ListItem> = app.projects
                 .iter()
                 .map(|p| ListItem::new(format!("{} ({})", p.name, p.path_with_namespace)))
                 .collect();
             
             let projects_list = List::new(projects)
-                .block(Block::default().borders(Borders::ALL).title(" Projects ").border_style(content_style))
+                .block(Block::default().borders(Borders::ALL).title(" All Projects ").border_style(content_style))
                 .highlight_style(content_highlight_style)
                 .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
             
@@ -143,7 +182,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                 .collect();
             
             let mrs_list = List::new(mrs)
-                .block(Block::default().borders(Borders::ALL).title(" My Merge Requests (Created) ").border_style(content_style))
+                .block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style))
                 .highlight_style(content_highlight_style)
                 .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
             
@@ -159,7 +198,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     let shortcuts = vec![
         ("j/k", "nav"),
         ("tab", "switch"),
-        ("enter", "detail"),
+        ("ctrl+r", "switch project"),
+        ("enter", "select"),
         ("r", "refresh"),
         ("q", "quit"),
     ];
@@ -339,23 +379,16 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             f.render_widget(input, chunks[2]);
         }
 
-        let shortcuts = if app.input_mode {
-            vec![
-                ("enter", "post"),
-                ("esc", "cancel"),
-            ]
-        } else {
-            vec![
-                ("j/k", "nav"),
-                ("space", "expand"),
-                ("s", "resolve"),
-                ("enter", "reply"),
-                ("esc", "back"),
-                ("v", "vscode"),
-                ("r", "refresh"),
-                ("q", "quit"),
-            ]
-        };
+        let shortcuts = vec![
+            ("j/k", "nav"),
+            ("space", "expand"),
+            ("s", "resolve"),
+            ("enter", "reply"),
+            ("esc", "back"),
+            ("v", "vscode"),
+            ("r", "refresh"),
+            ("q", "quit"),
+        ];
         render_shortcuts(f, chunks[3], shortcuts, &app.theme);
     }
 }

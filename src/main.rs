@@ -74,6 +74,7 @@ where
                     } else {
                         match key.code {
                             KeyCode::Char('q') => app.should_quit = true,
+                            KeyCode::Char('r') if key.modifiers.contains(event::KeyModifiers::CONTROL) => app.switch_project(),
                             KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),

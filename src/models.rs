@@ -5,6 +5,7 @@ use gitlab::AsyncGitlab;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Project {
+    pub id: u64,
     pub name: String,
     pub path_with_namespace: String,
 }
@@ -84,6 +85,7 @@ pub enum MenuSelection {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ViewMode {
+    ProjectSelection,
     List,
     Detail,
 }
@@ -96,6 +98,7 @@ pub struct App {
     pub gitlab: AsyncGitlab,
     pub projects: Vec<Project>,
     pub projects_state: ListState,
+    pub selected_project: Option<Project>,
     pub merge_requests: Vec<MergeRequest>,
     pub mrs_state: ListState,
     pub focus_on_menu: bool,
