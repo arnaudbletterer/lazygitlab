@@ -78,6 +78,18 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
+fn hex_to_color(hex: &str) -> Color {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+        Color::Rgb(r, g, b)
+    } else {
+        Color::Gray
+    }
+}
+
 pub fn ui(f: &mut Frame, app: &mut App) {
     match app.view_mode {
         ViewMode::List => {
@@ -133,7 +145,7 @@ fn render_list_view(f: &mut Frame, app: &mut App) {
     // Status Panel (Top Left)
     let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("None");
     let status_info = Paragraph::new(format!("Project: {}", proj_name))
-        .block(Block::default().borders(Borders::ALL).title(" Status ").border_style(Style::default().fg(app.theme.unchanged)));
+        .block(Block::default().borders(Borders::ALL).title(" Status ").border_style(Style::default().fg(app.theme.border)));
     f.render_widget(status_info, left_chunks[0]);
 
     // Sidebar (Menu)
@@ -202,6 +214,45 @@ fn render_list_view(f: &mut Frame, app: &mut App) {
                     .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
                 
                 f.render_stateful_widget(mrs_list, main_chunks[1], &mut app.mrs_state);
+            }
+            MenuSelection::Issues => {
+                let issues: Vec<ListItem> = app.issues
+                    .iter()
+                    .map(|issue| {
+                        let state_style = get_status_style(&issue.state, &app.theme);
+                        let itype = issue.issue_type.as_deref().unwrap_or("issue");
+                        
+                        let mut spans = vec![
+                            Span::styled(format!("[{}]", issue.state), state_style),
+                            Span::styled(format!(" [{}]", itype), Style::default().fg(app.theme.dim)),
+                            Span::raw(format!(" #{} - {} by ", issue.iid, issue.title)),
+                            Span::styled(format!("@{}", issue.author.username), Style::default().fg(app.theme.author)),
+                        ];
+
+                        if !issue.labels.is_empty() {
+                            spans.push(Span::raw(" "));
+                            for label in &issue.labels {
+                                let bg = hex_to_color(&label.color);
+                                let fg = hex_to_color(&label.text_color);
+                                spans.push(Span::styled(
+                                    format!(" {} ", label.name), 
+                                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
+                                ));
+                                spans.push(Span::raw(" "));
+                            }
+                        }
+
+                        Line::from(spans)
+                    })
+                    .map(ListItem::from)
+                    .collect();
+                
+                let issues_list = List::new(issues)
+                    .block(Block::default().borders(Borders::ALL).title(format!(" Issues for {} ", proj_name)).border_style(content_style))
+                    .highlight_style(content_highlight_style)
+                    .highlight_symbol(if !app.focus_on_menu { "> " } else { "  " });
+                
+                f.render_stateful_widget(issues_list, main_chunks[1], &mut app.issues_state);
             }
             _ => {
                 let placeholder = Paragraph::new(format!("Content for {:?}", app.active_selection))

@@ -88,6 +88,23 @@ pub enum ViewMode {
     Detail,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct Label {
+    pub name: String,
+    pub color: String,
+    pub text_color: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Issue {
+    pub iid: u64,
+    pub title: String,
+    pub author: Author,
+    pub state: String,
+    pub issue_type: Option<String>,
+    pub labels: Vec<Label>,
+}
+
 pub struct App {
     pub should_quit: bool,
     pub menu_state: ListState,
@@ -100,6 +117,8 @@ pub struct App {
     pub show_project_popup: bool,
     pub merge_requests: Vec<MergeRequest>,
     pub mrs_state: ListState,
+    pub issues: Vec<Issue>,
+    pub issues_state: ListState,
     pub focus_on_menu: bool,
     pub view_mode: ViewMode,
     pub selected_mr: Option<MergeRequest>,

@@ -72,6 +72,9 @@ impl App {
         let mut mrs_state = ListState::default();
         mrs_state.select(Some(0));
 
+        let mut issues_state = ListState::default();
+        issues_state.select(Some(0));
+
         let mut discussion_state = ListState::default();
         discussion_state.select(Some(0));
 
@@ -91,6 +94,8 @@ impl App {
             show_project_popup: true,
             merge_requests: Vec::new(),
             mrs_state,
+            issues: Vec::new(),
+            issues_state,
             focus_on_menu: false,
             view_mode: ViewMode::List,
             selected_mr: None,
@@ -134,6 +139,15 @@ impl App {
                                     None => 0,
                                 };
                                 self.mrs_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::Issues => {
+                            if !self.issues.is_empty() {
+                                let i = match self.issues_state.selected() {
+                                    Some(i) => if i >= self.issues.len() - 1 { 0 } else { i + 1 },
+                                    None => 0,
+                                };
+                                self.issues_state.select(Some(i));
                             }
                         }
                         _ => {}
@@ -186,6 +200,15 @@ impl App {
                                 self.mrs_state.select(Some(i));
                             }
                         }
+                        MenuSelection::Issues => {
+                            if !self.issues.is_empty() {
+                                let i = match self.issues_state.selected() {
+                                    Some(i) => if i == 0 { self.issues.len() - 1 } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.issues_state.select(Some(i));
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -228,6 +251,21 @@ impl App {
         };
         
         self.merge_requests = mrs;
+        Ok(())
+    }
+
+    pub async fn fetch_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let issues: Vec<Issue> = if let Some(project) = &self.selected_project {
+            let endpoint = api::projects::issues::Issues::builder()
+                .project(project.id)
+                .with_labels_details(true)
+                .build()?;
+            endpoint.query_async(&self.gitlab).await?
+        } else {
+            Vec::new()
+        };
+        
+        self.issues = issues;
         Ok(())
     }
 
@@ -397,6 +435,7 @@ impl App {
                 self.menu_state.select(Some(0)); // Start on MRs tab
                 self.focus_on_menu = true;
                 let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_issues().await;
             }
         }
     }
@@ -480,6 +519,7 @@ impl App {
             ViewMode::List => {
                 match self.active_selection {
                     MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
+                    MenuSelection::Issues => { let _ = self.fetch_issues().await; }
                     _ => {}
                 }
             }
