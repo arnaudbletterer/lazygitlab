@@ -49,12 +49,10 @@ pub enum LineType {
 pub struct Note {
     pub body: String,
     pub author: Author,
-    #[serde(rename = "type")]
-    pub note_type: Option<String>,
+    pub system: bool,
     pub position: Option<Position>,
     #[serde(skip)]
     pub context: Option<Vec<(u64, String, LineType, bool)>>, // (line_number, content, type, is_target)
-    pub resolvable: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -96,13 +94,54 @@ pub struct Label {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct Milestone {
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TaskCompletionStatus {
+    pub count: u64,
+    pub completed_count: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Issue {
     pub iid: u64,
+    pub project_id: u64,
     pub title: String,
+    pub description: Option<String>,
     pub author: Author,
+    pub assignees: Vec<Author>,
     pub state: String,
+    pub web_url: String,
     pub issue_type: Option<String>,
     pub labels: Vec<Label>,
+    pub milestone: Option<Milestone>,
+    pub due_date: Option<String>,
+    pub weight: Option<i64>,
+    pub task_completion_status: Option<TaskCompletionStatus>,
+    pub confidential: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum InputTarget {
+    Reply,
+    NewComment,
+    EditTitle,
+    EditDescription,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DetailSection {
+    Metadata,
+    Discussions,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum MetadataField {
+    Title,
+    Description,
 }
 
 pub struct App {
@@ -121,10 +160,15 @@ pub struct App {
     pub issues_state: ListState,
     pub focus_on_menu: bool,
     pub view_mode: ViewMode,
+    pub detail_section: DetailSection,
+    pub selected_metadata_field: MetadataField,
     pub selected_mr: Option<MergeRequest>,
+    pub selected_issue: Option<Issue>,
     pub discussions: Vec<Discussion>,
     pub discussion_state: ListState,
     pub input_mode: bool,
+    pub input_target: InputTarget,
+    pub is_loading: bool,
     pub reply_input: String,
     pub theme: Theme,
 }

@@ -64,7 +64,14 @@ where
                 if key.kind == KeyEventKind::Press {
                     if app.input_mode {
                         match key.code {
-                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Enter if key.modifiers.contains(event::KeyModifiers::SHIFT) => {
+                                if app.input_target == InputTarget::EditDescription || app.input_target == InputTarget::Reply || app.input_target == InputTarget::NewComment {
+                                    app.reply_input.push('\n');
+                                }
+                            }
+                            KeyCode::Enter => {
+                                app.enter().await;
+                            }
                             KeyCode::Esc => app.back(),
                             KeyCode::Char(c) => app.reply_input.push(c),
                             KeyCode::Backspace => { app.reply_input.pop(); }
@@ -79,6 +86,26 @@ where
                             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
                             KeyCode::Char('r') => app.refresh().await,
                             KeyCode::Char('s') => { let _ = app.resolve_discussion().await; }
+                            KeyCode::Char('c') => { let _ = app.toggle_issue_state().await; }
+                            KeyCode::Char('n') => {
+                                app.input_mode = true;
+                                app.input_target = InputTarget::NewComment;
+                                app.reply_input.clear();
+                            }
+                            KeyCode::Char('e') => {
+                                if let Some(issue) = &app.selected_issue {
+                                    app.input_mode = true;
+                                    app.input_target = InputTarget::EditTitle;
+                                    app.reply_input = issue.title.clone();
+                                }
+                            }
+                            KeyCode::Char('d') => {
+                                if let Some(issue) = &app.selected_issue {
+                                    app.input_mode = true;
+                                    app.input_target = InputTarget::EditDescription;
+                                    app.reply_input = issue.description.clone().unwrap_or_default();
+                                }
+                            }
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,
                             KeyCode::Backspace | KeyCode::Esc => app.back(),
