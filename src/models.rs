@@ -70,6 +70,7 @@ pub struct References {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Author {
+    pub id: u64,
     pub username: String,
 }
 
@@ -88,6 +89,7 @@ pub enum ViewMode {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Label {
+    pub id: u64,
     pub name: String,
     pub color: String,
     pub text_color: String,
@@ -95,6 +97,7 @@ pub struct Label {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Milestone {
+    pub id: u64,
     pub title: String,
 }
 
@@ -141,6 +144,12 @@ pub enum DetailSection {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MetadataField {
     Title,
+    Assignees,
+    Labels,
+    Milestone,
+    DueDate,
+    Weight,
+    Confidential,
     Description,
 }
 
@@ -172,4 +181,28 @@ pub struct App {
     pub reply_input: String,
     pub cursor_index: usize,
     pub theme: Theme,
+
+    // Project Metadata
+    pub project_labels: Vec<Label>,
+    pub project_milestones: Vec<Milestone>,
+    pub project_members: Vec<Author>,
+
+    // Popups
+    pub show_label_popup: bool,
+    pub label_state: ListState,
+    pub selected_label_ids: Vec<u64>,
+
+    pub show_assignee_popup: bool,
+    pub assignee_state: ListState,
+    pub selected_assignee_ids: Vec<u64>,
+
+    pub show_milestone_popup: bool,
+    pub milestone_state: ListState,
+    pub selected_milestone_id: Option<u64>,
+
+    pub show_weight_popup: bool,
+    pub weight_state: ListState,
+
+    pub show_calendar_popup: bool,
+    pub calendar_date: chrono::NaiveDate,
 }

@@ -6,6 +6,7 @@ use crate::models::*;
 use crate::api::*;
 use ratatui::widgets::ListState;
 use crate::ui::Theme;
+use chrono::Local;
 
 impl App {
     pub fn new(gitlab: AsyncGitlab) -> Self {
@@ -56,11 +57,68 @@ impl App {
             reply_input: String::new(),
             cursor_index: 0,
             theme: Theme::default(),
+
+            // Project Metadata
+            project_labels: Vec::new(),
+            project_milestones: Vec::new(),
+            project_members: Vec::new(),
+
+            // Popups
+            show_label_popup: false,
+            label_state: ListState::default(),
+            selected_label_ids: Vec::new(),
+
+            show_assignee_popup: false,
+            assignee_state: ListState::default(),
+            selected_assignee_ids: Vec::new(),
+
+            show_milestone_popup: false,
+            milestone_state: ListState::default(),
+            selected_milestone_id: None,
+
+            show_weight_popup: false,
+            weight_state: ListState::default(),
+
+            show_calendar_popup: false,
+            calendar_date: Local::now().date_naive(),
         }
     }
 
     pub fn move_down(&mut self) {
-        if self.input_mode || self.is_loading { return; }
+        if self.is_loading { return; }
+        if self.show_label_popup {
+            let i = match self.label_state.selected() {
+                Some(i) => if i >= self.project_labels.len().saturating_sub(1) { 0 } else { i + 1 },
+                None => 0,
+            };
+            self.label_state.select(Some(i));
+            return;
+        }
+        if self.show_assignee_popup {
+            let i = match self.assignee_state.selected() {
+                Some(i) => if i >= self.project_members.len().saturating_sub(1) { 0 } else { i + 1 },
+                None => 0,
+            };
+            self.assignee_state.select(Some(i));
+            return;
+        }
+        if self.show_milestone_popup {
+            let i = match self.milestone_state.selected() {
+                Some(i) => if i >= self.project_milestones.len() { 0 } else { i + 1 },
+                None => 0,
+            };
+            self.milestone_state.select(Some(i));
+            return;
+        }
+        if self.show_weight_popup {
+            let i = match self.weight_state.selected() {
+                Some(i) => if i >= 21 { 0 } else { i + 1 }, // Weight 0 to 20
+                None => 0,
+            };
+            self.weight_state.select(Some(i));
+            return;
+        }
+        if self.input_mode { return; }
         
         if self.show_project_popup {
             if !self.projects.is_empty() {
@@ -110,7 +168,13 @@ impl App {
                 match self.detail_section {
                     DetailSection::Metadata => {
                         self.selected_metadata_field = match self.selected_metadata_field {
-                            MetadataField::Title => MetadataField::Description,
+                            MetadataField::Title => MetadataField::Labels,
+                            MetadataField::Labels => MetadataField::Assignees,
+                            MetadataField::Assignees => MetadataField::Milestone,
+                            MetadataField::Milestone => MetadataField::DueDate,
+                            MetadataField::DueDate => MetadataField::Weight,
+                            MetadataField::Weight => MetadataField::Confidential,
+                            MetadataField::Confidential => MetadataField::Description,
                             MetadataField::Description => {
                                 self.detail_section = DetailSection::Discussions;
                                 self.discussion_state.select(Some(0));
@@ -139,7 +203,40 @@ impl App {
     }
 
     pub fn move_up(&mut self) {
-        if self.input_mode || self.is_loading { return; }
+        if self.is_loading { return; }
+        if self.show_label_popup {
+            let i = match self.label_state.selected() {
+                Some(i) => if i == 0 { self.project_labels.len().saturating_sub(1) } else { i - 1 },
+                None => 0,
+            };
+            self.label_state.select(Some(i));
+            return;
+        }
+        if self.show_assignee_popup {
+            let i = match self.assignee_state.selected() {
+                Some(i) => if i == 0 { self.project_members.len().saturating_sub(1) } else { i - 1 },
+                None => 0,
+            };
+            self.assignee_state.select(Some(i));
+            return;
+        }
+        if self.show_milestone_popup {
+            let i = match self.milestone_state.selected() {
+                Some(i) => if i == 0 { self.project_milestones.len() } else { i - 1 },
+                None => 0,
+            };
+            self.milestone_state.select(Some(i));
+            return;
+        }
+        if self.show_weight_popup {
+            let i = match self.weight_state.selected() {
+                Some(i) => if i == 0 { 21 } else { i - 1 },
+                None => 0,
+            };
+            self.weight_state.select(Some(i));
+            return;
+        }
+        if self.input_mode { return; }
         
         if self.show_project_popup {
             if !self.projects.is_empty() {
@@ -194,9 +291,15 @@ impl App {
                                 if !self.discussions.is_empty() {
                                     self.discussion_state.select(Some(self.discussions.len() - 1));
                                 }
-                                MetadataField::Title // Dummy value to reset
+                                MetadataField::Description // Dummy value to reset
                             }
-                            MetadataField::Description => MetadataField::Title,
+                            MetadataField::Labels => MetadataField::Title,
+                            MetadataField::Assignees => MetadataField::Labels,
+                            MetadataField::Milestone => MetadataField::Assignees,
+                            MetadataField::DueDate => MetadataField::Milestone,
+                            MetadataField::Weight => MetadataField::DueDate,
+                            MetadataField::Confidential => MetadataField::Weight,
+                            MetadataField::Description => MetadataField::Confidential,
                         };
                     }
                     DetailSection::Discussions => {
@@ -254,6 +357,22 @@ impl App {
             .build()?;
         let projects: Vec<Project> = endpoint.query_async(&self.gitlab).await?;
         self.projects = projects;
+        Ok(())
+    }
+
+    pub async fn fetch_project_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            
+            let labels_endpoint = ProjectLabels { project: pid };
+            self.project_labels = labels_endpoint.query_async(&self.gitlab).await?;
+
+            let milestones_endpoint = ProjectMilestones { project: pid };
+            self.project_milestones = milestones_endpoint.query_async(&self.gitlab).await?;
+
+            let members_endpoint = ProjectMembers { project: pid };
+            self.project_members = members_endpoint.query_async(&self.gitlab).await?;
+        }
         Ok(())
     }
 
@@ -345,6 +464,7 @@ impl App {
                 self.focus_on_menu = true;
                 let _ = self.fetch_merge_requests().await;
                 let _ = self.fetch_issues().await;
+                let _ = self.fetch_project_metadata().await;
             }
         }
     }
@@ -366,6 +486,27 @@ impl App {
 
         if self.show_project_popup {
             self.select_project().await;
+            return;
+        }
+
+        if self.show_label_popup {
+            let _ = self.update_issue_labels().await;
+            return;
+        }
+        if self.show_assignee_popup {
+            let _ = self.update_issue_assignees().await;
+            return;
+        }
+        if self.show_milestone_popup {
+            let _ = self.update_issue_milestone().await;
+            return;
+        }
+        if self.show_calendar_popup {
+            let _ = self.update_issue_due_date().await;
+            return;
+        }
+        if self.show_weight_popup {
+            let _ = self.update_issue_weight().await;
             return;
         }
 
@@ -421,6 +562,48 @@ impl App {
                                     self.cursor_index = self.reply_input.chars().count();
                                 }
                             }
+                            MetadataField::Labels => {
+                                if let Some(issue) = &self.selected_issue {
+                                    self.selected_label_ids = issue.labels.iter().map(|l| l.id).collect();
+                                    self.show_label_popup = true;
+                                    self.label_state.select(Some(0));
+                                }
+                            }
+                            MetadataField::Assignees => {
+                                if let Some(issue) = &self.selected_issue {
+                                    self.selected_assignee_ids = issue.assignees.iter().map(|a| a.id).collect();
+                                    self.show_assignee_popup = true;
+                                    self.assignee_state.select(Some(0));
+                                }
+                            }
+                            MetadataField::Milestone => {
+                                if let Some(issue) = &self.selected_issue {
+                                    self.selected_milestone_id = issue.milestone.as_ref().map(|m| {
+                                        // Need to find matching milestone ID in project_milestones
+                                        self.project_milestones.iter().find(|pm| pm.title == m.title).map(|pm| pm.id).unwrap_or(0)
+                                    });
+                                    self.show_milestone_popup = true;
+                                    self.milestone_state.select(Some(0));
+                                }
+                            }
+                            MetadataField::DueDate => {
+                                if let Some(issue) = &self.selected_issue {
+                                    self.calendar_date = issue.due_date.as_ref()
+                                        .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                                        .unwrap_or_else(|| Local::now().date_naive());
+                                    self.show_calendar_popup = true;
+                                }
+                            }
+                            MetadataField::Weight => {
+                                if let Some(issue) = &self.selected_issue {
+                                    let weight = issue.weight.unwrap_or(0);
+                                    self.weight_state.select(Some(weight as usize));
+                                    self.show_weight_popup = true;
+                                }
+                            }
+                            MetadataField::Confidential => {
+                                let _ = self.toggle_confidential().await;
+                            }
                         }
                     }
                     DetailSection::Discussions => {
@@ -434,6 +617,12 @@ impl App {
     }
 
     pub fn back(&mut self) {
+        if self.show_label_popup { self.show_label_popup = false; return; }
+        if self.show_assignee_popup { self.show_assignee_popup = false; return; }
+        if self.show_milestone_popup { self.show_milestone_popup = false; return; }
+        if self.show_calendar_popup { self.show_calendar_popup = false; return; }
+        if self.show_weight_popup { self.show_weight_popup = false; return; }
+
         if self.input_mode {
             self.input_mode = false;
             self.reply_input.clear();

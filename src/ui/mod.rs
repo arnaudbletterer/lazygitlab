@@ -9,7 +9,7 @@ use ratatui::prelude::*;
 use crate::models::{App, ViewMode};
 use list::render_list_view;
 use detail::render_detail_view;
-use popup::render_project_popup;
+use popup::*;
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     match app.view_mode {
@@ -23,5 +23,20 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     if app.show_project_popup {
         render_project_popup(f, app);
+    }
+    if app.show_label_popup {
+        render_label_popup(f, app);
+    }
+    if app.show_assignee_popup {
+        render_assignee_popup(f, app);
+    }
+    if app.show_milestone_popup {
+        render_milestone_popup(f, app);
+    }
+    if app.show_calendar_popup {
+        render_calendar_popup(f, app);
+    }
+    if app.show_weight_popup {
+        render_weight_popup(f, app);
     }
 }

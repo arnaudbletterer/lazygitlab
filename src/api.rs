@@ -93,6 +93,12 @@ pub struct EditIssue {
     pub title: Option<String>,
     pub description: Option<String>,
     pub state_event: Option<String>,
+    pub labels: Option<String>,
+    pub assignee_ids: Option<Vec<u64>>,
+    pub milestone_id: Option<Option<u64>>, // Some(Some(id)) to set, Some(None) to clear
+    pub due_date: Option<Option<String>>,
+    pub weight: Option<Option<i64>>,
+    pub confidential: Option<bool>,
 }
 
 impl Endpoint for EditIssue {
@@ -109,6 +115,31 @@ impl Endpoint for EditIssue {
         if let Some(t) = &self.title { params.push("title", t); }
         if let Some(d) = &self.description { params.push("description", d); }
         if let Some(s) = &self.state_event { params.push("state_event", s); }
+        if let Some(l) = &self.labels { params.push("labels", l); }
+        if let Some(a) = &self.assignee_ids { 
+            for id in a {
+                params.push("assignee_ids[]", *id);
+            }
+        }
+        if let Some(m) = &self.milestone_id {
+            match m {
+                Some(id) => { params.push("milestone_id", *id); },
+                None => { params.push("milestone_id", 0); } // 0 or empty often used to clear in some APIs, GitLab docs say 0 clears it
+            }
+        }
+        if let Some(dd) = &self.due_date {
+            match dd {
+                Some(val) => { params.push("due_date", val); },
+                None => { params.push("due_date", ""); }
+            }
+        }
+        if let Some(w) = &self.weight {
+            match w {
+                Some(val) => { params.push("weight", *val as u64); },
+                None => { params.push("weight", 0); } // Check gitlab docs for clear weight
+            }
+        }
+        if let Some(c) = &self.confidential { params.push("confidential", *c); }
         params.into_body()
     }
 }
@@ -178,4 +209,34 @@ impl Endpoint for ResolveIssueDiscussion {
         params.push("resolved", self.resolved);
         params
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectLabels {
+    pub project: u64,
+}
+
+impl Endpoint for ProjectLabels {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/labels", self.project).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectMilestones {
+    pub project: u64,
+}
+
+impl Endpoint for ProjectMilestones {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/milestones", self.project).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectMembers {
+    pub project: u64,
+}
+
+impl Endpoint for ProjectMembers {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/members/all", self.project).into() }
 }

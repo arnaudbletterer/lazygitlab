@@ -14,6 +14,7 @@ use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
 use models::*;
 use ui::ui;
+use chrono::Days;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,7 +27,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_async()
         .await?;
 
-    // --- SETUP ---
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -34,14 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(client);
-    
-    // Initial fetch for projects list
     let _ = app.fetch_projects().await;
 
-    // Pass execution to the app loop
     let res = run_app(&mut terminal, &mut app).await;
 
-    // --- RESTORE ---
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
@@ -63,7 +59,62 @@ where
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if app.input_mode {
+                    if app.show_label_popup {
+                        match key.code {
+                            KeyCode::Char(' ') => {
+                                if let Some(i) = app.label_state.selected() {
+                                    let id = app.project_labels[i].id;
+                                    if let Some(pos) = app.selected_label_ids.iter().position(|&x| x == id) {
+                                        app.selected_label_ids.remove(pos);
+                                    } else {
+                                        app.selected_label_ids.push(id);
+                                    }
+                                }
+                            }
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Esc => app.back(),
+                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            _ => {}
+                        }
+                    } else if app.show_assignee_popup {
+                        match key.code {
+                            KeyCode::Char(' ') => {
+                                if let Some(i) = app.assignee_state.selected() {
+                                    let id = app.project_members[i].id;
+                                    if let Some(pos) = app.selected_assignee_ids.iter().position(|&x| x == id) {
+                                        app.selected_assignee_ids.remove(pos);
+                                    } else {
+                                        app.selected_assignee_ids.push(id);
+                                    }
+                                }
+                            }
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Esc => app.back(),
+                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            _ => {}
+                        }
+                    } else if app.show_milestone_popup || app.show_weight_popup {
+                        match key.code {
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Esc => app.back(),
+                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            _ => {}
+                        }
+                    } else if app.show_calendar_popup {
+                        match key.code {
+                            KeyCode::Left => { app.calendar_date = app.calendar_date.checked_sub_days(Days::new(1)).unwrap(); }
+                            KeyCode::Right => { app.calendar_date = app.calendar_date.checked_add_days(Days::new(1)).unwrap(); }
+                            KeyCode::Up => { app.calendar_date = app.calendar_date.checked_sub_days(Days::new(7)).unwrap(); }
+                            KeyCode::Down => { app.calendar_date = app.calendar_date.checked_add_days(Days::new(7)).unwrap(); }
+                            KeyCode::Enter => app.enter().await,
+                            KeyCode::Delete | KeyCode::Backspace => { let _ = app.clear_due_date().await; }
+                            KeyCode::Esc => app.back(),
+                            _ => {}
+                        }
+                    } else if app.input_mode {
                         match key.code {
                             KeyCode::Enter if key.modifiers.contains(event::KeyModifiers::SHIFT) => {
                                 if app.input_target == InputTarget::EditDescription || app.input_target == InputTarget::Reply || app.input_target == InputTarget::NewComment {
@@ -73,22 +124,12 @@ where
                                     app.cursor_index += 1;
                                 }
                             }
-                            KeyCode::Enter => {
-                                app.enter().await;
-                            }
+                            KeyCode::Enter => { app.enter().await; }
                             KeyCode::Esc => app.back(),
-                            KeyCode::Left => {
-                                app.cursor_index = app.cursor_index.saturating_sub(1);
-                            }
-                            KeyCode::Right => {
-                                app.cursor_index = (app.cursor_index + 1).min(app.reply_input.chars().count());
-                            }
-                            KeyCode::Home => {
-                                app.cursor_index = 0;
-                            }
-                            KeyCode::End => {
-                                app.cursor_index = app.reply_input.chars().count();
-                            }
+                            KeyCode::Left => { app.cursor_index = app.cursor_index.saturating_sub(1); }
+                            KeyCode::Right => { app.cursor_index = (app.cursor_index + 1).min(app.reply_input.chars().count()); }
+                            KeyCode::Home => { app.cursor_index = 0; }
+                            KeyCode::End => { app.cursor_index = app.reply_input.chars().count(); }
                             KeyCode::Char(c) => {
                                 let mut chars: Vec<char> = app.reply_input.chars().collect();
                                 chars.insert(app.cursor_index, c);
@@ -126,20 +167,7 @@ where
                                 app.input_mode = true;
                                 app.input_target = InputTarget::NewComment;
                                 app.reply_input.clear();
-                            }
-                            KeyCode::Char('e') => {
-                                if let Some(issue) = &app.selected_issue {
-                                    app.input_mode = true;
-                                    app.input_target = InputTarget::EditTitle;
-                                    app.reply_input = issue.title.clone();
-                                }
-                            }
-                            KeyCode::Char('d') => {
-                                if let Some(issue) = &app.selected_issue {
-                                    app.input_mode = true;
-                                    app.input_target = InputTarget::EditDescription;
-                                    app.reply_input = issue.description.clone().unwrap_or_default();
-                                }
+                                app.cursor_index = 0;
                             }
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,

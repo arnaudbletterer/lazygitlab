@@ -47,6 +47,12 @@ impl App {
                 title: None,
                 description: None,
                 state_event: Some(event.to_string()),
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: None,
             };
             let res: Result<serde_json::Value, _> = endpoint.query_async(&self.gitlab).await;
             if res.is_ok() {
@@ -71,6 +77,12 @@ impl App {
                 title: None,
                 description: None,
                 state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: None,
             };
 
             match self.input_target {
@@ -87,6 +99,254 @@ impl App {
                 // Refresh everything
                 let _ = self.fetch_issues().await;
                 let _ = self.fetch_issue_discussions(project_id, iid).await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let labels = self.project_labels.iter()
+                .filter(|l| self.selected_label_ids.contains(&l.id))
+                .map(|l| l.name.clone())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: Some(labels),
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_label_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: Some(self.selected_assignee_ids.clone()),
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_assignee_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let mid = if let Some(i) = self.milestone_state.selected() {
+                if i == 0 {
+                    None // "None" selected
+                } else {
+                    Some(self.project_milestones[i - 1].id)
+                }
+            } else {
+                None
+            };
+
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: Some(mid),
+                due_date: None,
+                weight: None,
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_milestone_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_due_date(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: Some(Some(self.calendar_date.format("%Y-%m-%d").to_string())),
+                weight: None,
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_calendar_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn clear_due_date(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: Some(None),
+                weight: None,
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_calendar_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_weight(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let weight = self.weight_state.selected().map(|w| w as i64);
+
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: Some(weight),
+                confidential: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_weight_popup = false;
+                let _ = self.fetch_issues().await;
+                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
+                    self.selected_issue = Some(updated.clone());
+                }
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn toggle_confidential(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            
+            let edit = EditIssue {
+                project: project_id,
+                issue: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: Some(!issue.confidential),
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                let _ = self.fetch_issues().await;
                 if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
                     self.selected_issue = Some(updated.clone());
                 }

@@ -57,17 +57,35 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
 
         let metadata_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(6), Constraint::Length(1), Constraint::Min(0)]).split(inner_area);
         
-        let mut title_line = vec![Span::raw("Title: "), Span::styled(if is_editing_title { &app.reply_input } else { &issue.title }, if is_metadata_focused && app.selected_metadata_field == MetadataField::Title { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })];
+        // --- Highlighting Logic ---
+        let highlight = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
+        let field = |f| if is_metadata_focused && app.selected_metadata_field == f { highlight } else { Style::default() };
+
+        let title_line = vec![Span::raw("Title: "), Span::styled(if is_editing_title { &app.reply_input } else { &issue.title }, field(MetadataField::Title))];
+        
+        let mut labels_line = vec![Span::styled("Labels: ", field(MetadataField::Labels))];
         for label in &issue.labels {
-            title_line.push(Span::raw(" "));
-            title_line.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
+            labels_line.push(Span::raw(" "));
+            labels_line.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
         }
 
         let mut header_lines = vec![
             Line::from(title_line),
-            Line::from(vec![Span::raw("Author: "), Span::styled(format!("@{}", issue.author.username), Style::default().fg(app.theme.author)), Span::raw(" | Assignees: "), Span::styled(if issue.assignees.is_empty() { "None".to_string() } else { issue.assignees.iter().map(|a| format!("@{}", a.username)).collect::<Vec<_>>().join(", ") }, Style::default().fg(app.theme.author))]),
-            Line::from(vec![Span::raw("State: "), Span::styled(&issue.state, get_status_style(&issue.state, &app.theme)), Span::raw(" | Milestone: "), Span::styled(issue.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), Style::default().fg(app.theme.merged)), Span::raw(" | Due Date: "), Span::styled(issue.due_date.as_deref().unwrap_or("None"), Style::default().fg(app.theme.opened))]),
-            Line::from(vec![Span::raw("Weight: "), Span::raw(issue.weight.map(|w| w.to_string()).unwrap_or_else(|| "None".to_string())), Span::raw(" | Confidential: "), Span::raw(if issue.confidential { "Yes" } else { "No" }), Span::raw(" | Created: "), Span::styled(&issue.created_at, Style::default().fg(app.theme.dim))]),
+            Line::from(labels_line),
+            Line::from(vec![
+                Span::raw("Author: "), Span::styled(format!("@{}", issue.author.username), Style::default().fg(app.theme.author)), 
+                Span::raw(" | Assignees: "), Span::styled(if issue.assignees.is_empty() { "None".to_string() } else { issue.assignees.iter().map(|a| format!("@{}", a.username)).collect::<Vec<_>>().join(", ") }, field(MetadataField::Assignees))
+            ]),
+            Line::from(vec![
+                Span::raw("State: "), Span::styled(&issue.state, get_status_style(&issue.state, &app.theme)), 
+                Span::raw(" | Milestone: "), Span::styled(issue.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field(MetadataField::Milestone)), 
+                Span::raw(" | Due Date: "), Span::styled(issue.due_date.as_deref().unwrap_or("None"), field(MetadataField::DueDate))
+            ]),
+            Line::from(vec![
+                Span::raw("Weight: "), Span::styled(issue.weight.map(|w| w.to_string()).unwrap_or_else(|| "None".to_string()), field(MetadataField::Weight)), 
+                Span::raw(" | Confidential: "), Span::styled(if issue.confidential { "Yes" } else { "No" }, field(MetadataField::Confidential)), 
+                Span::raw(" | Created: "), Span::styled(&issue.created_at, Style::default().fg(app.theme.dim))
+            ]),
             Line::from(vec![Span::raw("URL: "), Span::raw(&issue.web_url)]),
         ];
         if let Some(ts) = &issue.task_completion_status {
@@ -76,7 +94,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             }
         }
         f.render_widget(Paragraph::new(header_lines), metadata_chunks[0]);
-        f.render_widget(Paragraph::new(vec![Line::from(""), Line::from(vec![Span::raw("Description: ")])]), metadata_chunks[1]);
+        f.render_widget(Paragraph::new(vec![Line::from(""), Line::from(vec![Span::styled("Description: ", field(MetadataField::Description))])]), metadata_chunks[1]);
 
         let mut desc_lines = Vec::new();
         let is_desc_active = is_metadata_focused && app.selected_metadata_field == MetadataField::Description;
@@ -98,10 +116,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         f.render_widget(Paragraph::new(desc_lines).wrap(Wrap { trim: false }).scroll((scroll, 0)), metadata_chunks[2]);
 
         if app.input_mode {
-            if is_editing_title { 
-                let cursor_x = metadata_chunks[0].x + 7 + (app.cursor_index as u16);
-                f.set_cursor_position((cursor_x, metadata_chunks[0].y)); 
-            }
+            if is_editing_title { f.set_cursor_position((metadata_chunks[0].x + 7 + (app.cursor_index as u16), metadata_chunks[0].y)); }
             else if is_editing_desc {
                 let chars: Vec<char> = app.reply_input.chars().collect();
                 let before_cursor = &chars[..app.cursor_index.min(chars.len())];
