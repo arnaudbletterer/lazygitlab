@@ -1,6 +1,7 @@
 mod models;
 mod app;
 mod ui;
+mod api;
 
 use std::{io, time::Duration};
 use crossterm::{
