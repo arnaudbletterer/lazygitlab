@@ -170,5 +170,6 @@ pub struct App {
     pub input_target: InputTarget,
     pub is_loading: bool,
     pub reply_input: String,
+    pub cursor_index: usize,
     pub theme: Theme,
 }

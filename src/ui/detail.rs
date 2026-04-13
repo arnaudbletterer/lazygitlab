@@ -98,11 +98,22 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         f.render_widget(Paragraph::new(desc_lines).wrap(Wrap { trim: false }).scroll((scroll, 0)), metadata_chunks[2]);
 
         if app.input_mode {
-            if is_editing_title { f.set_cursor_position((metadata_chunks[0].x + 7 + (app.reply_input.chars().count() as u16), metadata_chunks[0].y)); }
+            if is_editing_title { 
+                let cursor_x = metadata_chunks[0].x + 7 + (app.cursor_index as u16);
+                f.set_cursor_position((cursor_x, metadata_chunks[0].y)); 
+            }
             else if is_editing_desc {
-                let lines: Vec<&str> = app.reply_input.split('\n').collect();
-                let visual_line = (lines.len() - 1) as i32 - (scroll as i32);
-                if visual_line >= 0 && visual_line < metadata_chunks[2].height as i32 { f.set_cursor_position((metadata_chunks[2].x + (lines.last().unwrap_or(&"").chars().count() as u16), metadata_chunks[2].y + visual_line as u16)); }
+                let chars: Vec<char> = app.reply_input.chars().collect();
+                let before_cursor = &chars[..app.cursor_index.min(chars.len())];
+                let s_before: String = before_cursor.iter().collect();
+                let lines_before: Vec<&str> = s_before.split('\n').collect();
+                let cursor_line = lines_before.len() - 1;
+                let cursor_col = lines_before.last().unwrap_or(&"").chars().count();
+
+                let visual_line = (cursor_line) as i32 - (scroll as i32);
+                if visual_line >= 0 && visual_line < metadata_chunks[2].height as i32 { 
+                    f.set_cursor_position((metadata_chunks[2].x + (cursor_col as u16), metadata_chunks[2].y + visual_line as u16)); 
+                }
             }
         }
 

@@ -54,6 +54,7 @@ impl App {
             input_target: InputTarget::Reply,
             is_loading: false,
             reply_input: String::new(),
+            cursor_index: 0,
             theme: Theme::default(),
         }
     }
@@ -409,6 +410,7 @@ impl App {
                                     self.input_mode = true;
                                     self.input_target = InputTarget::EditTitle;
                                     self.reply_input = issue.title.clone();
+                                    self.cursor_index = self.reply_input.chars().count();
                                 }
                             }
                             MetadataField::Description => {
@@ -416,6 +418,7 @@ impl App {
                                     self.input_mode = true;
                                     self.input_target = InputTarget::EditDescription;
                                     self.reply_input = issue.description.clone().unwrap_or_default();
+                                    self.cursor_index = self.reply_input.chars().count();
                                 }
                             }
                         }
@@ -423,6 +426,7 @@ impl App {
                     DetailSection::Discussions => {
                         self.input_mode = true;
                         self.input_target = InputTarget::Reply;
+                        self.cursor_index = 0;
                     }
                 }
             }

@@ -67,15 +67,49 @@ where
                         match key.code {
                             KeyCode::Enter if key.modifiers.contains(event::KeyModifiers::SHIFT) => {
                                 if app.input_target == InputTarget::EditDescription || app.input_target == InputTarget::Reply || app.input_target == InputTarget::NewComment {
-                                    app.reply_input.push('\n');
+                                    let mut chars: Vec<char> = app.reply_input.chars().collect();
+                                    chars.insert(app.cursor_index, '\n');
+                                    app.reply_input = chars.into_iter().collect();
+                                    app.cursor_index += 1;
                                 }
                             }
                             KeyCode::Enter => {
                                 app.enter().await;
                             }
                             KeyCode::Esc => app.back(),
-                            KeyCode::Char(c) => app.reply_input.push(c),
-                            KeyCode::Backspace => { app.reply_input.pop(); }
+                            KeyCode::Left => {
+                                app.cursor_index = app.cursor_index.saturating_sub(1);
+                            }
+                            KeyCode::Right => {
+                                app.cursor_index = (app.cursor_index + 1).min(app.reply_input.chars().count());
+                            }
+                            KeyCode::Home => {
+                                app.cursor_index = 0;
+                            }
+                            KeyCode::End => {
+                                app.cursor_index = app.reply_input.chars().count();
+                            }
+                            KeyCode::Char(c) => {
+                                let mut chars: Vec<char> = app.reply_input.chars().collect();
+                                chars.insert(app.cursor_index, c);
+                                app.reply_input = chars.into_iter().collect();
+                                app.cursor_index += 1;
+                            }
+                            KeyCode::Backspace => {
+                                if app.cursor_index > 0 {
+                                    let mut chars: Vec<char> = app.reply_input.chars().collect();
+                                    chars.remove(app.cursor_index - 1);
+                                    app.reply_input = chars.into_iter().collect();
+                                    app.cursor_index -= 1;
+                                }
+                            }
+                            KeyCode::Delete => {
+                                let mut chars: Vec<char> = app.reply_input.chars().collect();
+                                if app.cursor_index < chars.len() {
+                                    chars.remove(app.cursor_index);
+                                    app.reply_input = chars.into_iter().collect();
+                                }
+                            }
                             _ => {}
                         }
                     } else {
