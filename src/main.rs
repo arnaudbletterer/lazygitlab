@@ -172,7 +172,7 @@ where
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,
                             KeyCode::Backspace | KeyCode::Esc => app.back(),
-                            KeyCode::Char('v') => app.open_in_vscode(),
+                            KeyCode::Char('v') | KeyCode::Char('o') => app.open_in_browser(),
                             _ => {}
                         }
                     }

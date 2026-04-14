@@ -1,5 +1,6 @@
 use gitlab::{api::{self, AsyncQuery}};
 use crate::models::*;
+use crate::api::*;
 
 impl App {
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +18,33 @@ impl App {
     }
 
     pub async fn fetch_discussions(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
-        use gitlab::api::projects::merge_requests::MergeRequestDiffs;
+        use gitlab::api::projects::merge_requests::{MergeRequestDiffs, MergeRequest};
+
+        // Fetch single MR to get latest upvotes/downvotes
+        let mr_endpoint = MergeRequest::builder()
+            .project(project_id)
+            .merge_request(mr_iid)
+            .build()?;
+        let mr: crate::models::MergeRequest = mr_endpoint.query_async(&self.gitlab).await?;
+        self.selected_mr = Some(mr.clone());
+
+        // Fetch award emojis
+        let emoji_endpoint = MergeRequestAwardEmoji {
+            project: project_id,
+            merge_request: mr_iid,
+        };
+        let reaction_values: Vec<serde_json::Value> = gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All).query_async(&self.gitlab).await?;
+        let mut reactions = Vec::new();
+        for val in reaction_values {
+            if let Some(name) = val.get("name").and_then(|v| v.as_str())
+                .or_else(|| val.get("emoji").and_then(|v| v.as_str()))
+                .or_else(|| val.get("emoji_name").and_then(|v| v.as_str())) {
+                reactions.push(AwardEmoji { name: name.to_string() });
+            }
+        }
+        if let Some(mr) = &mut self.selected_mr {
+            mr.reactions = reactions;
+        }
 
         let endpoint = api::projects::merge_requests::discussions::MergeRequestDiscussions::builder()
             .project(project_id)
@@ -124,6 +151,142 @@ impl App {
 
         discussions.retain(|d| !d.notes.is_empty());
         self.discussions = discussions;
+        Ok(())
+    }
+
+    pub async fn update_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let iid = mr.iid;
+            let project_id = mr.project_id;
+            self.is_loading = true;
+            let mut edit = EditMergeRequest {
+                project: project_id,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                remove_source_branch: None,
+                squash: None,
+            };
+
+            match self.input_target {
+                InputTarget::EditTitle => edit.title = Some(self.reply_input.clone()),
+                InputTarget::EditDescription => edit.description = Some(self.reply_input.clone()),
+                _ => { self.is_loading = false; return Ok(()); }
+            }
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_mr_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let iid = mr.iid;
+            let project_id = mr.project_id;
+            self.is_loading = true;
+            
+            let labels = self.project_labels.iter()
+                .filter(|l| self.selected_label_ids.contains(&l.id))
+                .map(|l| l.name.clone())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let edit = EditMergeRequest {
+                project: project_id,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: Some(labels),
+                assignee_ids: None,
+                milestone_id: None,
+                remove_source_branch: None,
+                squash: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_label_popup = false;
+                let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_mr_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let iid = mr.iid;
+            let project_id = mr.project_id;
+            self.is_loading = true;
+            
+            let edit = EditMergeRequest {
+                project: project_id,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: Some(self.selected_assignee_ids.clone()),
+                milestone_id: None,
+                remove_source_branch: None,
+                squash: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_assignee_popup = false;
+                let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn update_mr_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let iid = mr.iid;
+            let project_id = mr.project_id;
+            self.is_loading = true;
+            
+            let mid = if let Some(i) = self.milestone_state.selected() {
+                if i == 0 { None } else { Some(self.project_milestones[i - 1].id) }
+            } else {
+                None
+            };
+
+            let edit = EditMergeRequest {
+                project: project_id,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                assignee_ids: None,
+                milestone_id: Some(mid),
+                remove_source_branch: None,
+                squash: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.show_milestone_popup = false;
+                let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        }
         Ok(())
     }
 }

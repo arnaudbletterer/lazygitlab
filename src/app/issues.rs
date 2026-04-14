@@ -19,6 +19,40 @@ impl App {
     }
 
     pub async fn fetch_issue_discussions(&mut self, project_id: u64, issue_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::projects::issues::Issue;
+
+        // Fetch single issue to get latest upvotes/downvotes
+        let issue_endpoint = Issue::builder()
+            .project(project_id)
+            .issue(issue_iid)
+            .build()?;
+        let issue: crate::models::Issue = issue_endpoint.query_async(&self.gitlab).await?;
+        self.selected_issue = Some(issue.clone());
+
+        // Fetch award emojis
+        let emoji_endpoint = IssueAwardEmoji {
+            project: project_id,
+            issue: issue_iid,
+        };
+        let reaction_values: Vec<serde_json::Value> = gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All).query_async(&self.gitlab).await?;
+        let mut reactions = Vec::new();
+        for val in reaction_values {
+            // Check every possible field name GitLab might use for the emoji name
+            let name = val.get("name").and_then(|v| v.as_str())
+                .or_else(|| val.get("emoji").and_then(|v| v.as_str()))
+                .or_else(|| val.get("emoji_name").and_then(|v| v.as_str()));
+            
+            if let Some(n) = name {
+                reactions.push(AwardEmoji { name: n.to_string() });
+            }
+        }
+        
+        if let Some(selected) = &mut self.selected_issue {
+            if selected.iid == issue_iid {
+                selected.reactions = reactions;
+            }
+        }
+
         let endpoint = IssueDiscussions {
             project: project_id,
             issue: issue_iid,
@@ -57,9 +91,7 @@ impl App {
             let res: Result<serde_json::Value, _> = endpoint.query_async(&self.gitlab).await;
             if res.is_ok() {
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -99,9 +131,6 @@ impl App {
                 // Refresh everything
                 let _ = self.fetch_issues().await;
                 let _ = self.fetch_issue_discussions(project_id, iid).await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
             }
             self.is_loading = false;
         }
@@ -138,9 +167,7 @@ impl App {
             if res.is_ok() {
                 self.show_label_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -171,9 +198,7 @@ impl App {
             if res.is_ok() {
                 self.show_assignee_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -214,9 +239,7 @@ impl App {
             if res.is_ok() {
                 self.show_milestone_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -247,9 +270,7 @@ impl App {
             if res.is_ok() {
                 self.show_calendar_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -280,9 +301,7 @@ impl App {
             if res.is_ok() {
                 self.show_calendar_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -315,9 +334,7 @@ impl App {
             if res.is_ok() {
                 self.show_weight_popup = false;
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }
@@ -347,9 +364,7 @@ impl App {
             let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
             if res.is_ok() {
                 let _ = self.fetch_issues().await;
-                if let Some(updated) = self.issues.iter().find(|i| i.iid == iid) {
-                    self.selected_issue = Some(updated.clone());
-                }
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
             }
             self.is_loading = false;
         }

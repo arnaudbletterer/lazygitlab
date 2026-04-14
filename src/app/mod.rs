@@ -171,8 +171,24 @@ impl App {
                             MetadataField::Title => MetadataField::Labels,
                             MetadataField::Labels => MetadataField::Assignees,
                             MetadataField::Assignees => MetadataField::Milestone,
-                            MetadataField::Milestone => MetadataField::DueDate,
-                            MetadataField::DueDate => MetadataField::Weight,
+                            MetadataField::Milestone => {
+                                if self.selected_issue.is_some() {
+                                    MetadataField::DueDate
+                                } else {
+                                    MetadataField::Description
+                                }
+                            }
+                            MetadataField::DueDate => {
+                                if let Some(issue) = &self.selected_issue {
+                                    if issue.weight.is_none() {
+                                        MetadataField::Confidential
+                                    } else {
+                                        MetadataField::Weight
+                                    }
+                                } else {
+                                    MetadataField::Description
+                                }
+                            }
                             MetadataField::Weight => MetadataField::Confidential,
                             MetadataField::Confidential => MetadataField::Description,
                             MetadataField::Description => {
@@ -298,8 +314,24 @@ impl App {
                             MetadataField::Milestone => MetadataField::Assignees,
                             MetadataField::DueDate => MetadataField::Milestone,
                             MetadataField::Weight => MetadataField::DueDate,
-                            MetadataField::Confidential => MetadataField::Weight,
-                            MetadataField::Description => MetadataField::Confidential,
+                            MetadataField::Confidential => {
+                                if let Some(issue) = &self.selected_issue {
+                                    if issue.weight.is_none() {
+                                        MetadataField::DueDate
+                                    } else {
+                                        MetadataField::Weight
+                                    }
+                                } else {
+                                    MetadataField::Milestone // Back to milestone for MR
+                                }
+                            }
+                            MetadataField::Description => {
+                                if self.selected_issue.is_some() {
+                                    MetadataField::Confidential
+                                } else {
+                                    MetadataField::Milestone
+                                }
+                            }
                         };
                     }
                     DetailSection::Discussions => {
@@ -479,7 +511,10 @@ impl App {
             match self.input_target {
                 InputTarget::Reply => { let _ = self.post_reply().await; }
                 InputTarget::NewComment => { let _ = self.post_comment().await; }
-                InputTarget::EditTitle | InputTarget::EditDescription => { let _ = self.update_issue().await; }
+                InputTarget::EditTitle | InputTarget::EditDescription => {
+                    if self.selected_issue.is_some() { let _ = self.update_issue().await; }
+                    else if self.selected_mr.is_some() { let _ = self.update_mr().await; }
+                }
             }
             return;
         }
@@ -490,15 +525,18 @@ impl App {
         }
 
         if self.show_label_popup {
-            let _ = self.update_issue_labels().await;
+            if self.selected_issue.is_some() { let _ = self.update_issue_labels().await; }
+            else if self.selected_mr.is_some() { let _ = self.update_mr_labels().await; }
             return;
         }
         if self.show_assignee_popup {
-            let _ = self.update_issue_assignees().await;
+            if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; }
+            else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; }
             return;
         }
         if self.show_milestone_popup {
-            let _ = self.update_issue_milestone().await;
+            if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; }
+            else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; }
             return;
         }
         if self.show_calendar_popup {
@@ -552,6 +590,11 @@ impl App {
                                     self.input_target = InputTarget::EditTitle;
                                     self.reply_input = issue.title.clone();
                                     self.cursor_index = self.reply_input.chars().count();
+                                } else if let Some(mr) = &self.selected_mr {
+                                    self.input_mode = true;
+                                    self.input_target = InputTarget::EditTitle;
+                                    self.reply_input = mr.title.clone();
+                                    self.cursor_index = self.reply_input.chars().count();
                                 }
                             }
                             MetadataField::Description => {
@@ -560,11 +603,20 @@ impl App {
                                     self.input_target = InputTarget::EditDescription;
                                     self.reply_input = issue.description.clone().unwrap_or_default();
                                     self.cursor_index = self.reply_input.chars().count();
+                                } else if let Some(mr) = &self.selected_mr {
+                                    self.input_mode = true;
+                                    self.input_target = InputTarget::EditDescription;
+                                    self.reply_input = mr.description.clone().unwrap_or_default();
+                                    self.cursor_index = self.reply_input.chars().count();
                                 }
                             }
                             MetadataField::Labels => {
                                 if let Some(issue) = &self.selected_issue {
                                     self.selected_label_ids = issue.labels.iter().map(|l| l.id).collect();
+                                    self.show_label_popup = true;
+                                    self.label_state.select(Some(0));
+                                } else if let Some(mr) = &self.selected_mr {
+                                    self.selected_label_ids = mr.labels.iter().map(|l| l.id).collect();
                                     self.show_label_popup = true;
                                     self.label_state.select(Some(0));
                                 }
@@ -574,12 +626,21 @@ impl App {
                                     self.selected_assignee_ids = issue.assignees.iter().map(|a| a.id).collect();
                                     self.show_assignee_popup = true;
                                     self.assignee_state.select(Some(0));
+                                } else if let Some(mr) = &self.selected_mr {
+                                    self.selected_assignee_ids = mr.assignees.iter().map(|a| a.id).collect();
+                                    self.show_assignee_popup = true;
+                                    self.assignee_state.select(Some(0));
                                 }
                             }
                             MetadataField::Milestone => {
                                 if let Some(issue) = &self.selected_issue {
                                     self.selected_milestone_id = issue.milestone.as_ref().map(|m| {
-                                        // Need to find matching milestone ID in project_milestones
+                                        self.project_milestones.iter().find(|pm| pm.title == m.title).map(|pm| pm.id).unwrap_or(0)
+                                    });
+                                    self.show_milestone_popup = true;
+                                    self.milestone_state.select(Some(0));
+                                } else if let Some(mr) = &self.selected_mr {
+                                    self.selected_milestone_id = mr.milestone.as_ref().map(|m| {
                                         self.project_milestones.iter().find(|pm| pm.title == m.title).map(|pm| pm.id).unwrap_or(0)
                                     });
                                     self.show_milestone_popup = true;
@@ -641,7 +702,7 @@ impl App {
         }
     }
 
-    pub fn open_in_vscode(&self) {
+    pub fn open_in_browser(&self) {
         let url = if let Some(mr) = &self.selected_mr {
             Some(&mr.web_url)
         } else if let Some(issue) = &self.selected_issue {

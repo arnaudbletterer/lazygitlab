@@ -11,6 +11,12 @@ pub struct Project {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct AwardEmoji {
+    #[serde(alias = "emoji", alias = "emoji_name")]
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct MergeRequest {
     pub iid: u64,
     pub project_id: u64,
@@ -20,6 +26,13 @@ pub struct MergeRequest {
     pub web_url: String,
     pub state: String,
     pub references: References,
+    pub upvotes: u64,
+    pub downvotes: u64,
+    pub labels: Vec<Label>,
+    pub milestone: Option<Milestone>,
+    pub assignees: Vec<Author>,
+    #[serde(skip)]
+    pub reactions: Vec<AwardEmoji>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -125,6 +138,10 @@ pub struct Issue {
     pub task_completion_status: Option<TaskCompletionStatus>,
     pub confidential: bool,
     pub created_at: String,
+    pub upvotes: u64,
+    pub downvotes: u64,
+    #[serde(skip)]
+    pub reactions: Vec<AwardEmoji>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

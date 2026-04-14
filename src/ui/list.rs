@@ -43,11 +43,22 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
             MenuSelection::MergeRequests => {
                 let mrs: Vec<ListItem> = app.merge_requests.iter().map(|mr| {
                     let state_style = get_status_style(&mr.state, &app.theme);
-                    ListItem::from(Line::from(vec![
+                    let mut line_spans = vec![
                         Span::styled(format!("[{}]", mr.state), state_style),
                         Span::raw(format!(" {} - {} by ", mr.references.full, mr.title)),
                         Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
-                    ]))
+                    ];
+                    if mr.upvotes > 0 || mr.downvotes > 0 {
+                        line_spans.push(Span::raw(" | "));
+                        if mr.upvotes > 0 {
+                            line_spans.push(Span::styled(format!("👍 {}", mr.upvotes), Style::default().fg(Color::Green)));
+                            line_spans.push(Span::raw(" "));
+                        }
+                        if mr.downvotes > 0 {
+                            line_spans.push(Span::styled(format!("👎 {}", mr.downvotes), Style::default().fg(Color::Red)));
+                        }
+                    }
+                    ListItem::from(Line::from(line_spans))
                 }).collect();
                 f.render_stateful_widget(List::new(mrs).block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.mrs_state);
             }
@@ -64,6 +75,16 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                         spans.push(Span::raw(" "));
                         spans.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
                     }
+                    if issue.upvotes > 0 || issue.downvotes > 0 {
+                        spans.push(Span::raw(" | "));
+                        if issue.upvotes > 0 {
+                            spans.push(Span::styled(format!("👍 {}", issue.upvotes), Style::default().fg(Color::Green)));
+                            spans.push(Span::raw(" "));
+                        }
+                        if issue.downvotes > 0 {
+                            spans.push(Span::styled(format!("👎 {}", issue.downvotes), Style::default().fg(Color::Red)));
+                        }
+                    }
                     ListItem::from(Line::from(spans))
                 }).collect();
                 f.render_stateful_widget(List::new(issues).block(Block::default().borders(Borders::ALL).title(format!(" Issues for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.issues_state);
@@ -72,6 +93,6 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
         }
     }
 
-    let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("r", "refresh"), ("q", "quit")];
+    let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("r", "refresh"), ("q", "quit")];
     render_shortcuts(f, chunks[1], shortcuts, &app.theme);
 }

@@ -1,4 +1,4 @@
-use gitlab::api::Endpoint;
+use gitlab::api::{Endpoint, Pageable};
 use gitlab::api::endpoint_prelude::Method;
 use std::borrow::Cow;
 
@@ -210,6 +210,78 @@ impl Endpoint for ResolveIssueDiscussion {
         params
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct EditMergeRequest {
+    pub project: u64,
+    pub merge_request: u64,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub state_event: Option<String>,
+    pub labels: Option<String>,
+    pub assignee_ids: Option<Vec<u64>>,
+    pub milestone_id: Option<Option<u64>>,
+    pub remove_source_branch: Option<bool>,
+    pub squash: Option<bool>,
+}
+
+impl Endpoint for EditMergeRequest {
+    fn method(&self) -> Method {
+        Method::PUT
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        format!("projects/{}/merge_requests/{}", self.project, self.merge_request).into()
+    }
+
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        if let Some(t) = &self.title { params.push("title", t); }
+        if let Some(d) = &self.description { params.push("description", d); }
+        if let Some(s) = &self.state_event { params.push("state_event", s); }
+        if let Some(l) = &self.labels { params.push("labels", l); }
+        if let Some(a) = &self.assignee_ids { 
+            for id in a {
+                params.push("assignee_ids[]", *id);
+            }
+        }
+        if let Some(m) = &self.milestone_id {
+            match m {
+                Some(id) => { params.push("milestone_id", *id); },
+                None => { params.push("milestone_id", 0); }
+            }
+        }
+        if let Some(r) = &self.remove_source_branch { params.push("remove_source_branch", *r); }
+        if let Some(s) = &self.squash { params.push("squash", *s); }
+        params.into_body()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeRequestAwardEmoji {
+    pub project: u64,
+    pub merge_request: u64,
+}
+
+impl Endpoint for MergeRequestAwardEmoji {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/award_emoji", self.project, self.merge_request).into() }
+}
+
+impl Pageable for MergeRequestAwardEmoji {}
+
+#[derive(Debug, Clone)]
+pub struct IssueAwardEmoji {
+    pub project: u64,
+    pub issue: u64,
+}
+
+impl Endpoint for IssueAwardEmoji {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}/award_emoji", self.project, self.issue).into() }
+}
+
+impl Pageable for IssueAwardEmoji {}
 
 #[derive(Debug, Clone)]
 pub struct ProjectLabels {
