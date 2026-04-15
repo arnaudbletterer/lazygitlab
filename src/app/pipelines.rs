@@ -23,6 +23,17 @@ impl App {
         Ok(())
     }
 
+    pub async fn fetch_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let endpoint = ProjectPipeline { project: project_id, pipeline: pipeline_id };
+        let pipeline: Pipeline = endpoint.query_async(&self.gitlab).await?;
+        if let Some(selected) = &mut self.selected_pipeline {
+            if selected.id == pipeline_id {
+                *selected = pipeline;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn fetch_job_log(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
         self.is_loading = true;
         let endpoint = JobTrace { project: project_id, job: job_id };
@@ -30,6 +41,74 @@ impl App {
         let raw_log = String::from_utf8_lossy(&data).to_string();
         self.job_log_lines = self.parse_job_log(&raw_log);
 
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn create_pipeline(&mut self, project_id: u64, ref_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = CreatePipeline { project: project_id, ref_name: ref_name.to_string() };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        let _ = self.fetch_pipelines().await;
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn retry_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = RetryPipeline { project: project_id, pipeline: pipeline_id };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        let _ = self.fetch_pipelines().await;
+        let _ = self.fetch_jobs(project_id, pipeline_id).await;
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn cancel_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = CancelPipeline { project: project_id, pipeline: pipeline_id };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        let _ = self.fetch_pipelines().await;
+        let _ = self.fetch_jobs(project_id, pipeline_id).await;
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn retry_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = RetryJob { project: project_id, job: job_id };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        if let Some(p) = &self.selected_pipeline {
+            let pid = p.id;
+            let _ = self.fetch_jobs(project_id, pid).await;
+            let _ = self.fetch_pipeline(project_id, pid).await;
+        }
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn cancel_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = CancelJob { project: project_id, job: job_id };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        if let Some(p) = &self.selected_pipeline {
+            let pid = p.id;
+            let _ = self.fetch_jobs(project_id, pid).await;
+            let _ = self.fetch_pipeline(project_id, pid).await;
+        }
+        self.is_loading = false;
+        Ok(())
+    }
+
+    pub async fn play_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_loading = true;
+        let endpoint = PlayJob { project: project_id, job: job_id };
+        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+        if let Some(p) = &self.selected_pipeline {
+            let pid = p.id;
+            let _ = self.fetch_jobs(project_id, pid).await;
+            let _ = self.fetch_pipeline(project_id, pid).await;
+        }
         self.is_loading = false;
         Ok(())
     }

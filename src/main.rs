@@ -204,15 +204,61 @@ where
                             KeyCode::PageDown => app.page_down(),
                             KeyCode::PageUp => app.page_up(),
                             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab if app.view_mode != ViewMode::JobLog => app.toggle_focus(),
-                            KeyCode::Char('r') => app.refresh().await,
                             KeyCode::Tab if app.view_mode == ViewMode::JobLog => app.toggle_job_section(),
-                            KeyCode::Char('s') => { let _ = app.resolve_discussion().await; }
-                            KeyCode::Char('c') => { let _ = app.toggle_issue_state().await; }
-                            KeyCode::Char('n') => {
+                            KeyCode::Char('s') if app.view_mode == ViewMode::Detail && app.selected_mr.is_some() => { let _ = app.resolve_discussion().await; }
+                            KeyCode::Char('c') if app.view_mode == ViewMode::Detail && app.selected_issue.is_some() => { let _ = app.toggle_issue_state().await; }
+                            KeyCode::Char('n') if app.view_mode == ViewMode::Detail && (app.selected_issue.is_some() || app.selected_mr.is_some()) => {
                                 app.input_mode = true;
                                 app.input_target = InputTarget::NewComment;
                                 app.reply_input.clear();
                                 app.cursor_index = 0;
+                            }
+                            KeyCode::Char('p') if app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines => {
+                                if let Some(proj) = &app.selected_project {
+                                    let _ = app.create_pipeline(proj.id, "main").await;
+                                }
+                            }
+                            KeyCode::Char('p') if app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some() => {
+                                if let Some(proj) = &app.selected_project {
+                                    if let Some(i) = app.jobs_state.selected() {
+                                        if let Some(job) = app.jobs.get(i) {
+                                            if job.status == "manual" {
+                                                let _ = app.play_job(proj.id, job.id).await;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Char('r') if app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some() => {
+                                if let Some(proj) = &app.selected_project {
+                                    if let Some(i) = app.jobs_state.selected() {
+                                        if let Some(job) = app.jobs.get(i) {
+                                            let _ = app.retry_job(proj.id, job.id).await;
+                                        }
+                                    } else if let Some(pipeline) = &app.selected_pipeline {
+                                        let _ = app.retry_pipeline(proj.id, pipeline.id).await;
+                                    }
+                                }
+                            }
+                            KeyCode::Char('c') if app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines => {
+                                if let Some(proj) = &app.selected_project {
+                                    if let Some(i) = app.pipelines_state.selected() {
+                                        if let Some(pipeline) = app.pipelines.get(i) {
+                                            let _ = app.cancel_pipeline(proj.id, pipeline.id).await;
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Char('c') if app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some() => {
+                                if let Some(proj) = &app.selected_project {
+                                    if let Some(i) = app.jobs_state.selected() {
+                                        if let Some(job) = app.jobs.get(i) {
+                                            let _ = app.cancel_job(proj.id, job.id).await;
+                                        }
+                                    } else if let Some(pipeline) = &app.selected_pipeline {
+                                        let _ = app.cancel_pipeline(proj.id, pipeline.id).await;
+                                    }
+                                }
                             }
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,

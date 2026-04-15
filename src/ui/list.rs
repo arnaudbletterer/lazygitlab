@@ -118,10 +118,14 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                     }).collect();
                     f.render_stateful_widget(List::new(pipelines).block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.pipelines_state);
                 }
+                
+                let shortcuts = vec![("j/k", "nav"), ("p", "run pipeline"), ("c", "cancel"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")];
+                render_shortcuts(f, chunks[1], shortcuts, &app.theme);
+                return; // Prevent double rendering of shortcuts
             }
         }
     }
 
-    let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("r", "refresh"), ("q", "quit")];
+    let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")];
     render_shortcuts(f, chunks[1], shortcuts, &app.theme);
 }

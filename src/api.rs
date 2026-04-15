@@ -326,6 +326,17 @@ impl Endpoint for ProjectPipelines {
 impl Pageable for ProjectPipelines {}
 
 #[derive(Debug, Clone)]
+pub struct ProjectPipeline {
+    pub project: u64,
+    pub pipeline: u64,
+}
+
+impl Endpoint for ProjectPipeline {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines/{}", self.project, self.pipeline).into() }
+}
+
+#[derive(Debug, Clone)]
 pub struct ProjectPipelineJobs {
     pub project: u64,
     pub pipeline: u64,
@@ -347,4 +358,75 @@ pub struct JobTrace {
 impl Endpoint for JobTrace {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/trace", self.project, self.job).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreatePipeline {
+    pub project: u64,
+    pub ref_name: String,
+}
+
+impl Endpoint for CreatePipeline {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipeline", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("ref", &self.ref_name);
+        params
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RetryPipeline {
+    pub project: u64,
+    pub pipeline: u64,
+}
+
+impl Endpoint for RetryPipeline {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines/{}/retry", self.project, self.pipeline).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct CancelPipeline {
+    pub project: u64,
+    pub pipeline: u64,
+}
+
+impl Endpoint for CancelPipeline {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines/{}/cancel", self.project, self.pipeline).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct RetryJob {
+    pub project: u64,
+    pub job: u64,
+}
+
+impl Endpoint for RetryJob {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/retry", self.project, self.job).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct CancelJob {
+    pub project: u64,
+    pub job: u64,
+}
+
+impl Endpoint for CancelJob {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/cancel", self.project, self.job).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct PlayJob {
+    pub project: u64,
+    pub job: u64,
+}
+
+impl Endpoint for PlayJob {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/play", self.project, self.job).into() }
 }

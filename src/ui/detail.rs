@@ -138,7 +138,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             ListItem::new(lines)
         }).collect();
         f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
-        render_shortcuts(f, chunks[chunks.len() - 1], vec![("j/k", "nav"), ("space", "expand"), ("s", "resolve"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("r", "refresh"), ("q", "quit")], &app.theme);
+        render_shortcuts(f, chunks[chunks.len() - 1], vec![("j/k", "nav"), ("space", "expand"), ("s", "resolve"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     } else if let Some(issue) = &app.selected_issue {
         let is_metadata_focused = app.detail_section == DetailSection::Metadata;
         let is_editing_title = app.input_mode && app.input_target == InputTarget::EditTitle;
@@ -290,7 +290,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             ListItem::new(lines)
         }).collect();
         f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
-        render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("space", "expand"), ("c", "close/reopen"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("r", "refresh"), ("q", "quit")], &app.theme);
+        render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("space", "expand"), ("c", "close/reopen"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     } else if let Some(pipeline) = &app.selected_pipeline {
         let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)]).split(f.area());
         
@@ -346,6 +346,6 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             .highlight_symbol("> ");
         f.render_stateful_widget(jobs_list, chunks[1], &mut app.jobs_state);
         
-        render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("esc", "back"), ("o", "open"), ("r", "refresh"), ("q", "quit")], &app.theme);
+        render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("p", "play"), ("r", "retry"), ("c", "cancel"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     }
 }
