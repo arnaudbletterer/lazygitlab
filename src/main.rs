@@ -56,7 +56,19 @@ where
     while !app.should_quit {
         terminal.draw(|f| ui(f, app))?;
 
-        if event::poll(Duration::from_millis(16))? {
+        // Auto-refresh for Pipelines and JobLog
+        let is_live_view = (app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines) 
+            || app.view_mode == ViewMode::JobLog
+            || (app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some());
+
+        let refresh_interval = if is_live_view { Duration::from_secs(2) } else { Duration::from_secs(10) };
+
+        if app.last_refresh.elapsed() >= refresh_interval && !app.is_loading {
+            app.refresh().await;
+        }
+
+        if event::poll(Duration::from_millis(100))? {
+
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     if app.show_label_popup {
@@ -72,9 +84,19 @@ where
                                 }
                             }
                             KeyCode::Enter => app.enter().await,
-                            KeyCode::Esc => app.back(),
-                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            KeyCode::Esc => app.back().await,
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                app.move_down();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                app.move_up();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
                             _ => {}
                         }
                     } else if app.show_assignee_popup {
@@ -90,17 +112,37 @@ where
                                 }
                             }
                             KeyCode::Enter => app.enter().await,
-                            KeyCode::Esc => app.back(),
-                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            KeyCode::Esc => app.back().await,
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                app.move_down();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                app.move_up();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
                             _ => {}
                         }
                     } else if app.show_milestone_popup || app.show_weight_popup {
                         match key.code {
                             KeyCode::Enter => app.enter().await,
-                            KeyCode::Esc => app.back(),
-                            KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                            KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                            KeyCode::Esc => app.back().await,
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                app.move_down();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                app.move_up();
+                                if app.view_mode == ViewMode::List && app.focus_on_menu {
+                                    app.refresh().await;
+                                }
+                            }
                             _ => {}
                         }
                     } else if app.show_calendar_popup {
@@ -111,7 +153,7 @@ where
                             KeyCode::Down => { app.calendar_date = app.calendar_date.checked_add_days(Days::new(7)).unwrap(); }
                             KeyCode::Enter => app.enter().await,
                             KeyCode::Delete | KeyCode::Backspace => { let _ = app.clear_due_date().await; }
-                            KeyCode::Esc => app.back(),
+                            KeyCode::Esc => app.back().await,
                             _ => {}
                         }
                     } else if app.input_mode {
@@ -125,7 +167,7 @@ where
                                 }
                             }
                             KeyCode::Enter => { app.enter().await; }
-                            KeyCode::Esc => app.back(),
+                            KeyCode::Esc => app.back().await,
                             KeyCode::Left => { app.cursor_index = app.cursor_index.saturating_sub(1); }
                             KeyCode::Right => { app.cursor_index = (app.cursor_index + 1).min(app.reply_input.chars().count()); }
                             KeyCode::Home => { app.cursor_index = 0; }
@@ -159,8 +201,11 @@ where
                             KeyCode::Char('r') if key.modifiers.contains(event::KeyModifiers::CONTROL) => app.switch_project(),
                             KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
-                            KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => app.toggle_focus(),
+                            KeyCode::PageDown => app.page_down(),
+                            KeyCode::PageUp => app.page_up(),
+                            KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab if app.view_mode != ViewMode::JobLog => app.toggle_focus(),
                             KeyCode::Char('r') => app.refresh().await,
+                            KeyCode::Tab if app.view_mode == ViewMode::JobLog => app.toggle_job_section(),
                             KeyCode::Char('s') => { let _ = app.resolve_discussion().await; }
                             KeyCode::Char('c') => { let _ = app.toggle_issue_state().await; }
                             KeyCode::Char('n') => {
@@ -171,7 +216,7 @@ where
                             }
                             KeyCode::Char(' ') => app.toggle_discussion(),
                             KeyCode::Enter => app.enter().await,
-                            KeyCode::Backspace | KeyCode::Esc => app.back(),
+                            KeyCode::Backspace | KeyCode::Esc => app.back().await,
                             KeyCode::Char('v') | KeyCode::Char('o') => app.open_in_browser(),
                             _ => {}
                         }

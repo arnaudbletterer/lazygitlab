@@ -1,5 +1,6 @@
 pub mod issues;
 pub mod mrs;
+pub mod pipelines;
 
 use gitlab::{AsyncGitlab, api::{self, AsyncQuery}};
 use crate::models::*;
@@ -22,6 +23,12 @@ impl App {
         let mut issues_state = ListState::default();
         issues_state.select(Some(0));
 
+        let mut pipelines_state = ListState::default();
+        pipelines_state.select(Some(0));
+
+        let mut jobs_state = ListState::default();
+        jobs_state.select(Some(0));
+
         let mut discussion_state = ListState::default();
         discussion_state.select(Some(0));
 
@@ -43,12 +50,24 @@ impl App {
             mrs_state,
             issues: Vec::new(),
             issues_state,
+            pipelines: Vec::new(),
+            pipelines_state,
+            jobs: Vec::new(),
+            jobs_state,
             focus_on_menu: false,
             view_mode: ViewMode::List,
             detail_section: DetailSection::Discussions,
             selected_metadata_field: MetadataField::Title,
             selected_mr: None,
             selected_issue: None,
+            selected_pipeline: None,
+            selected_job: None,
+            job_log: String::new(),
+            job_log_lines: Vec::new(),
+            collapsed_sections: std::collections::HashSet::new(),
+            job_log_scroll: 0,
+            job_log_viewport_height: 0,
+            follow_log: true,
             discussions: Vec::new(),
             discussion_state,
             input_mode: false,
@@ -57,6 +76,7 @@ impl App {
             reply_input: String::new(),
             cursor_index: 0,
             theme: Theme::default(),
+            last_refresh: std::time::Instant::now(),
 
             // Project Metadata
             project_labels: Vec::new(),
@@ -160,11 +180,39 @@ impl App {
                                 self.issues_state.select(Some(i));
                             }
                         }
-                        _ => {}
+                        MenuSelection::Pipelines => {
+                            if !self.pipelines.is_empty() {
+                                let i = match self.pipelines_state.selected() {
+                                    Some(i) => if i >= self.pipelines.len() - 1 { 0 } else { i + 1 },
+                                    None => 0,
+                                };
+                                self.pipelines_state.select(Some(i));
+                            }
+                        }
                     }
                 }
             }
+            ViewMode::JobLog => {
+                let lines = self.get_visible_job_log_lines_count();
+                let inner_height = self.job_log_viewport_height;
+                if self.job_log_scroll < lines.saturating_sub(inner_height) {
+                    self.job_log_scroll += 1;
+                }
+                if self.job_log_scroll >= lines.saturating_sub(inner_height) {
+                    self.follow_log = true;
+                }
+            }
             ViewMode::Detail => {
+                if self.selected_pipeline.is_some() {
+                    if !self.jobs.is_empty() {
+                        let i = match self.jobs_state.selected() {
+                            Some(i) => if i >= self.jobs.len() - 1 { 0 } else { i + 1 },
+                            None => 0,
+                        };
+                        self.jobs_state.select(Some(i));
+                    }
+                    return;
+                }
                 match self.detail_section {
                     DetailSection::Metadata => {
                         self.selected_metadata_field = match self.selected_metadata_field {
@@ -208,6 +256,12 @@ impl App {
                             } else {
                                 self.discussion_state.select(Some(current + 1));
                             }
+                        } else if self.selected_pipeline.is_some() && !self.jobs.is_empty() {
+                            let i = match self.jobs_state.selected() {
+                                Some(i) => if i >= self.jobs.len() - 1 { 0 } else { i + 1 },
+                                None => 0,
+                            };
+                            self.jobs_state.select(Some(i));
                         } else {
                             self.detail_section = DetailSection::Metadata;
                             self.selected_metadata_field = MetadataField::Title;
@@ -294,11 +348,35 @@ impl App {
                                 self.issues_state.select(Some(i));
                             }
                         }
-                        _ => {}
+                        MenuSelection::Pipelines => {
+                            if !self.pipelines.is_empty() {
+                                let i = match self.pipelines_state.selected() {
+                                    Some(i) => if i == 0 { self.pipelines.len() - 1 } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.pipelines_state.select(Some(i));
+                            }
+                        }
                     }
                 }
             }
+            ViewMode::JobLog => {
+                if self.job_log_scroll > 0 {
+                    self.job_log_scroll -= 1;
+                    self.follow_log = false;
+                }
+            }
             ViewMode::Detail => {
+                if self.selected_pipeline.is_some() {
+                    if !self.jobs.is_empty() {
+                        let i = match self.jobs_state.selected() {
+                            Some(i) => if i == 0 { self.jobs.len() - 1 } else { i - 1 },
+                            None => 0,
+                        };
+                        self.jobs_state.select(Some(i));
+                    }
+                    return;
+                }
                 match self.detail_section {
                     DetailSection::Metadata => {
                         self.selected_metadata_field = match self.selected_metadata_field {
@@ -357,6 +435,25 @@ impl App {
     pub fn toggle_focus(&mut self) {
         if !self.show_project_popup && self.view_mode == ViewMode::List {
             self.focus_on_menu = !self.focus_on_menu;
+        }
+    }
+
+    pub fn page_down(&mut self) {
+        if self.view_mode == ViewMode::JobLog {
+            let lines = self.get_visible_job_log_lines_count();
+            let inner_height = self.job_log_viewport_height;
+            self.job_log_scroll = (self.job_log_scroll + inner_height).min(lines.saturating_sub(inner_height));
+            if self.job_log_scroll >= lines.saturating_sub(inner_height) {
+                self.follow_log = true;
+            }
+        }
+    }
+
+    pub fn page_up(&mut self) {
+        if self.view_mode == ViewMode::JobLog {
+            let inner_height = self.job_log_viewport_height;
+            self.job_log_scroll = self.job_log_scroll.saturating_sub(inner_height);
+            self.follow_log = false;
         }
     }
 
@@ -496,6 +593,7 @@ impl App {
                 self.focus_on_menu = true;
                 let _ = self.fetch_merge_requests().await;
                 let _ = self.fetch_issues().await;
+                let _ = self.fetch_pipelines().await;
                 let _ = self.fetch_project_metadata().await;
             }
         }
@@ -576,11 +674,32 @@ impl App {
                                 }
                             }
                         }
-                        _ => {}
+                        MenuSelection::Pipelines => {
+                            if let Some(i) = self.pipelines_state.selected() {
+                                if let Some(pipeline) = self.pipelines.get(i) {
+                                    self.selected_pipeline = Some(pipeline.clone());
+                                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                                    self.jobs_state.select(Some(0));
+                                    self.view_mode = ViewMode::Detail;
+                                }
+                            }
+                        }
                     }
                 }
             }
+            ViewMode::JobLog => {}
             ViewMode::Detail => {
+                if let Some(pipeline) = &self.selected_pipeline {
+                    if let Some(i) = self.jobs_state.selected() {
+                        if let Some(job) = self.jobs.get(i) {
+                            self.selected_job = Some(job.clone());
+                            self.follow_log = true; // Reset following when opening a new job
+                            let _ = self.fetch_job_log(pipeline.project_id, job.id).await;
+                            self.view_mode = ViewMode::JobLog;
+                        }
+                    }
+                    return;
+                }
                 match self.detail_section {
                     DetailSection::Metadata => {
                         match self.selected_metadata_field {
@@ -677,7 +796,7 @@ impl App {
         }
     }
 
-    pub fn back(&mut self) {
+    pub async fn back(&mut self) {
         if self.show_label_popup { self.show_label_popup = false; return; }
         if self.show_assignee_popup { self.show_assignee_popup = false; return; }
         if self.show_milestone_popup { self.show_milestone_popup = false; return; }
@@ -691,12 +810,21 @@ impl App {
             if self.selected_project.is_some() {
                 self.show_project_popup = false;
                 self.focus_on_menu = true;
+                self.refresh().await;
             }
+        } else if self.view_mode == ViewMode::JobLog {
+            self.view_mode = ViewMode::Detail;
+            self.selected_job = None;
+            self.job_log.clear();
+            self.refresh().await;
         } else if self.view_mode == ViewMode::Detail {
             self.view_mode = ViewMode::List;
             self.selected_mr = None;
             self.selected_issue = None;
+            self.selected_pipeline = None;
             self.discussions.clear();
+            self.jobs.clear();
+            self.refresh().await;
         } else if !self.focus_on_menu {
             self.focus_on_menu = true;
         }
@@ -704,9 +832,23 @@ impl App {
 
     pub fn open_in_browser(&self) {
         let url = if let Some(mr) = &self.selected_mr {
-            Some(&mr.web_url)
+            Some(mr.web_url.clone())
         } else if let Some(issue) = &self.selected_issue {
-            Some(&issue.web_url)
+            Some(issue.web_url.clone())
+        } else if let Some(pipeline) = &self.selected_pipeline {
+            self.jobs_state.selected().and_then(|i| self.jobs.get(i)).map(|job| job.web_url.clone()).or(Some(pipeline.web_url.clone()))
+        } else if self.view_mode == ViewMode::List {
+            match self.active_selection {
+                MenuSelection::MergeRequests => {
+                    self.mrs_state.selected().and_then(|i| self.merge_requests.get(i)).map(|mr| mr.web_url.clone())
+                }
+                MenuSelection::Issues => {
+                    self.issues_state.selected().and_then(|i| self.issues.get(i)).map(|issue| issue.web_url.clone())
+                }
+                MenuSelection::Pipelines => {
+                    self.pipelines_state.selected().and_then(|i| self.pipelines.get(i)).map(|p| p.web_url.clone())
+                }
+            }
         } else {
             None
         };
@@ -720,6 +862,7 @@ impl App {
     }
 
     pub async fn refresh(&mut self) {
+        self.last_refresh = std::time::Instant::now();
         if self.show_project_popup {
             let _ = self.fetch_projects().await;
             return;
@@ -730,7 +873,7 @@ impl App {
                 match self.active_selection {
                     MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
                     MenuSelection::Issues => { let _ = self.fetch_issues().await; }
-                    _ => {}
+                    MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
                 }
             }
             ViewMode::Detail => {
@@ -738,6 +881,15 @@ impl App {
                     let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
                 } else if let Some(issue) = &self.selected_issue {
                     let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
+                } else if let Some(pipeline) = &self.selected_pipeline {
+                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                }
+            }
+            ViewMode::JobLog => {
+                if let Some(project) = &self.selected_project {
+                    if let Some(job) = &self.selected_job {
+                        let _ = self.fetch_job_log(project.id, job.id).await;
+                    }
                 }
             }
         }

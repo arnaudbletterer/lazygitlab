@@ -1,7 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, InputTarget, DetailSection, MetadataField};
 use crate::ui::markdown::render_markdown;
-use crate::ui::widgets::{render_shortcuts, get_status_style, hex_to_color};
+use crate::ui::widgets::{render_shortcuts, get_status_style, hex_to_color, format_relative_time};
 
 pub fn render_detail_view(f: &mut Frame, app: &mut App) {
     if let Some(mr) = &app.selected_mr {
@@ -38,6 +38,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             Line::from(vec![
                 Span::raw("State: "), Span::styled(&mr.state, get_status_style(&mr.state, &app.theme)), 
                 Span::raw(" | Milestone: "), Span::styled(mr.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field(MetadataField::Milestone)), 
+                Span::raw(" | Created: "), Span::styled(format_relative_time(&mr.created_at), Style::default().fg(app.theme.dim)),
             ]),
             Line::from(vec![Span::raw("URL: "), Span::raw(&mr.web_url)]),
         ];
@@ -218,7 +219,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         line4.push(Span::raw("Confidential: "));
         line4.push(Span::styled(if issue.confidential { "Yes" } else { "No" }, field(MetadataField::Confidential)));
         line4.push(Span::raw(" | Created: "));
-        line4.push(Span::styled(&issue.created_at, Style::default().fg(app.theme.dim)));
+        line4.push(Span::styled(format_relative_time(&issue.created_at), Style::default().fg(app.theme.dim)));
         header_lines.push(Line::from(line4));
 
         header_lines.push(Line::from(vec![Span::raw("URL: "), Span::raw(&issue.web_url)]));
@@ -290,5 +291,61 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         }).collect();
         f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
         render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("space", "expand"), ("c", "close/reopen"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("r", "refresh"), ("q", "quit")], &app.theme);
+    } else if let Some(pipeline) = &app.selected_pipeline {
+        let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)]).split(f.area());
+        
+        let header_title = if app.is_loading { format!(" Pipeline: #{} (Refreshing...) ", pipeline.id) } else { format!(" Pipeline: #{} [LIVE] ", pipeline.id) };
+        let header_style = if app.is_loading { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Green) };
+        
+        let header_block = Block::default().borders(Borders::ALL).title(header_title).border_style(header_style);
+
+        let mut status_line = vec![Span::raw("Status: "), Span::styled(&pipeline.status, get_status_style(&pipeline.status, &app.theme))];
+        if pipeline.status == "running" {
+            if let Some(started) = &pipeline.started_at {
+                status_line.push(Span::raw(" | Elapsed: "));
+                status_line.push(Span::styled(crate::ui::widgets::get_elapsed_time(started), Style::default().fg(Color::Yellow)));
+            }
+        } else if let Some(duration) = pipeline.duration {
+            status_line.push(Span::raw(" | Duration: "));
+            status_line.push(Span::raw(crate::ui::widgets::format_duration(duration)));
+        }
+
+        let header_lines = vec![
+            Line::from(status_line),
+            Line::from(vec![Span::raw("Ref: "), Span::styled(&pipeline.ref_name, Style::default().add_modifier(Modifier::BOLD))]),
+            Line::from(vec![Span::raw("Source: "), Span::raw(&pipeline.source)]),
+            Line::from(vec![Span::raw("Created: "), Span::raw(format_relative_time(&pipeline.created_at))]),
+            Line::from(vec![Span::raw("URL: "), Span::raw(&pipeline.web_url)]),
+        ];
+        f.render_widget(Paragraph::new(header_lines).block(header_block), chunks[0]);
+
+        let jobs: Vec<ListItem> = app.jobs.iter().map(|job| {
+            let state_style = get_status_style(&job.status, &app.theme);
+            let mut spans = vec![
+                Span::styled(format!("[{}]", job.status), state_style),
+                Span::raw(format!(" {} - Stage: ", job.name)),
+                Span::styled(&job.stage, Style::default().fg(app.theme.dim)),
+            ];
+
+            if job.status == "running" {
+                if let Some(started) = &job.started_at {
+                    spans.push(Span::raw(" | "));
+                    spans.push(Span::styled(crate::ui::widgets::get_elapsed_time(started), Style::default().fg(Color::Yellow)));
+                }
+            } else if let Some(duration) = job.duration {
+                spans.push(Span::raw(" | "));
+                spans.push(Span::styled(crate::ui::widgets::format_duration(duration), Style::default().fg(app.theme.dim)));
+            }
+
+            ListItem::from(Line::from(spans))
+        }).collect();
+        
+        let jobs_list = List::new(jobs)
+            .block(Block::default().borders(Borders::ALL).title(" Jobs "))
+            .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
+            .highlight_symbol("> ");
+        f.render_stateful_widget(jobs_list, chunks[1], &mut app.jobs_state);
+        
+        render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("esc", "back"), ("o", "open"), ("r", "refresh"), ("q", "quit")], &app.theme);
     }
 }

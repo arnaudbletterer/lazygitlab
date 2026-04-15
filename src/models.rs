@@ -31,6 +31,7 @@ pub struct MergeRequest {
     pub labels: Vec<Label>,
     pub milestone: Option<Milestone>,
     pub assignees: Vec<Author>,
+    pub created_at: String,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
 }
@@ -98,6 +99,7 @@ pub enum MenuSelection {
 pub enum ViewMode {
     List,
     Detail,
+    JobLog,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -118,6 +120,42 @@ pub struct Milestone {
 pub struct TaskCompletionStatus {
     pub count: u64,
     pub completed_count: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Pipeline {
+    pub id: u64,
+    pub project_id: u64,
+    pub status: String,
+    pub source: String,
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    pub web_url: String,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Runner {
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Job {
+    pub id: u64,
+    pub name: String,
+    pub stage: String,
+    pub status: String,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub duration: Option<f64>,
+    pub user: Option<Author>,
+    pub runner: Option<Runner>,
+    pub allow_failure: bool,
+    pub web_url: String,
+    pub tag_list: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -170,6 +208,15 @@ pub enum MetadataField {
     Description,
 }
 
+#[derive(Debug, Clone)]
+pub struct LogLine {
+    pub timestamp: String,
+    pub content: String,
+    pub section: Option<String>,
+    pub is_section_start: bool,
+    pub is_section_end: bool,
+}
+
 pub struct App {
     pub should_quit: bool,
     pub menu_state: ListState,
@@ -184,12 +231,24 @@ pub struct App {
     pub mrs_state: ListState,
     pub issues: Vec<Issue>,
     pub issues_state: ListState,
+    pub pipelines: Vec<Pipeline>,
+    pub pipelines_state: ListState,
+    pub jobs: Vec<Job>,
+    pub jobs_state: ListState,
     pub focus_on_menu: bool,
     pub view_mode: ViewMode,
     pub detail_section: DetailSection,
     pub selected_metadata_field: MetadataField,
     pub selected_mr: Option<MergeRequest>,
     pub selected_issue: Option<Issue>,
+    pub selected_pipeline: Option<Pipeline>,
+    pub selected_job: Option<Job>,
+    pub job_log: String,
+    pub job_log_lines: Vec<LogLine>,
+    pub collapsed_sections: std::collections::HashSet<String>,
+    pub job_log_scroll: u16,
+    pub job_log_viewport_height: u16,
+    pub follow_log: bool,
     pub discussions: Vec<Discussion>,
     pub discussion_state: ListState,
     pub input_mode: bool,
@@ -198,6 +257,7 @@ pub struct App {
     pub reply_input: String,
     pub cursor_index: usize,
     pub theme: Theme,
+    pub last_refresh: std::time::Instant,
 
     // Project Metadata
     pub project_labels: Vec<Label>,

@@ -89,7 +89,36 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                 }).collect();
                 f.render_stateful_widget(List::new(issues).block(Block::default().borders(Borders::ALL).title(format!(" Issues for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.issues_state);
             }
-            _ => { f.render_widget(Paragraph::new(format!("Content for {:?}", app.active_selection)).block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style)), main_chunks[1]); }
+            MenuSelection::Pipelines => {
+                let pipelines_title = if app.is_loading { format!(" Pipelines for {} (Refreshing...) ", proj_name) } else { format!(" Pipelines for {} [LIVE] ", proj_name) };
+                let pipelines_style = if app.is_loading { Style::default().fg(Color::Yellow) } else if !app.focus_on_menu { Style::default().fg(Color::Green) } else { content_style };
+
+                if app.pipelines.is_empty() {
+                    f.render_widget(Paragraph::new("No pipelines found").block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)), main_chunks[1]);
+                } else {
+                    let pipelines: Vec<ListItem> = app.pipelines.iter().map(|pipeline| {
+                        let state_style = get_status_style(&pipeline.status, &app.theme);
+                        let mut spans = vec![
+                            Span::styled(format!("[{}]", pipeline.status), state_style),
+                            Span::raw(format!(" #{} - {} from ", pipeline.id, pipeline.source)),
+                            Span::styled(pipeline.ref_name.clone(), Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD)),
+                        ];
+
+                        if pipeline.status == "running" {
+                            if let Some(started) = &pipeline.started_at {
+                                spans.push(Span::raw(" | "));
+                                spans.push(Span::styled(crate::ui::widgets::get_elapsed_time(started), Style::default().fg(Color::Yellow)));
+                            }
+                        } else if let Some(duration) = pipeline.duration {
+                            spans.push(Span::raw(" | "));
+                            spans.push(Span::styled(crate::ui::widgets::format_duration(duration), Style::default().fg(app.theme.dim)));
+                        }
+
+                        ListItem::from(Line::from(spans))
+                    }).collect();
+                    f.render_stateful_widget(List::new(pipelines).block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.pipelines_state);
+                }
+            }
         }
     }
 

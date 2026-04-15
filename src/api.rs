@@ -312,3 +312,39 @@ impl Endpoint for ProjectMembers {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/members/all", self.project).into() }
 }
+
+#[derive(Debug, Clone)]
+pub struct ProjectPipelines {
+    pub project: u64,
+}
+
+impl Endpoint for ProjectPipelines {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines", self.project).into() }
+}
+
+impl Pageable for ProjectPipelines {}
+
+#[derive(Debug, Clone)]
+pub struct ProjectPipelineJobs {
+    pub project: u64,
+    pub pipeline: u64,
+}
+
+impl Endpoint for ProjectPipelineJobs {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines/{}/jobs", self.project, self.pipeline).into() }
+}
+
+impl Pageable for ProjectPipelineJobs {}
+
+#[derive(Debug, Clone)]
+pub struct JobTrace {
+    pub project: u64,
+    pub job: u64,
+}
+
+impl Endpoint for JobTrace {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/trace", self.project, self.job).into() }
+}
