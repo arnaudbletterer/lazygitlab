@@ -122,6 +122,12 @@ pub struct TaskCompletionStatus {
     pub completed_count: u64,
 }
 
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct PipelineVariable {
+    pub key: String,
+    pub value: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Pipeline {
     pub id: u64,
@@ -182,12 +188,22 @@ pub struct Issue {
     pub reactions: Vec<AwardEmoji>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct Branch {
+    pub name: String,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputTarget {
     Reply,
     NewComment,
     EditTitle,
     EditDescription,
+    PipelineRef,
+    PipelineRefSearch,
+    PipelineVariableKey,
+    PipelineVariableValue,
+    PipelineVariableList,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -282,4 +298,16 @@ pub struct App {
 
     pub show_calendar_popup: bool,
     pub calendar_date: chrono::NaiveDate,
+
+    pub show_pipeline_popup: bool,
+    pub pipeline_ref_input: String,
+    pub pipeline_variable_key_input: String,
+    pub pipeline_variable_value_input: String,
+    pub pipeline_variables: Vec<PipelineVariable>,
+    pub pipeline_variables_state: ListState,
+
+    pub project_branches: Vec<Branch>,
+    pub filtered_branches: Vec<String>,
+    pub branches_state: ListState,
+    pub show_branches_dropdown: bool,
 }

@@ -45,9 +45,87 @@ impl App {
         Ok(())
     }
 
-    pub async fn create_pipeline(&mut self, project_id: u64, ref_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn fetch_branches(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let endpoint = ProjectBranches { project: project_id };
+        let branches: Vec<Branch> = paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&self.gitlab).await?;
+        self.project_branches = branches;
+        self.filter_branches();
+        Ok(())
+    }
+
+    pub fn filter_branches(&mut self) {
+        let search = self.pipeline_ref_input.to_lowercase();
+        self.filtered_branches = self.project_branches.iter()
+            .map(|b| b.name.clone())
+            .filter(|name| name.to_lowercase().contains(&search))
+            .collect();
+        if self.filtered_branches.is_empty() && !self.pipeline_ref_input.is_empty() {
+             // If no branches match but we have input, maybe it's a specific ref/tag not in first 100 branches
+             // or the user just wants to type it. We keep filtered_branches empty in this case.
+        }
+        self.branches_state.select(if self.filtered_branches.is_empty() { None } else { Some(0) });
+    }
+
+    pub async fn show_pipeline_launch_popup(&mut self) {
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let _ = self.fetch_branches(pid).await;
+            self.show_pipeline_popup = true;
+            self.pipeline_ref_input.clear();
+            self.pipeline_variables.clear();
+            self.pipeline_variable_key_input.clear();
+            self.pipeline_variable_value_input.clear();
+            self.input_mode = true;
+            self.input_target = InputTarget::PipelineRef;
+            self.cursor_index = 0;
+            self.show_branches_dropdown = true;
+            self.filter_branches();
+        }
+    }
+
+    pub fn add_pipeline_variable(&mut self) {
+        if !self.pipeline_variable_key_input.is_empty() {
+            self.pipeline_variables.push(PipelineVariable {
+                key: self.pipeline_variable_key_input.clone(),
+                value: self.pipeline_variable_value_input.clone(),
+            });
+            self.pipeline_variable_key_input.clear();
+            self.pipeline_variable_value_input.clear();
+            self.pipeline_variables_state.select(Some(self.pipeline_variables.len().saturating_sub(1)));
+        }
+    }
+
+    pub fn remove_pipeline_variable(&mut self) {
+        if let Some(i) = self.pipeline_variables_state.selected() {
+            if i < self.pipeline_variables.len() {
+                self.pipeline_variables.remove(i);
+                if self.pipeline_variables.is_empty() {
+                    self.pipeline_variables_state.select(None);
+                } else {
+                    self.pipeline_variables_state.select(Some(i.min(self.pipeline_variables.len() - 1)));
+                }
+            }
+        }
+    }
+
+    pub async fn submit_pipeline_launch(&mut self) {
+        if let Some(project) = &self.selected_project {
+            let project_id = project.id;
+            let ref_name = self.pipeline_ref_input.clone();
+            let variables = self.pipeline_variables.clone();
+            let _ = self.create_pipeline(project_id, &ref_name, variables).await;
+            self.show_pipeline_popup = false;
+            self.input_mode = false;
+        }
+    }
+
+    pub async fn create_pipeline(&mut self, project_id: u64, ref_name: &str, variables: Vec<PipelineVariable>) -> Result<(), Box<dyn std::error::Error>> {
         self.is_loading = true;
-        let endpoint = CreatePipeline { project: project_id, ref_name: ref_name.to_string() };
+        let endpoint = CreatePipeline { 
+            project: project_id, 
+            ref_name: ref_name.to_string(),
+            variables,
+        };
         let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
         let _ = self.fetch_pipelines().await;
         self.is_loading = false;

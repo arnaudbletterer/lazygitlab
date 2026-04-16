@@ -101,11 +101,43 @@ impl App {
 
             show_calendar_popup: false,
             calendar_date: Local::now().date_naive(),
+
+            show_pipeline_popup: false,
+            pipeline_ref_input: String::new(),
+            pipeline_variable_key_input: String::new(),
+            pipeline_variable_value_input: String::new(),
+            pipeline_variables: Vec::new(),
+            pipeline_variables_state: ListState::default(),
+
+            project_branches: Vec::new(),
+            filtered_branches: Vec::new(),
+            branches_state: ListState::default(),
+            show_branches_dropdown: false,
         }
     }
 
     pub fn move_down(&mut self) {
         if self.is_loading { return; }
+        if self.show_pipeline_popup {
+            if self.show_branches_dropdown {
+                if !self.filtered_branches.is_empty() {
+                    let i = match self.branches_state.selected() {
+                        Some(i) => if i >= self.filtered_branches.len().saturating_sub(1) { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.branches_state.select(Some(i));
+                }
+            } else if self.input_target == InputTarget::PipelineVariableList {
+                if !self.pipeline_variables.is_empty() {
+                    let i = match self.pipeline_variables_state.selected() {
+                        Some(i) => if i >= self.pipeline_variables.len().saturating_sub(1) { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.pipeline_variables_state.select(Some(i));
+                }
+            }
+            return;
+        }
         if self.show_label_popup {
             let i = match self.label_state.selected() {
                 Some(i) => if i >= self.project_labels.len().saturating_sub(1) { 0 } else { i + 1 },
@@ -274,6 +306,24 @@ impl App {
 
     pub fn move_up(&mut self) {
         if self.is_loading { return; }
+        if self.show_pipeline_popup {
+            if self.input_target == InputTarget::PipelineRefSearch {
+                if !self.filtered_branches.is_empty() {
+                    let i = match self.branches_state.selected() {
+                        Some(i) => if i == 0 { self.filtered_branches.len().saturating_sub(1) } else { i - 1 },
+                        None => 0,
+                    };
+                    self.branches_state.select(Some(i));
+                }
+            } else if !self.pipeline_variables.is_empty() {
+                let i = match self.pipeline_variables_state.selected() {
+                    Some(i) => if i == 0 { self.pipeline_variables.len().saturating_sub(1) } else { i - 1 },
+                    None => 0,
+                };
+                self.pipeline_variables_state.select(Some(i));
+            }
+            return;
+        }
         if self.show_label_popup {
             let i = match self.label_state.selected() {
                 Some(i) => if i == 0 { self.project_labels.len().saturating_sub(1) } else { i - 1 },
@@ -613,12 +663,60 @@ impl App {
                     if self.selected_issue.is_some() { let _ = self.update_issue().await; }
                     else if self.selected_mr.is_some() { let _ = self.update_mr().await; }
                 }
+                InputTarget::PipelineRef => {
+                    if self.show_branches_dropdown {
+                        if let Some(i) = self.branches_state.selected() {
+                            if let Some(branch) = self.filtered_branches.get(i) {
+                                self.pipeline_ref_input = branch.clone();
+                            }
+                        }
+                        self.show_branches_dropdown = false;
+                        self.input_target = InputTarget::PipelineVariableKey;
+                        self.cursor_index = self.pipeline_variable_key_input.chars().count();
+                    } else {
+                        self.show_branches_dropdown = true;
+                    }
+                }
+                InputTarget::PipelineRefSearch => {
+                    if let Some(i) = self.branches_state.selected() {
+                        if let Some(branch) = self.filtered_branches.get(i) {
+                             self.pipeline_ref_input = branch.clone();
+                        }
+                    }
+                    self.show_branches_dropdown = false;
+                    self.input_target = InputTarget::PipelineVariableKey;
+                    self.cursor_index = self.pipeline_variable_key_input.chars().count();
+                }
+                InputTarget::PipelineVariableKey => {
+                    self.input_target = InputTarget::PipelineVariableValue;
+                    self.cursor_index = self.pipeline_variable_value_input.chars().count();
+                }
+                InputTarget::PipelineVariableValue => {
+                    self.add_pipeline_variable();
+                    self.input_target = InputTarget::PipelineVariableKey;
+                    self.cursor_index = 0;
+                }
+                InputTarget::PipelineVariableList => {
+                    self.input_target = InputTarget::PipelineRef;
+                    self.cursor_index = self.pipeline_ref_input.chars().count();
+                }
             }
             return;
         }
 
         if self.show_project_popup {
             self.select_project().await;
+            return;
+        }
+
+        if self.show_pipeline_popup {
+            // Enter no longer launches, it's used for navigation/selection within input_mode
+            // If not in input_mode, maybe it should focus first field? 
+            if !self.input_mode {
+                self.input_mode = true;
+                self.input_target = InputTarget::PipelineRef;
+                self.cursor_index = self.pipeline_ref_input.chars().count();
+            }
             return;
         }
 
@@ -802,6 +900,7 @@ impl App {
         if self.show_milestone_popup { self.show_milestone_popup = false; return; }
         if self.show_calendar_popup { self.show_calendar_popup = false; return; }
         if self.show_weight_popup { self.show_weight_popup = false; return; }
+        if self.show_pipeline_popup { self.show_pipeline_popup = false; self.input_mode = false; return; }
 
         if self.input_mode {
             self.input_mode = false;
@@ -892,6 +991,24 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    pub fn get_input_buffer(&self) -> &String {
+        match self.input_target {
+            InputTarget::PipelineRef => &self.pipeline_ref_input,
+            InputTarget::PipelineVariableKey => &self.pipeline_variable_key_input,
+            InputTarget::PipelineVariableValue => &self.pipeline_variable_value_input,
+            _ => &self.reply_input,
+        }
+    }
+
+    pub fn get_input_buffer_mut(&mut self) -> &mut String {
+        match self.input_target {
+            InputTarget::PipelineRef => &mut self.pipeline_ref_input,
+            InputTarget::PipelineVariableKey => &mut self.pipeline_variable_key_input,
+            InputTarget::PipelineVariableValue => &mut self.pipeline_variable_value_input,
+            _ => &mut self.reply_input,
         }
     }
 }

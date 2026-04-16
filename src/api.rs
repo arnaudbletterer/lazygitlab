@@ -326,6 +326,18 @@ impl Endpoint for ProjectPipelines {
 impl Pageable for ProjectPipelines {}
 
 #[derive(Debug, Clone)]
+pub struct ProjectBranches {
+    pub project: u64,
+}
+
+impl Endpoint for ProjectBranches {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/branches", self.project).into() }
+}
+
+impl Pageable for ProjectBranches {}
+
+#[derive(Debug, Clone)]
 pub struct ProjectPipeline {
     pub project: u64,
     pub pipeline: u64,
@@ -364,15 +376,20 @@ impl Endpoint for JobTrace {
 pub struct CreatePipeline {
     pub project: u64,
     pub ref_name: String,
+    pub variables: Vec<crate::models::PipelineVariable>,
 }
 
 impl Endpoint for CreatePipeline {
     fn method(&self) -> Method { Method::POST }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipeline", self.project).into() }
-    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
-        let mut params = gitlab::api::QueryParams::default();
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
         params.push("ref", &self.ref_name);
-        params
+        for (i, var) in self.variables.iter().enumerate() {
+            params.push(format!("variables[{}][key]", i), &var.key);
+            params.push(format!("variables[{}][value]", i), &var.value);
+        }
+        params.into_body()
     }
 }
 

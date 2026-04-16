@@ -71,7 +71,118 @@ where
 
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if app.show_label_popup {
+                    if app.show_pipeline_popup {
+                        if app.input_mode {
+                            match key.code {
+                                KeyCode::Enter => app.enter().await,
+                                KeyCode::Esc => app.back().await,
+                                KeyCode::Tab => {
+                                    app.show_branches_dropdown = false;
+                                    match app.input_target {
+                                        InputTarget::PipelineRef => {
+                                            app.input_target = InputTarget::PipelineVariableKey;
+                                            app.cursor_index = app.pipeline_variable_key_input.chars().count();
+                                        }
+                                        InputTarget::PipelineVariableKey => {
+                                            app.input_target = InputTarget::PipelineVariableValue;
+                                            app.cursor_index = app.pipeline_variable_value_input.chars().count();
+                                        }
+                                        InputTarget::PipelineVariableValue => {
+                                            app.input_target = InputTarget::PipelineVariableList;
+                                            if !app.pipeline_variables.is_empty() && app.pipeline_variables_state.selected().is_none() {
+                                                app.pipeline_variables_state.select(Some(0));
+                                            }
+                                        }
+                                        InputTarget::PipelineVariableList => {
+                                            app.input_target = InputTarget::PipelineRef;
+                                            app.cursor_index = app.pipeline_ref_input.chars().count();
+                                        }
+                                        _ => {
+                                            app.input_target = InputTarget::PipelineRef;
+                                            app.cursor_index = app.pipeline_ref_input.chars().count();
+                                        }
+                                    }
+                                }
+                                KeyCode::Left => { app.cursor_index = app.cursor_index.saturating_sub(1); }
+                                KeyCode::Right => {
+                                    let len = app.get_input_buffer().chars().count();
+                                    app.cursor_index = (app.cursor_index + 1).min(len);
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    if app.input_target == InputTarget::PipelineRef {
+                                        app.show_branches_dropdown = true;
+                                        app.move_down();
+                                    } else if app.input_target == InputTarget::PipelineVariableList {
+                                        app.move_down();
+                                    }
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    if app.input_target == InputTarget::PipelineRef {
+                                        app.show_branches_dropdown = true;
+                                        app.move_up();
+                                    } else if app.input_target == InputTarget::PipelineVariableList {
+                                        app.move_up();
+                                    }
+                                }
+                                KeyCode::Delete | KeyCode::Backspace if app.input_target == InputTarget::PipelineVariableList => {
+                                    app.remove_pipeline_variable();
+                                }
+                                KeyCode::Char(c) => {
+                                    let cursor = app.cursor_index;
+                                    let input = app.get_input_buffer_mut();
+                                    let mut chars: Vec<char> = input.chars().collect();
+                                    chars.insert(cursor, c);
+                                    *input = chars.into_iter().collect();
+                                    app.cursor_index += 1;
+                                    if app.input_target == InputTarget::PipelineRef {
+                                        app.filter_branches();
+                                        app.show_branches_dropdown = true;
+                                    }
+                                }
+                                KeyCode::Backspace => {
+                                    if app.cursor_index > 0 {
+                                        let cursor = app.cursor_index;
+                                        let input = app.get_input_buffer_mut();
+                                        let mut chars: Vec<char> = input.chars().collect();
+                                        chars.remove(cursor - 1);
+                                        *input = chars.into_iter().collect();
+                                        app.cursor_index -= 1;
+                                        if app.input_target == InputTarget::PipelineRef {
+                                            app.filter_branches();
+                                            app.show_branches_dropdown = true;
+                                        }
+                                    }
+                                }
+                                KeyCode::Home => { app.cursor_index = 0; }
+                                KeyCode::End => { app.cursor_index = app.get_input_buffer().chars().count(); }
+                                KeyCode::Delete => {
+                                    let cursor = app.cursor_index;
+                                    let input = app.get_input_buffer_mut();
+                                    let mut chars: Vec<char> = input.chars().collect();
+                                    if cursor < chars.len() {
+                                        chars.remove(cursor);
+                                        *input = chars.into_iter().collect();
+                                    }
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            match key.code {
+                                KeyCode::Enter => app.enter().await,
+                                KeyCode::Esc => app.back().await,
+                                KeyCode::Char('p') => app.submit_pipeline_launch().await,
+                                KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+                                KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+                                KeyCode::Delete | KeyCode::Backspace => app.remove_pipeline_variable(),
+                                KeyCode::Char('i') | KeyCode::Tab => {
+                                    app.input_mode = true;
+                                    app.input_target = InputTarget::PipelineRef;
+                                    app.cursor_index = app.pipeline_ref_input.chars().count();
+                                }
+                                _ => {}
+                            }
+                        }
+                    } else if app.show_label_popup {
                         match key.code {
                             KeyCode::Char(' ') => {
                                 if let Some(i) = app.label_state.selected() {
@@ -169,28 +280,37 @@ where
                             KeyCode::Enter => { app.enter().await; }
                             KeyCode::Esc => app.back().await,
                             KeyCode::Left => { app.cursor_index = app.cursor_index.saturating_sub(1); }
-                            KeyCode::Right => { app.cursor_index = (app.cursor_index + 1).min(app.reply_input.chars().count()); }
+                            KeyCode::Right => {
+                                let len = app.get_input_buffer().chars().count();
+                                app.cursor_index = (app.cursor_index + 1).min(len);
+                            }
                             KeyCode::Home => { app.cursor_index = 0; }
-                            KeyCode::End => { app.cursor_index = app.reply_input.chars().count(); }
+                            KeyCode::End => { app.cursor_index = app.get_input_buffer().chars().count(); }
                             KeyCode::Char(c) => {
-                                let mut chars: Vec<char> = app.reply_input.chars().collect();
-                                chars.insert(app.cursor_index, c);
-                                app.reply_input = chars.into_iter().collect();
+                                let cursor = app.cursor_index;
+                                let input = app.get_input_buffer_mut();
+                                let mut chars: Vec<char> = input.chars().collect();
+                                chars.insert(cursor, c);
+                                *input = chars.into_iter().collect();
                                 app.cursor_index += 1;
                             }
                             KeyCode::Backspace => {
                                 if app.cursor_index > 0 {
-                                    let mut chars: Vec<char> = app.reply_input.chars().collect();
-                                    chars.remove(app.cursor_index - 1);
-                                    app.reply_input = chars.into_iter().collect();
+                                    let cursor = app.cursor_index;
+                                    let input = app.get_input_buffer_mut();
+                                    let mut chars: Vec<char> = input.chars().collect();
+                                    chars.remove(cursor - 1);
+                                    *input = chars.into_iter().collect();
                                     app.cursor_index -= 1;
                                 }
                             }
                             KeyCode::Delete => {
-                                let mut chars: Vec<char> = app.reply_input.chars().collect();
-                                if app.cursor_index < chars.len() {
-                                    chars.remove(app.cursor_index);
-                                    app.reply_input = chars.into_iter().collect();
+                                let cursor = app.cursor_index;
+                                let input = app.get_input_buffer_mut();
+                                let mut chars: Vec<char> = input.chars().collect();
+                                if cursor < chars.len() {
+                                    chars.remove(cursor);
+                                    *input = chars.into_iter().collect();
                                 }
                             }
                             _ => {}
@@ -214,9 +334,7 @@ where
                                 app.cursor_index = 0;
                             }
                             KeyCode::Char('p') if app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines => {
-                                if let Some(proj) = &app.selected_project {
-                                    let _ = app.create_pipeline(proj.id, "main").await;
-                                }
+                                app.show_pipeline_launch_popup().await;
                             }
                             KeyCode::Char('p') if app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some() => {
                                 if let Some(proj) = &app.selected_project {

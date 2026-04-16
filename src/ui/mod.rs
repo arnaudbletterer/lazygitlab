@@ -45,6 +45,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_weight_popup {
         render_weight_popup(f, app);
     }
+    if app.show_pipeline_popup {
+        render_pipeline_popup(f, app);
+    }
 }
 
 pub fn render_job_log_view(f: &mut Frame, app: &mut App) {
