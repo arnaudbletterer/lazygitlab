@@ -165,3 +165,72 @@ pub fn hex_to_color(hex: &str) -> Color {
         Color::Gray
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(format_duration(0.0), "00:00");
+        assert_eq!(format_duration(59.0), "00:59");
+        assert_eq!(format_duration(60.0), "01:00");
+        assert_eq!(format_duration(3599.0), "59:59");
+        assert_eq!(format_duration(3600.0), "01:00:00");
+        assert_eq!(format_duration(3661.0), "01:01:01");
+    }
+
+    #[test]
+    fn test_get_elapsed_time() {
+        assert_eq!(get_elapsed_time(""), "00:00");
+        assert_eq!(get_elapsed_time("invalid"), "??:??");
+        // Test a future date to hit the < 0.0 branch
+        assert_eq!(get_elapsed_time("2100-01-01T00:00:00Z"), "00:00");
+    }
+
+    #[test]
+    fn test_format_relative_time() {
+        assert_eq!(format_relative_time(""), "None");
+        assert_eq!(format_relative_time("invalid"), "invalid");
+        let s = format_relative_time("2020-01-01T00:00:00Z");
+        assert!(s.contains("years") || s.contains("months") || s.contains("days"));
+        let s2 = format_relative_time("2020-01-01T00:00:00.000Z");
+        assert!(s2.contains("years") || s2.contains("months") || s2.contains("days"));
+    }
+
+    #[test]
+    fn test_format_time_only() {
+        assert_eq!(format_time_only("2026-04-14T19:37:21.116729Z"), "19:37:21");
+        assert_eq!(format_time_only("too short"), "too short");
+    }
+
+    #[test]
+    fn test_hex_to_color() {
+        assert_eq!(hex_to_color("#ffffff"), Color::Rgb(255, 255, 255));
+        assert_eq!(hex_to_color("000000"), Color::Rgb(0, 0, 0));
+        assert_eq!(hex_to_color("invalid"), Color::Gray);
+        assert_eq!(hex_to_color("#123"), Color::Gray);
+    }
+
+    #[test]
+    fn test_get_status_style() {
+        let theme = Theme::default();
+        assert_eq!(get_status_style("success", &theme).fg, Some(theme.success));
+        assert_eq!(get_status_style("failed", &theme).fg, Some(theme.failed));
+        assert_eq!(get_status_style("opened", &theme).fg, Some(theme.open_mr));
+        assert_eq!(get_status_style("merged", &theme).fg, Some(theme.merged_mr));
+        assert_eq!(get_status_style("running", &theme).fg, Some(theme.running));
+        assert_eq!(get_status_style("pending", &theme).fg, Some(theme.pending));
+        assert_eq!(get_status_style("unknown", &theme).fg, None);
+    }
+
+    #[test]
+    fn test_centered_rect() {
+        let r = Rect::new(0, 0, 100, 100);
+        let centered = centered_rect(50, 50, r);
+        assert_eq!(centered.width, 50);
+        assert_eq!(centered.height, 50);
+        assert_eq!(centered.x, 25);
+        assert_eq!(centered.y, 25);
+    }
+}
