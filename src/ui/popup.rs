@@ -224,3 +224,74 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
         f.render_stateful_widget(list, dropdown_area, &mut app.branches_state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use crate::models::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
+
+    async fn setup_app() -> (MockServer, App) {
+        use gitlab::GitlabBuilder;
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    #[test]
+    fn test_render_all_popups() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(120, 60);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // 1. Project Popup
+        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: "ns/p1".into() }];
+        terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
+
+        // 2. Label Popup
+        app.project_labels = vec![Label { id: 1, name: "L1".into(), color: "#f00".into(), text_color: "#fff".into() }];
+        terminal.draw(|f| render_label_popup(f, &mut app)).unwrap();
+        app.selected_label_ids.push(1);
+        terminal.draw(|f| render_label_popup(f, &mut app)).unwrap();
+
+        // 3. Assignee Popup
+        app.project_members = vec![Author { id: 1, username: "u1".into() }];
+        terminal.draw(|f| render_assignee_popup(f, &mut app)).unwrap();
+        app.selected_assignee_ids.push(1);
+        terminal.draw(|f| render_assignee_popup(f, &mut app)).unwrap();
+
+        // 4. Milestone Popup
+        app.project_milestones = vec![Milestone { id: 1, title: "M1".into() }];
+        terminal.draw(|f| render_milestone_popup(f, &mut app)).unwrap();
+        app.selected_milestone_id = Some(1);
+        terminal.draw(|f| render_milestone_popup(f, &mut app)).unwrap();
+
+        // 5. Weight Popup
+        terminal.draw(|f| render_weight_popup(f, &mut app)).unwrap();
+
+        // 6. Calendar Popup
+        terminal.draw(|f| render_calendar_popup(f, &mut app)).unwrap();
+
+        // 7. Pipeline Popup
+        app.input_target = InputTarget::PipelineRef;
+        terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+
+        app.input_target = InputTarget::PipelineVariableKey;
+        terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+
+        app.input_target = InputTarget::PipelineVariableValue;
+        terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+
+        app.pipeline_variables.push(PipelineVariable { key: "K".into(), value: "V".into() });
+        app.input_target = InputTarget::PipelineVariableList;
+        terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+
+        app.show_branches_dropdown = true;
+        app.filtered_branches = vec!["b1".into(), "b2".into()];
+        terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+    }
+}
