@@ -16,3 +16,8 @@ emojis = "0.8.1"
 regex = "1.12.3"
 ansi-to-tui = "8.0.1"
 chrono-humanize = "0.2.3"
+
+[dev-dependencies]
+mockito = "1.4.0"
+tokio-test = "0.4.3"
+wiremock = "0.6.2"
