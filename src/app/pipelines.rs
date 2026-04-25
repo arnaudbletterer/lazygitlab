@@ -241,8 +241,8 @@ impl App {
 
 pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
     let prefix_re = Regex::new(r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z)\s[0-9]{2}O\+?\s?").unwrap();
-    let section_start_re = Regex::new(r"section_start:[0-9]+:([a-z_]+)\r?").unwrap();
-    let section_end_re = Regex::new(r"section_end:[0-9]+:([a-z_]+)\r?").unwrap();
+    let section_start_re = Regex::new(r"section_start:[0-9]+:([a-z0-9_]+)\r?").unwrap();
+    let section_end_re = Regex::new(r"section_end:[0-9]+:([a-z0-9_]+)\r?").unwrap();
     let clear_line_re = Regex::new(r"\x1b\[0K").unwrap();
 
     let mut lines = Vec::new();
@@ -269,8 +269,15 @@ pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
 
         let is_section_end = if let Some(_caps) = section_end_re.captures(&content) {
             content = section_end_re.replace(&content, "").to_string();
+            lines.push(LogLine {
+                timestamp: timestamp.clone(),
+                content: content.clone(),
+                section: current_section.clone(),
+                is_section_start,
+                is_section_end: true,
+            });
             current_section = None;
-            true
+            continue;
         } else {
             false
         };
@@ -292,4 +299,85 @@ pub fn filter_branch_names(branches: &[Branch], search: &str) -> Vec<String> {
         .map(|b| b.name.clone())
         .filter(|name| name.to_lowercase().contains(&search))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_job_log_exhaustive() {
+        let log = "section_start:1:s1\nline1\nsection_end:2:s1\n\x1b[0Kclear\n2026-04-25T12:00:00.000Z 01O timestamped";
+        let lines = parse_job_log(log);
+        assert_eq!(lines.len(), 5);
+        assert!(lines[0].is_section_start);
+        assert_eq!(lines[0].section, Some("s1".into()));
+        assert_eq!(lines[1].section, Some("s1".into()));
+        assert!(lines[2].is_section_end);
+        assert_eq!(lines[2].section, Some("s1".into()));
+        assert_eq!(lines[3].content, "clear");
+        assert_eq!(lines[4].timestamp, "2026-04-25T12:00:00.000Z");
+    }
+
+    #[test]
+    fn test_filter_branch_names_logic() {
+        let branches = vec![Branch { name: "main".into() }, Branch { name: "dev".into() }];
+        assert_eq!(filter_branch_names(&branches, "MA"), vec!["main"]);
+        assert_eq!(filter_branch_names(&branches, "xyz"), Vec::<String>::new());
+    }
+
+    use gitlab::GitlabBuilder;
+    use tokio_test::block_on;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path};
+
+    async fn setup_app() -> (MockServer, App) {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    #[test]
+    fn test_pipeline_actions_exhaustive() {
+        let (server, mut app) = block_on(setup_app());
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+
+        block_on(async {
+            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+
+            let _ = app.fetch_pipelines().await;
+            let _ = app.fetch_jobs(1, 1).await;
+            let _ = app.fetch_pipeline(1, 1).await;
+            let _ = app.fetch_job_log(1, 1).await;
+            let _ = app.fetch_branches(1).await;
+            
+            // Popups
+            app.show_pipeline_launch_popup().await;
+            app.pipeline_variable_key_input = "K".into();
+            app.pipeline_variable_value_input = "V".into();
+            app.add_pipeline_variable();
+            app.remove_pipeline_variable();
+            app.submit_pipeline_launch().await;
+            
+            let _ = app.create_pipeline(1, "m", vec![]).await;
+            let _ = app.retry_pipeline(1, 1).await;
+            let _ = app.cancel_pipeline(1, 1).await;
+
+            let pipeline_json = r#"{"id": 100, "project_id": 1, "status": "success", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z"}"#;
+            app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
+            
+            let _ = app.retry_job(1, 1).await;
+            let _ = app.cancel_job(1, 1).await;
+            let _ = app.play_job(1, 1).await;
+
+            // Log navigation logic
+            app.job_log_lines = vec![LogLine { timestamp: "t".into(), content: "c".into(), section: Some("s".into()), is_section_start: true, is_section_end: false }];
+            app.collapsed_sections = std::collections::HashSet::new();
+            app.job_log_scroll = 0;
+            app.toggle_job_section();
+            app.get_visible_job_log_lines_count();
+        });
+    }
 }

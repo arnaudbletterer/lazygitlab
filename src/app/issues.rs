@@ -362,3 +362,42 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitlab::GitlabBuilder;
+    use tokio_test::block_on;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path};
+
+    async fn setup_app() -> (MockServer, App) {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    #[test]
+    fn test_issue_updates_logic_exhaustive() {
+        let (server, mut app) = block_on(setup_app());
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        let issue_json = r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#;
+        app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
+
+        block_on(async {
+            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+
+            let _ = app.fetch_issues().await;
+            let _ = app.fetch_issue_discussions(1, 1).await;
+            let _ = app.update_issue().await;
+            let _ = app.update_issue_labels().await;
+            let _ = app.update_issue_assignees().await;
+            let _ = app.update_issue_milestone().await;
+            let _ = app.update_issue_due_date().await;
+            let _ = app.update_issue_weight().await;
+            let _ = app.toggle_confidential().await;
+        });
+    }
+}

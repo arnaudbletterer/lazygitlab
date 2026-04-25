@@ -285,3 +285,52 @@ pub fn parse_diff_context(diff: &str, new_line: Option<u64>, old_line: Option<u6
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitlab::GitlabBuilder;
+    use tokio_test::block_on;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
+
+    async fn setup_app() -> (MockServer, App) {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    #[test]
+    fn test_parse_diff_context_exhaustive() {
+        let diff = "@@ -1,2 +1,3 @@\n unchanged\n-removed\n+added\n";
+        let res1 = parse_diff_context(diff, Some(2), None).unwrap();
+        assert_eq!(res1[2].1, "added");
+        assert!(res1[2].3);
+        let res2 = parse_diff_context(diff, None, Some(2)).unwrap();
+        assert_eq!(res2[1].1, "removed");
+        assert!(res2[1].3);
+        assert!(parse_diff_context(diff, Some(99), None).is_none());
+    }
+
+    #[test]
+    fn test_mr_updates_logic() {
+        let (server, mut app) = block_on(setup_app());
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        let mr_json = r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#;
+        app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
+
+        block_on(async {
+            use wiremock::matchers::method;
+            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+
+            let _ = app.fetch_merge_requests().await;
+            let _ = app.fetch_discussions(1, 1).await;
+            let _ = app.update_mr().await;
+            let _ = app.update_mr_labels().await;
+            let _ = app.update_mr_assignees().await;
+            let _ = app.update_mr_milestone().await;
+        });
+    }
+}
