@@ -129,3 +129,63 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
     let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")];
     render_shortcuts(f, chunks[1], shortcuts, &app.theme);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use crate::models::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
+
+    async fn setup_app() -> (MockServer, App) {
+        use gitlab::GitlabBuilder;
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        let mut app = App::new(client);
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        (server, app)
+    }
+
+    #[test]
+    fn test_render_list_view_all_selections() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+            app.active_selection = sel;
+            // Empty
+            terminal.draw(|f| render_list_view(f, &mut app)).unwrap();
+        }
+
+        // With data
+        let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##;
+        app.merge_requests = vec![serde_json::from_str(mr_json).unwrap()];
+        
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue"}"##;
+        app.issues = vec![serde_json::from_str(issue_json).unwrap()];
+
+        let pipeline_json = r##"{"id": 100, "project_id": 1, "status": "running", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z", "duration": 100.0}"##;
+        app.pipelines = vec![serde_json::from_str(pipeline_json).unwrap()];
+
+        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+            app.active_selection = sel;
+            for focus in [true, false] {
+                app.focus_on_menu = focus;
+                terminal.draw(|f| render_list_view(f, &mut app)).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn test_render_list_view_no_project() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        app.selected_project = None;
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render_list_view(f, &mut app)).unwrap();
+    }
+}

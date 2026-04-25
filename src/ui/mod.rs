@@ -206,3 +206,105 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App) {
 
     widgets::render_shortcuts(f, chunks[2], vec![("tab", "toggle section"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use crate::models::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
+
+    async fn setup_app() -> (MockServer, App) {
+        use gitlab::GitlabBuilder;
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    #[test]
+    fn test_render_main_ui_all_states() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(120, 60);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // Test base view modes
+        for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog] {
+            app.view_mode = mode;
+            terminal.draw(|f| ui(f, &mut app)).unwrap();
+        }
+
+        // Test popups
+        let popups = [
+            |a: &mut App| a.show_project_popup = true,
+            |a: &mut App| a.show_label_popup = true,
+            |a: &mut App| a.show_assignee_popup = true,
+            |a: &mut App| a.show_milestone_popup = true,
+            |a: &mut App| a.show_weight_popup = true,
+            |a: &mut App| a.show_pipeline_popup = true,
+            |a: &mut App| a.show_calendar_popup = true,
+        ];
+
+        for setup in popups {
+            app.show_project_popup = false; app.show_label_popup = false; app.show_assignee_popup = false;
+            app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
+            app.show_calendar_popup = false;
+            setup(&mut app);
+            terminal.draw(|f| ui(f, &mut app)).unwrap();
+        }
+
+        // Test input modes
+        app.show_project_popup = false; // clear popups
+        app.input_mode = true;
+        for target in [InputTarget::PipelineRef, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue, InputTarget::Reply] {
+            app.input_target = target;
+            app.show_pipeline_popup = true; // some inputs need pipeline popup context
+            terminal.draw(|f| ui(f, &mut app)).unwrap();
+            app.show_pipeline_popup = false;
+            terminal.draw(|f| ui(f, &mut app)).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_render_job_log_exhaustive() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(120, 60);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        app.view_mode = ViewMode::JobLog;
+
+        // No job selected
+        terminal.draw(|f| render_job_log_view(f, &mut app)).unwrap();
+
+        // Job selected, various states
+        let job_json = r#"{"id": 1, "name": "j", "stage": "s", "status": "running", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z", "duration": null, "web_url": "u", "tag_list": ["t1", "t2"], "allow_failure": true, "user": {"id": 1, "username": "u", "name": "n", "state": "active", "avatar_url": "u", "web_url": "u"}, "runner": {"id": 1, "description": "runner", "active": true, "is_shared": true}}"#;
+        app.selected_job = Some(serde_json::from_str(job_json).unwrap());
+        
+        // With log lines
+        app.job_log_lines = vec![
+            LogLine { timestamp: "2026-04-25T12:00:00Z".into(), content: "start".into(), section: Some("s1".into()), is_section_start: true, is_section_end: false },
+            LogLine { timestamp: "".into(), content: "middle".into(), section: Some("s1".into()), is_section_start: false, is_section_end: false },
+            LogLine { timestamp: "".into(), content: "".into(), section: Some("s1".into()), is_section_start: false, is_section_end: true },
+        ];
+        
+        // Running state
+        app.is_loading = false;
+        terminal.draw(|f| render_job_log_view(f, &mut app)).unwrap();
+
+        // Loading state
+        app.is_loading = true;
+        terminal.draw(|f| render_job_log_view(f, &mut app)).unwrap();
+
+        // Finished state with duration
+        app.is_loading = false;
+        let job_finished_json = r#"{"id": 1, "name": "j", "stage": "s", "status": "success", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z", "finished_at": "2026-04-25T12:01:00Z", "duration": 60.0, "web_url": "u", "tag_list": [], "allow_failure": false}"#;
+        app.selected_job = Some(serde_json::from_str(job_finished_json).unwrap());
+        
+        // Collapsed section
+        app.collapsed_sections.insert("s1".into());
+        app.follow_log = false;
+        terminal.draw(|f| render_job_log_view(f, &mut app)).unwrap();
+    }
+}
