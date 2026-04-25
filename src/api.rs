@@ -447,3 +447,118 @@ impl Endpoint for PlayJob {
     fn method(&self) -> Method { Method::POST }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/play", self.project, self.job).into() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitlab::api::endpoint_prelude::Method;
+
+    #[test]
+    fn test_all_endpoints_exhaustive() {
+        let ep = AddDiscussionNote { project: 1, merge_request: 2, discussion: "d".into(), body: "b".into() };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/discussions/d/notes");
+        assert!(ep.body().is_ok());
+
+        let ep = ResolveDiscussion { project: 1, merge_request: 2, discussion: "d".into(), resolved: true };
+        assert_eq!(ep.method(), Method::PUT);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/discussions/d");
+        let _ = ep.parameters();
+
+        let ep = AddIssueDiscussionNote { project: 1, issue: 2, discussion: "d".into(), body: "b".into() };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/discussions/d/notes");
+        assert!(ep.body().is_ok());
+
+        // Test EditIssue combinations
+        let ep = EditIssue { project: 1, issue: 2, title: Some("t".into()), description: Some("d".into()), state_event: Some("s".into()), labels: Some("l".into()), assignee_ids: Some(vec![1, 2]), milestone_id: Some(Some(1)), due_date: Some(Some("d".into())), weight: Some(Some(1)), confidential: Some(true) };
+        assert_eq!(ep.method(), Method::PUT);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2");
+        assert!(ep.body().is_ok());
+
+        let ep2 = EditIssue { project: 1, issue: 2, title: None, description: None, state_event: None, labels: None, assignee_ids: None, milestone_id: Some(None), due_date: Some(None), weight: Some(None), confidential: None };
+        assert!(ep2.body().is_ok());
+
+        let ep = IssueDiscussions { project: 1, issue: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/discussions");
+
+        let ep = EditMergeRequest { project: 1, merge_request: 2, title: Some("t".into()), description: Some("d".into()), state_event: Some("s".into()), labels: Some("l".into()), assignee_ids: Some(vec![1]), milestone_id: Some(Some(1)), remove_source_branch: Some(true), squash: Some(true) };
+        assert_eq!(ep.method(), Method::PUT);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2");
+        assert!(ep.body().is_ok());
+        
+        let ep2 = EditMergeRequest { project: 1, merge_request: 2, title: None, description: None, state_event: None, labels: None, assignee_ids: None, milestone_id: Some(None), remove_source_branch: None, squash: None };
+        assert!(ep2.body().is_ok());
+
+        let ep = IssueAwardEmoji { project: 1, issue: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/award_emoji");
+
+        let ep = MergeRequestAwardEmoji { project: 1, merge_request: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/award_emoji");
+
+        let ep = ResolveIssueDiscussion { project: 1, issue: 2, discussion: "d".into(), resolved: true };
+        assert_eq!(ep.method(), Method::PUT);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/discussions/d");
+        let _ = ep.parameters();
+
+        let ep = ProjectLabels { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/labels");
+
+        let ep = ProjectMilestones { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/milestones");
+
+        let ep = ProjectMembers { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/members/all");
+
+        let ep = ProjectPipelines { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/pipelines");
+
+        let ep = ProjectPipeline { project: 1, pipeline: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/pipelines/2");
+
+        let ep = ProjectPipelineJobs { project: 1, pipeline: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/pipelines/2/jobs");
+
+        let ep = ProjectBranches { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/repository/branches");
+
+        let ep = JobTrace { project: 1, job: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/jobs/2/trace");
+
+        let ep = CreatePipeline { project: 1, ref_name: "m".into(), variables: vec![crate::models::PipelineVariable{key:"k".into(), value:"v".into()}] };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/pipeline");
+        assert!(ep.body().is_ok());
+
+        let ep = RetryPipeline { project: 1, pipeline: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/pipelines/2/retry");
+
+        let ep = CancelPipeline { project: 1, pipeline: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/pipelines/2/cancel");
+
+        let ep = RetryJob { project: 1, job: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/jobs/2/retry");
+
+        let ep = CancelJob { project: 1, job: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/jobs/2/cancel");
+
+        let ep = PlayJob { project: 1, job: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/jobs/2/play");
+    }
+}
