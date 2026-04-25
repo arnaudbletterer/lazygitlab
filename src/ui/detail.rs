@@ -349,3 +349,93 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("p", "play"), ("r", "retry"), ("c", "cancel"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use crate::models::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
+
+    async fn setup_app() -> (MockServer, App) {
+        use gitlab::GitlabBuilder;
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        let mut app = App::new(client);
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        (server, app)
+    }
+
+    #[test]
+    fn test_render_detail_view_mrs_issues() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(150, 100);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        app.view_mode = ViewMode::Detail;
+
+        // MR Setup
+        let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "assignees": [{"id":1,"username":"u"}], "created_at": "2026-04-25T12:00:00Z"}"##;
+        app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
+        app.active_selection = MenuSelection::MergeRequests;
+        
+        let disc_json = r##"{"id": "1", "reply_id": "1", "notes": [{"id":1,"type":"DiffNote","body":"b","author":{"id":1,"username":"u"},"created_at":"2026-04-25T12:00:00Z","system":false,"resolvable":true,"resolved":false}], "collapsed": false}"##;
+        app.discussions = vec![serde_json::from_str(disc_json).unwrap()];
+
+        // Render MR all sections & fields
+        for sec in [DetailSection::Metadata, DetailSection::Discussions] {
+            app.detail_section = sec;
+            for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone] {
+                app.selected_metadata_field = field;
+                terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+            }
+        }
+
+        // Issue Setup
+        app.selected_mr = None;
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [{"id":1,"username":"u"}], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": "2026-05-01", "weight": 5, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue"}"##;
+        app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
+        app.active_selection = MenuSelection::Issues;
+
+        // Render Issue all sections & fields
+        for sec in [DetailSection::Metadata, DetailSection::Discussions] {
+            app.detail_section = sec;
+            for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential] {
+                app.selected_metadata_field = field;
+                terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+            }
+        }
+
+        // Pipeline Setup
+        app.selected_issue = None;
+        let pipeline_json = r##"{"id": 100, "project_id": 1, "status": "running", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z"}"##;
+        app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
+        app.active_selection = MenuSelection::Pipelines;
+        
+        let job_json = r##"{"id": 1, "name": "j", "stage": "s", "status": "success", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z", "duration": 10.0, "web_url": "u", "tag_list": [], "allow_failure": false}"##;
+        app.jobs = vec![serde_json::from_str(job_json).unwrap()];
+
+        // 2. Issue All None
+        let issue_none_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": null, "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": null, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "issue_type": "issue"}"##;
+        app.selected_issue = Some(serde_json::from_str(issue_none_json).unwrap());
+        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+
+        // 3. MR All None
+        app.selected_issue = None;
+        let mr_none_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": null, "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##;
+        app.selected_mr = Some(serde_json::from_str(mr_none_json).unwrap());
+        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+
+        // 4. System notes and reactions
+        let disc_system_json = r##"{"id": "2", "notes": [{"id":2,"type":null,"body":"system note","author":{"id":1,"username":"u"},"created_at":"2026-04-25T12:00:00Z","system":true,"resolvable":false,"resolved":false}], "collapsed": true}"##;
+        app.discussions.push(serde_json::from_str(disc_system_json).unwrap());
+        if let Some(issue) = &mut app.selected_issue {
+            issue.reactions.push(crate::models::AwardEmoji { name: "smile".into() });
+            issue.upvotes = 1;
+        }
+        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+    }
+}
