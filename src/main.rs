@@ -1,8 +1,3 @@
-mod models;
-mod app;
-mod ui;
-mod api;
-
 use std::{io, time::Duration};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -12,8 +7,8 @@ use crossterm::{
 use ratatui::prelude::*;
 use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
-use models::*;
-use ui::ui;
+use lazygitlab::*;
+use lazygitlab::ui::ui;
 use chrono::Days;
 
 #[tokio::main]
