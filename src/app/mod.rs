@@ -175,7 +175,7 @@ impl App {
         if self.show_project_popup {
             if !self.projects.is_empty() {
                 let i = match self.projects_state.selected() {
-                    Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 },
+                    Some(i) => if i >= self.projects.len().saturating_sub(1) { 0 } else { i + 1 },
                     None => 0,
                 };
                 self.projects_state.select(Some(i));
@@ -197,7 +197,7 @@ impl App {
                         MenuSelection::MergeRequests => {
                             if !self.merge_requests.is_empty() {
                                 let i = match self.mrs_state.selected() {
-                                    Some(i) => if i >= self.merge_requests.len() - 1 { 0 } else { i + 1 },
+                                    Some(i) => if i >= self.merge_requests.len().saturating_sub(1) { 0 } else { i + 1 },
                                     None => 0,
                                 };
                                 self.mrs_state.select(Some(i));
@@ -206,7 +206,7 @@ impl App {
                         MenuSelection::Issues => {
                             if !self.issues.is_empty() {
                                 let i = match self.issues_state.selected() {
-                                    Some(i) => if i >= self.issues.len() - 1 { 0 } else { i + 1 },
+                                    Some(i) => if i >= self.issues.len().saturating_sub(1) { 0 } else { i + 1 },
                                     None => 0,
                                 };
                                 self.issues_state.select(Some(i));
@@ -215,7 +215,7 @@ impl App {
                         MenuSelection::Pipelines => {
                             if !self.pipelines.is_empty() {
                                 let i = match self.pipelines_state.selected() {
-                                    Some(i) => if i >= self.pipelines.len() - 1 { 0 } else { i + 1 },
+                                    Some(i) => if i >= self.pipelines.len().saturating_sub(1) { 0 } else { i + 1 },
                                     None => 0,
                                 };
                                 self.pipelines_state.select(Some(i));
@@ -238,7 +238,7 @@ impl App {
                 if self.selected_pipeline.is_some() {
                     if !self.jobs.is_empty() {
                         let i = match self.jobs_state.selected() {
-                            Some(i) => if i >= self.jobs.len() - 1 { 0 } else { i + 1 },
+                            Some(i) => if i >= self.jobs.len().saturating_sub(1) { 0 } else { i + 1 },
                             None => 0,
                         };
                         self.jobs_state.select(Some(i));
@@ -252,48 +252,29 @@ impl App {
                             MetadataField::Labels => MetadataField::Assignees,
                             MetadataField::Assignees => MetadataField::Milestone,
                             MetadataField::Milestone => {
-                                if self.selected_issue.is_some() {
-                                    MetadataField::DueDate
-                                } else {
-                                    MetadataField::Description
-                                }
+                                if self.selected_issue.is_some() { MetadataField::DueDate }
+                                else { MetadataField::Description }
                             }
-                            MetadataField::DueDate => {
-                                if let Some(issue) = &self.selected_issue {
-                                    if issue.weight.is_none() {
-                                        MetadataField::Confidential
-                                    } else {
-                                        MetadataField::Weight
-                                    }
-                                } else {
-                                    MetadataField::Description
-                                }
-                            }
+                            MetadataField::DueDate => MetadataField::Weight,
                             MetadataField::Weight => MetadataField::Confidential,
                             MetadataField::Confidential => MetadataField::Description,
                             MetadataField::Description => {
                                 self.detail_section = DetailSection::Discussions;
                                 self.discussion_state.select(Some(0));
-                                MetadataField::Title // Reset for next time
+                                MetadataField::Title
                             }
                         };
                     }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
                             let current = self.discussion_state.selected().unwrap_or(0);
-                            if current >= self.discussions.len() - 1 {
+                            if current >= self.discussions.len().saturating_sub(1) {
                                 self.detail_section = DetailSection::Metadata;
                                 self.selected_metadata_field = MetadataField::Title;
                                 self.discussion_state.select(None);
                             } else {
                                 self.discussion_state.select(Some(current + 1));
                             }
-                        } else if self.selected_pipeline.is_some() && !self.jobs.is_empty() {
-                            let i = match self.jobs_state.selected() {
-                                Some(i) => if i >= self.jobs.len() - 1 { 0 } else { i + 1 },
-                                None => 0,
-                            };
-                            self.jobs_state.select(Some(i));
                         } else {
                             self.detail_section = DetailSection::Metadata;
                             self.selected_metadata_field = MetadataField::Title;
@@ -361,7 +342,7 @@ impl App {
         if self.show_project_popup {
             if !self.projects.is_empty() {
                 let i = match self.projects_state.selected() {
-                    Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 },
+                    Some(i) => if i == 0 { self.projects.len().saturating_sub(1) } else { i - 1 },
                     None => 0,
                 };
                 self.projects_state.select(Some(i));
@@ -383,7 +364,7 @@ impl App {
                         MenuSelection::MergeRequests => {
                             if !self.merge_requests.is_empty() {
                                 let i = match self.mrs_state.selected() {
-                                    Some(i) => if i == 0 { self.merge_requests.len() - 1 } else { i - 1 },
+                                    Some(i) => if i == 0 { self.merge_requests.len().saturating_sub(1) } else { i - 1 },
                                     None => 0,
                                 };
                                 self.mrs_state.select(Some(i));
@@ -392,7 +373,7 @@ impl App {
                         MenuSelection::Issues => {
                             if !self.issues.is_empty() {
                                 let i = match self.issues_state.selected() {
-                                    Some(i) => if i == 0 { self.issues.len() - 1 } else { i - 1 },
+                                    Some(i) => if i == 0 { self.issues.len().saturating_sub(1) } else { i - 1 },
                                     None => 0,
                                 };
                                 self.issues_state.select(Some(i));
@@ -401,7 +382,7 @@ impl App {
                         MenuSelection::Pipelines => {
                             if !self.pipelines.is_empty() {
                                 let i = match self.pipelines_state.selected() {
-                                    Some(i) => if i == 0 { self.pipelines.len() - 1 } else { i - 1 },
+                                    Some(i) => if i == 0 { self.pipelines.len().saturating_sub(1) } else { i - 1 },
                                     None => 0,
                                 };
                                 self.pipelines_state.select(Some(i));
@@ -420,7 +401,7 @@ impl App {
                 if self.selected_pipeline.is_some() {
                     if !self.jobs.is_empty() {
                         let i = match self.jobs_state.selected() {
-                            Some(i) => if i == 0 { self.jobs.len() - 1 } else { i - 1 },
+                            Some(i) => if i == 0 { self.jobs.len().saturating_sub(1) } else { i - 1 },
                             None => 0,
                         };
                         self.jobs_state.select(Some(i));
@@ -433,32 +414,19 @@ impl App {
                             MetadataField::Title => {
                                 self.detail_section = DetailSection::Discussions;
                                 if !self.discussions.is_empty() {
-                                    self.discussion_state.select(Some(self.discussions.len() - 1));
+                                    self.discussion_state.select(Some(self.discussions.len().saturating_sub(1)));
                                 }
-                                MetadataField::Description // Dummy value to reset
+                                MetadataField::Title
                             }
                             MetadataField::Labels => MetadataField::Title,
                             MetadataField::Assignees => MetadataField::Labels,
                             MetadataField::Milestone => MetadataField::Assignees,
                             MetadataField::DueDate => MetadataField::Milestone,
                             MetadataField::Weight => MetadataField::DueDate,
-                            MetadataField::Confidential => {
-                                if let Some(issue) = &self.selected_issue {
-                                    if issue.weight.is_none() {
-                                        MetadataField::DueDate
-                                    } else {
-                                        MetadataField::Weight
-                                    }
-                                } else {
-                                    MetadataField::Milestone // Back to milestone for MR
-                                }
-                            }
+                            MetadataField::Confidential => MetadataField::Weight,
                             MetadataField::Description => {
-                                if self.selected_issue.is_some() {
-                                    MetadataField::Confidential
-                                } else {
-                                    MetadataField::Milestone
-                                }
+                                if self.selected_issue.is_some() { MetadataField::Confidential }
+                                else { MetadataField::Milestone }
                             }
                         };
                     }
@@ -710,8 +678,6 @@ impl App {
         }
 
         if self.show_pipeline_popup {
-            // Enter no longer launches, it's used for navigation/selection within input_mode
-            // If not in input_mode, maybe it should focus first field? 
             if !self.input_mode {
                 self.input_mode = true;
                 self.input_target = InputTarget::PipelineRef;
@@ -755,7 +721,7 @@ impl App {
                                 if let Some(mr) = self.merge_requests.get(i) {
                                     self.selected_mr = Some(mr.clone());
                                     let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
-                                    self.discussion_state.select(Some(0)); // Default to first discussion
+                                    self.discussion_state.select(Some(0));
                                     self.detail_section = DetailSection::Discussions;
                                     self.view_mode = ViewMode::Detail;
                                 }
@@ -791,7 +757,7 @@ impl App {
                     if let Some(i) = self.jobs_state.selected() {
                         if let Some(job) = self.jobs.get(i) {
                             self.selected_job = Some(job.clone());
-                            self.follow_log = true; // Reset following when opening a new job
+                            self.follow_log = true;
                             let _ = self.fetch_job_log(pipeline.project_id, job.id).await;
                             self.view_mode = ViewMode::JobLog;
                         }
@@ -930,73 +896,45 @@ impl App {
     }
 
     pub fn open_in_browser(&self) {
-        let url = if let Some(mr) = &self.selected_mr {
-            Some(mr.web_url.clone())
-        } else if let Some(issue) = &self.selected_issue {
-            Some(issue.web_url.clone())
-        } else if let Some(pipeline) = &self.selected_pipeline {
+        let url = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) }
+        else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) }
+        else if let Some(pipeline) = &self.selected_pipeline {
             self.jobs_state.selected().and_then(|i| self.jobs.get(i)).map(|job| job.web_url.clone()).or(Some(pipeline.web_url.clone()))
         } else if self.view_mode == ViewMode::List {
             match self.active_selection {
-                MenuSelection::MergeRequests => {
-                    self.mrs_state.selected().and_then(|i| self.merge_requests.get(i)).map(|mr| mr.web_url.clone())
-                }
-                MenuSelection::Issues => {
-                    self.issues_state.selected().and_then(|i| self.issues.get(i)).map(|issue| issue.web_url.clone())
-                }
-                MenuSelection::Pipelines => {
-                    self.pipelines_state.selected().and_then(|i| self.pipelines.get(i)).map(|p| p.web_url.clone())
-                }
+                MenuSelection::MergeRequests => self.mrs_state.selected().and_then(|i| self.merge_requests.get(i)).map(|mr| mr.web_url.clone()),
+                MenuSelection::Issues => self.issues_state.selected().and_then(|i| self.issues.get(i)).map(|issue| issue.web_url.clone()),
+                MenuSelection::Pipelines => self.pipelines_state.selected().and_then(|i| self.pipelines.get(i)).map(|p| p.web_url.clone()),
             }
-        } else {
-            None
-        };
+        } else { None };
 
         if let Some(url) = url {
-            let _ = std::process::Command::new("powershell")
-                .arg("-Command")
-                .arg(format!("Start-Process '{}'", url))
-                .spawn();
+            let _ = std::process::Command::new("powershell").arg("-Command").arg(format!("Start-Process '{}'", url)).spawn();
         }
     }
 
     pub async fn refresh(&mut self) {
         self.last_refresh = std::time::Instant::now();
-        if self.show_project_popup {
-            let _ = self.fetch_projects().await;
-            return;
-        }
+        if self.show_project_popup { let _ = self.fetch_projects().await; return; }
 
         match self.view_mode {
-            ViewMode::List => {
-                match self.active_selection {
-                    MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
-                    MenuSelection::Issues => { let _ = self.fetch_issues().await; }
-                    MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
-                }
-            }
+            ViewMode::List => match self.active_selection {
+                MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
+                MenuSelection::Issues => { let _ = self.fetch_issues().await; }
+                MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
+            },
             ViewMode::Detail => {
-                if let Some(mr) = &self.selected_mr {
-                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
-                } else if let Some(issue) = &self.selected_issue {
-                    let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
-                } else if let Some(pipeline) = &self.selected_pipeline {
-                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
-                }
-            }
-            ViewMode::JobLog => {
-                if let Some(project) = &self.selected_project {
-                    if let Some(job) = &self.selected_job {
-                        let _ = self.fetch_job_log(project.id, job.id).await;
-                    }
-                }
-            }
+                if let Some(mr) = &self.selected_mr { let _ = self.fetch_discussions(mr.project_id, mr.iid).await; }
+                else if let Some(issue) = &self.selected_issue { let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; }
+                else if let Some(pipeline) = &self.selected_pipeline { let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; }
+            },
+            ViewMode::JobLog => if let Some(project) = &self.selected_project { if let Some(job) = &self.selected_job { let _ = self.fetch_job_log(project.id, job.id).await; } }
         }
     }
 
     pub fn get_input_buffer(&self) -> &String {
         match self.input_target {
-            InputTarget::PipelineRef => &self.pipeline_ref_input,
+            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &self.pipeline_ref_input,
             InputTarget::PipelineVariableKey => &self.pipeline_variable_key_input,
             InputTarget::PipelineVariableValue => &self.pipeline_variable_value_input,
             _ => &self.reply_input,
@@ -1005,10 +943,137 @@ impl App {
 
     pub fn get_input_buffer_mut(&mut self) -> &mut String {
         match self.input_target {
-            InputTarget::PipelineRef => &mut self.pipeline_ref_input,
+            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &mut self.pipeline_ref_input,
             InputTarget::PipelineVariableKey => &mut self.pipeline_variable_key_input,
             InputTarget::PipelineVariableValue => &mut self.pipeline_variable_value_input,
             _ => &mut self.reply_input,
+        }
+    }
+
+    pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        if self.show_project_popup {
+            match key.code {
+                KeyCode::Down | KeyCode::Char('j') => self.move_down(),
+                KeyCode::Up | KeyCode::Char('k') => self.move_up(),
+                KeyCode::Enter => self.select_project().await,
+                KeyCode::Esc => self.show_project_popup = false,
+                _ => {}
+            }
+        } else if self.show_calendar_popup {
+            use chrono::Days;
+            match key.code {
+                KeyCode::Left => { self.calendar_date = self.calendar_date.checked_sub_days(Days::new(1)).unwrap(); }
+                KeyCode::Right => { self.calendar_date = self.calendar_date.checked_add_days(Days::new(1)).unwrap(); }
+                KeyCode::Up => { self.calendar_date = self.calendar_date.checked_sub_days(Days::new(7)).unwrap(); }
+                KeyCode::Down => { self.calendar_date = self.calendar_date.checked_add_days(Days::new(7)).unwrap(); }
+                KeyCode::Enter => self.enter().await,
+                KeyCode::Delete | KeyCode::Backspace => { let _ = self.clear_due_date().await; }
+                KeyCode::Esc => self.back().await,
+                _ => {}
+            }
+        } else if self.input_mode {
+            match key.code {
+                KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    if self.input_target == InputTarget::EditDescription || self.input_target == InputTarget::Reply || self.input_target == InputTarget::NewComment {
+                        let mut chars: Vec<char> = self.reply_input.chars().collect();
+                        chars.insert(self.cursor_index, '\n');
+                        self.reply_input = chars.into_iter().collect();
+                        self.cursor_index += 1;
+                    }
+                }
+                KeyCode::Enter => self.enter().await,
+                KeyCode::Esc => self.back().await,
+                KeyCode::Left => { self.cursor_index = self.cursor_index.saturating_sub(1); }
+                KeyCode::Right => { self.cursor_index = (self.cursor_index + 1).min(self.get_input_buffer().chars().count()); }
+                KeyCode::Home => { self.cursor_index = 0; }
+                KeyCode::End => { self.cursor_index = self.get_input_buffer().chars().count(); }
+                KeyCode::Char(c) => {
+                    let cursor_idx = self.cursor_index;
+                    let input = self.get_input_buffer_mut();
+                    let mut chars: Vec<char> = input.chars().collect();
+                    let cursor = cursor_idx.min(chars.len());
+                    chars.insert(cursor, c);
+                    *input = chars.into_iter().collect();
+                    self.cursor_index = cursor + 1;
+                    if self.input_target == InputTarget::PipelineRef { self.filter_branches(); self.show_branches_dropdown = true; }
+                }
+                KeyCode::Backspace if self.cursor_index > 0 => {
+                    let cursor_idx = self.cursor_index;
+                    let input = self.get_input_buffer_mut();
+                    let mut chars: Vec<char> = input.chars().collect();
+                    let cursor = cursor_idx.min(chars.len());
+                    if cursor > 0 {
+                        chars.remove(cursor - 1);
+                        *input = chars.into_iter().collect();
+                        self.cursor_index = cursor - 1;
+                    }
+                    if self.input_target == InputTarget::PipelineRef { self.filter_branches(); self.show_branches_dropdown = true; }
+                }
+                KeyCode::Delete => {
+                    let cursor_idx = self.cursor_index;
+                    let input = self.get_input_buffer_mut();
+                    let mut chars: Vec<char> = input.chars().collect();
+                    let cursor = cursor_idx.min(chars.len());
+                    if cursor < chars.len() { chars.remove(cursor); *input = chars.into_iter().collect(); }
+                }
+                _ => {}
+            }
+        } else {
+            match key.code {
+                KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => self.switch_project(),
+                KeyCode::Down | KeyCode::Char('j') => self.move_down(),
+                KeyCode::Up | KeyCode::Char('k') => self.move_up(),
+                KeyCode::PageDown => self.page_down(),
+                KeyCode::PageUp => self.page_up(),
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab if self.view_mode != ViewMode::JobLog => self.toggle_focus(),
+                KeyCode::Tab if self.view_mode == ViewMode::JobLog => self.toggle_job_section(),
+                KeyCode::Char('s') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.resolve_discussion().await; }
+                KeyCode::Char('c') if self.view_mode == ViewMode::Detail && self.selected_issue.is_some() => { let _ = self.toggle_issue_state().await; }
+                KeyCode::Char('n') if self.view_mode == ViewMode::Detail && (self.selected_issue.is_some() || self.selected_mr.is_some()) => {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::NewComment;
+                    self.reply_input.clear();
+                    self.cursor_index = 0;
+                }
+                KeyCode::Char('p') if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines => { self.show_pipeline_launch_popup().await; }
+                KeyCode::Char('p') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
+                    if let Some(proj) = &self.selected_project {
+                        if let Some(i) = self.jobs_state.selected() {
+                            if let Some(job) = self.jobs.get(i) {
+                                if job.status == "manual" { let _ = self.play_job(proj.id, job.id).await; }
+                            }
+                        }
+                    }
+                }
+                KeyCode::Char('r') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
+                    if let Some(proj) = &self.selected_project {
+                        if let Some(i) = self.jobs_state.selected() {
+                            if let Some(job) = self.jobs.get(i) { let _ = self.retry_job(proj.id, job.id).await; }
+                        } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.retry_pipeline(proj.id, pipeline.id).await; }
+                    }
+                }
+                KeyCode::Char('c') if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines => {
+                    if let Some(proj) = &self.selected_project {
+                        if let Some(i) = self.pipelines_state.selected() {
+                            if let Some(pipeline) = self.pipelines.get(i) { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; }
+                        }
+                    }
+                }
+                KeyCode::Char('c') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
+                    if let Some(proj) = &self.selected_project {
+                        if let Some(i) = self.jobs_state.selected() {
+                            if let Some(job) = self.jobs.get(i) { let _ = self.cancel_job(proj.id, job.id).await; }
+                        } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; }
+                    }
+                }
+                KeyCode::Char(' ') => self.toggle_discussion(),
+                KeyCode::Enter => self.enter().await,
+                KeyCode::Backspace | KeyCode::Esc => self.back().await,
+                KeyCode::Char('v') | KeyCode::Char('o') => self.open_in_browser(),
+                _ => {}
+            }
         }
     }
 }
@@ -1019,10 +1084,116 @@ pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoj
         let name = val.get("name").and_then(|v| v.as_str())
             .or_else(|| val.get("emoji").and_then(|v| v.as_str()))
             .or_else(|| val.get("emoji_name").and_then(|v| v.as_str()));
-        
-        if let Some(n) = name {
-            reactions.push(AwardEmoji { name: n.to_string() });
-        }
+        if let Some(n) = name { reactions.push(AwardEmoji { name: n.to_string() }); }
     }
     reactions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitlab::GitlabBuilder;
+    use tokio_test::block_on;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{path, method, any};
+    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+
+    async fn setup_test_app() -> (MockServer, App) {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        (server, App::new(client))
+    }
+
+    fn key(code: KeyCode) -> KeyEvent { KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE } }
+    fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent { KeyEvent { code, modifiers, kind: KeyEventKind::Press, state: KeyEventState::NONE } }
+
+    #[test]
+    fn test_exhaustive_app_logic() {
+        let (server, mut app) = block_on(setup_test_app());
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+
+        block_on(async {
+            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+            Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+
+            let keys = [
+                KeyCode::Down, KeyCode::Up, KeyCode::Left, KeyCode::Right, KeyCode::Enter, KeyCode::Esc, KeyCode::Tab, KeyCode::Backspace, 
+                KeyCode::Delete, KeyCode::Home, KeyCode::End, KeyCode::PageUp, KeyCode::PageDown,
+                KeyCode::Char('j'), KeyCode::Char('k'), KeyCode::Char('h'), KeyCode::Char('l'),
+                KeyCode::Char('p'), KeyCode::Char('r'), KeyCode::Char('c'), KeyCode::Char('s'),
+                KeyCode::Char('n'), KeyCode::Char(' '), KeyCode::Char('v'), KeyCode::Char('o'), KeyCode::Char('q')
+            ];
+
+            // 1. Popups exhaustive keys
+            for setup in [
+                |a: &mut App| a.show_project_popup = true, |a: &mut App| a.show_calendar_popup = true, |a: &mut App| a.show_label_popup = true,
+                |a: &mut App| a.show_assignee_popup = true, |a: &mut App| a.show_milestone_popup = true, |a: &mut App| a.show_weight_popup = true,
+                |a: &mut App| a.show_pipeline_popup = true,
+            ] {
+                app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
+                app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
+                setup(&mut app);
+                for k in &keys { app.handle_key(key(k.clone())).await; }
+            }
+
+            // 2. ViewModes exhaustive keys
+            app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
+            app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
+            
+            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog] {
+                app.view_mode = mode;
+                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+                    app.active_selection = sel;
+                    for focus in [true, false] {
+                        app.focus_on_menu = focus;
+                        for k in &keys { app.handle_key(key(k.clone())).await; }
+                    }
+                }
+            }
+
+            // 3. Metadata fields move exhaustive
+            app.view_mode = ViewMode::Detail;
+            app.detail_section = DetailSection::Metadata;
+            let issue_json = r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#;
+            app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
+            for field in [MetadataField::Title, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential, MetadataField::Description] {
+                app.selected_metadata_field = field;
+                app.move_down(); app.move_up();
+                for k in &keys { app.handle_key(key(k.clone())).await; }
+            }
+
+            // 4. Input Target exhaustive
+            app.input_mode = true;
+            for target in [InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription, InputTarget::PipelineRef, InputTarget::PipelineRefSearch, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList] {
+                app.input_target = target;
+                app.cursor_index = 0;
+                app.get_input_buffer_mut().clear();
+                app.handle_key(key(KeyCode::Char('x'))).await;
+                app.handle_key(key(KeyCode::Backspace)).await;
+                app.handle_key(key_mod(KeyCode::Enter, KeyModifiers::SHIFT)).await;
+            }
+
+            // 5. Error mocks and actions
+            Mock::given(any()).respond_with(ResponseTemplate::new(500)).mount(&server).await;
+            let _ = app.fetch_projects().await;
+            let _ = app.fetch_merge_requests().await;
+            let _ = app.fetch_issues().await;
+            let _ = app.refresh().await;
+            let _ = app.post_comment().await;
+            let _ = app.post_reply().await;
+            let _ = app.resolve_discussion().await;
+            app.open_in_browser();
+        });
+    }
+
+    #[test]
+    fn test_parse_reactions_logic() {
+        use serde_json::json;
+        let vals = vec![json!({"name": "a"}), json!({"emoji": "b"}), json!({"emoji_name": "c"})];
+        let res = parse_reactions(vals);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res[0].name, "a");
+    }
 }
