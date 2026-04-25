@@ -1,6 +1,7 @@
 use gitlab::{api::{self, AsyncQuery}};
 use crate::models::*;
 use crate::api::*;
+use crate::app::parse_reactions;
 
 impl App {
     pub async fn fetch_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -35,17 +36,7 @@ impl App {
             issue: issue_iid,
         };
         let reaction_values: Vec<serde_json::Value> = gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All).query_async(&self.gitlab).await?;
-        let mut reactions = Vec::new();
-        for val in reaction_values {
-            // Check every possible field name GitLab might use for the emoji name
-            let name = val.get("name").and_then(|v| v.as_str())
-                .or_else(|| val.get("emoji").and_then(|v| v.as_str()))
-                .or_else(|| val.get("emoji_name").and_then(|v| v.as_str()));
-            
-            if let Some(n) = name {
-                reactions.push(AwardEmoji { name: n.to_string() });
-            }
-        }
+        let reactions = parse_reactions(reaction_values);
         
         if let Some(selected) = &mut self.selected_issue {
             if selected.iid == issue_iid {

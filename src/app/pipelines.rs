@@ -39,7 +39,7 @@ impl App {
         let endpoint = JobTrace { project: project_id, job: job_id };
         let data: Vec<u8> = gitlab::api::raw(endpoint).query_async(&self.gitlab).await?;
         let raw_log = String::from_utf8_lossy(&data).to_string();
-        self.job_log_lines = self.parse_job_log(&raw_log);
+        self.job_log_lines = parse_job_log(&raw_log);
 
         self.is_loading = false;
         Ok(())
@@ -54,11 +54,7 @@ impl App {
     }
 
     pub fn filter_branches(&mut self) {
-        let search = self.pipeline_ref_input.to_lowercase();
-        self.filtered_branches = self.project_branches.iter()
-            .map(|b| b.name.clone())
-            .filter(|name| name.to_lowercase().contains(&search))
-            .collect();
+        self.filtered_branches = filter_branch_names(&self.project_branches, &self.pipeline_ref_input);
         if self.filtered_branches.is_empty() && !self.pipeline_ref_input.is_empty() {
              // If no branches match but we have input, maybe it's a specific ref/tag not in first 100 branches
              // or the user just wants to type it. We keep filtered_branches empty in this case.
@@ -191,60 +187,7 @@ impl App {
         Ok(())
     }
 
-    fn parse_job_log(&self, raw_log: &str) -> Vec<LogLine> {
-        let prefix_re = Regex::new(r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z)\s[0-9]{2}O\+?\s?").unwrap();
-        let section_start_re = Regex::new(r"section_start:[0-9]+:([a-z_]+)\r?").unwrap();
-        let section_end_re = Regex::new(r"section_end:[0-9]+:([a-z_]+)\r?").unwrap();
-        let clear_line_re = Regex::new(r"\x1b\[0K").unwrap();
-
-        let mut lines = Vec::new();
-        let mut current_section: Option<String> = None;
-
-        for line in raw_log.lines() {
-            let mut timestamp = String::new();
-            let mut content = line.to_string();
-
-            if let Some(caps) = prefix_re.captures(line) {
-                timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-                content = prefix_re.replace(line, "").to_string();
-            }
-
-            content = clear_line_re.replace_all(&content, "").to_string();
-
-            let is_section_start = if let Some(caps) = section_start_re.captures(&content) {
-                current_section = caps.get(1).map(|m| m.as_str().to_string());
-                content = section_start_re.replace(&content, "").to_string();
-                true
-            } else {
-                false
-            };
-
-            let is_section_end = if let Some(_caps) = section_end_re.captures(&content) {
-                content = section_end_re.replace(&content, "").to_string();
-                current_section = None;
-                true
-            } else {
-                false
-            };
-
-            // If it's just a section marker line with no content, it might be empty now
-            // But we keep it to track the structure
-            lines.push(LogLine {
-                timestamp,
-                content,
-                section: current_section.clone(),
-                is_section_start,
-                is_section_end,
-            });
-        }
-        lines
-    }
-
     pub fn toggle_job_section(&mut self) {
-        // We toggle the section of the line currently at the top of the scroll or some selection
-        // Since we don't have a "selected line" for logs yet (just scroll), 
-        // let's assume we toggle the section that the user is looking at or we add selection to logs.
-        // For now, let's find the first section start near the scroll position.
         let mut visible_count = 0;
         let mut target_section = None;
 
@@ -260,7 +203,6 @@ impl App {
 
             if line.is_section_start {
                 if is_collapsed {
-                    // Skip internal lines if collapsed, but the start itself is visible
                     visible_count += 1;
                     continue; 
                 }
@@ -295,4 +237,59 @@ impl App {
         count
     }
 
+}
+
+pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
+    let prefix_re = Regex::new(r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z)\s[0-9]{2}O\+?\s?").unwrap();
+    let section_start_re = Regex::new(r"section_start:[0-9]+:([a-z_]+)\r?").unwrap();
+    let section_end_re = Regex::new(r"section_end:[0-9]+:([a-z_]+)\r?").unwrap();
+    let clear_line_re = Regex::new(r"\x1b\[0K").unwrap();
+
+    let mut lines = Vec::new();
+    let mut current_section: Option<String> = None;
+
+    for line in raw_log.lines() {
+        let mut timestamp = String::new();
+        let mut content = line.to_string();
+
+        if let Some(caps) = prefix_re.captures(line) {
+            timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            content = prefix_re.replace(line, "").to_string();
+        }
+
+        content = clear_line_re.replace_all(&content, "").to_string();
+
+        let is_section_start = if let Some(caps) = section_start_re.captures(&content) {
+            current_section = caps.get(1).map(|m| m.as_str().to_string());
+            content = section_start_re.replace(&content, "").to_string();
+            true
+        } else {
+            false
+        };
+
+        let is_section_end = if let Some(_caps) = section_end_re.captures(&content) {
+            content = section_end_re.replace(&content, "").to_string();
+            current_section = None;
+            true
+        } else {
+            false
+        };
+
+        lines.push(LogLine {
+            timestamp,
+            content,
+            section: current_section.clone(),
+            is_section_start,
+            is_section_end,
+        });
+    }
+    lines
+}
+
+pub fn filter_branch_names(branches: &[Branch], search: &str) -> Vec<String> {
+    let search = search.to_lowercase();
+    branches.iter()
+        .map(|b| b.name.clone())
+        .filter(|name| name.to_lowercase().contains(&search))
+        .collect()
 }

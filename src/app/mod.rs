@@ -1012,3 +1012,17 @@ impl App {
         }
     }
 }
+
+pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoji> {
+    let mut reactions = Vec::new();
+    for val in reaction_values {
+        let name = val.get("name").and_then(|v| v.as_str())
+            .or_else(|| val.get("emoji").and_then(|v| v.as_str()))
+            .or_else(|| val.get("emoji_name").and_then(|v| v.as_str()));
+        
+        if let Some(n) = name {
+            reactions.push(AwardEmoji { name: n.to_string() });
+        }
+    }
+    reactions
+}
