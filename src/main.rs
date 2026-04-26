@@ -68,10 +68,10 @@ mod tests {
     }
 
     #[test]
-    fn test_config_from_env() {
-        unsafe { std::env::set_var("GITLAB_TOKEN", "test"); }
-        let c = Config::from_env();
-        assert_eq!(c.token, "test");
+    #[should_panic(expected = "GITLAB_TOKEN must be set")]
+    fn test_config_from_env_panic() {
+        unsafe { std::env::remove_var("GITLAB_TOKEN"); }
+        Config::from_env();
     }
 }
 
