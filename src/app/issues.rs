@@ -21,12 +21,15 @@ impl App {
 
     pub async fn fetch_issue_discussions(&mut self, project_id: u64, issue_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
         // Fetch single issue to get latest upvotes/downvotes
-        let issue_endpoint = SingleIssue {
-            project: project_id,
-            issue: issue_iid,
-        };
-        let issue: crate::models::Issue = issue_endpoint.query_async(&self.gitlab).await?;
-        self.selected_issue = Some(issue.clone());
+        let issue_endpoint = api::projects::issues::Issues::builder()
+            .project(project_id)
+            .iids([issue_iid].iter().copied())
+            .with_labels_details(true)
+            .build()?;
+        let issues: Vec<crate::models::Issue> = issue_endpoint.query_async(&self.gitlab).await?;
+        if let Some(issue) = issues.into_iter().next() {
+            self.selected_issue = Some(issue);
+        }
 
         // Fetch award emojis
         let emoji_endpoint = IssueAwardEmoji {
