@@ -122,11 +122,27 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             let mut lines = Vec::new();
             if d.collapsed {
                 if let Some(note) = d.notes.first() {
-                    lines.push(Line::from(vec![Span::styled(if is_selected { "> " } else { "[+] " }, highlight), Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)), Span::styled(": ", highlight), Span::styled(note.body.chars().take(80).collect::<String>(), highlight)]));
+                    let mut spans = vec![
+                        Span::styled(if is_selected { "> " } else { "[+] " }, highlight),
+                        Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)),
+                    ];
+                    if d.resolved.unwrap_or(false) {
+                        spans.push(Span::styled(" [RESOLVED]", highlight.fg(app.theme.success)));
+                    }
+                    spans.push(Span::styled(": ", highlight));
+                    spans.push(Span::styled(note.body.chars().take(80).collect::<String>(), highlight));
+                    lines.push(Line::from(spans));
                 }
             } else {
-                for note in &d.notes {
-                    lines.push(Line::from(vec![Span::styled(format!("@{}", note.author.username), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD)), Span::raw(" says:")]));
+                for (n_idx, note) in d.notes.iter().enumerate() {
+                    let mut spans = vec![
+                        Span::styled(format!("@{}", note.author.username), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD)),
+                        Span::raw(" says:"),
+                    ];
+                    if n_idx == 0 && d.resolved.unwrap_or(false) {
+                        spans.push(Span::styled(" [RESOLVED]", Style::default().fg(app.theme.success).add_modifier(Modifier::BOLD)));
+                    }
+                    lines.push(Line::from(spans));
                     lines.extend(render_markdown(&note.body, &app.theme).into_iter().map(|l| {
                         let mut spans = vec![Span::raw("  ")];
                         spans.extend(l.spans);
@@ -274,11 +290,27 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             let mut lines = Vec::new();
             if d.collapsed {
                 if let Some(note) = d.notes.first() {
-                    lines.push(Line::from(vec![Span::styled(if is_selected { "> " } else { "[+] " }, highlight), Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)), Span::styled(": ", highlight), Span::styled(note.body.chars().take(80).collect::<String>(), highlight)]));
+                    let mut spans = vec![
+                        Span::styled(if is_selected { "> " } else { "[+] " }, highlight),
+                        Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)),
+                    ];
+                    if d.resolved.unwrap_or(false) {
+                        spans.push(Span::styled(" [RESOLVED]", highlight.fg(app.theme.success)));
+                    }
+                    spans.push(Span::styled(": ", highlight));
+                    spans.push(Span::styled(note.body.chars().take(80).collect::<String>(), highlight));
+                    lines.push(Line::from(spans));
                 }
             } else {
-                for note in &d.notes {
-                    lines.push(Line::from(vec![Span::styled(format!("@{}", note.author.username), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD)), Span::raw(" says:")]));
+                for (n_idx, note) in d.notes.iter().enumerate() {
+                    let mut spans = vec![
+                        Span::styled(format!("@{}", note.author.username), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD)),
+                        Span::raw(" says:"),
+                    ];
+                    if n_idx == 0 && d.resolved.unwrap_or(false) {
+                        spans.push(Span::styled(" [RESOLVED]", Style::default().fg(app.theme.success).add_modifier(Modifier::BOLD)));
+                    }
+                    lines.push(Line::from(spans));
                     lines.extend(render_markdown(&note.body, &app.theme).into_iter().map(|l| {
                         let mut spans = vec![Span::raw("  ")];
                         spans.extend(l.spans);

@@ -113,6 +113,8 @@ impl App {
 
             let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
             if res.is_ok() {
+                self.input_mode = false;
+                self.reply_input.clear();
                 let _ = self.fetch_merge_requests().await;
                 let _ = self.fetch_discussions(project_id, iid).await;
             }
