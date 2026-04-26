@@ -560,5 +560,24 @@ mod tests {
         let ep = PlayJob { project: 1, job: 2 };
         assert_eq!(ep.method(), Method::POST);
         assert_eq!(ep.endpoint(), "projects/1/jobs/2/play");
+
+        let ep = AddIssueNote { project: 1, issue: 2, body: "b".into() };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/notes");
+        assert!(ep.body().is_ok());
+
+        // Exhaustive EditIssue
+        let mut ep = EditIssue {
+            project: 1, issue: 2, title: Some("t".into()), description: Some("d".into()),
+            state_event: Some("close".into()), labels: Some("l".into()), assignee_ids: Some(vec![1]),
+            milestone_id: Some(Some(1)), due_date: Some(Some("2026-01-01".into())),
+            weight: Some(Some(5)), confidential: Some(true)
+        };
+        assert!(ep.body().is_ok());
+        
+        ep.milestone_id = Some(None);
+        ep.due_date = Some(None);
+        ep.weight = Some(None);
+        assert!(ep.body().is_ok());
     }
 }
