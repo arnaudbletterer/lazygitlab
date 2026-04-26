@@ -1,22 +1,22 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ratatui::widgets::ListState;
 use crate::ui::Theme;
 use gitlab::AsyncGitlab;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Project {
     pub id: u64,
     pub name: String,
     pub path_with_namespace: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AwardEmoji {
     #[serde(alias = "emoji", alias = "emoji_name")]
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MergeRequest {
     pub iid: u64,
     pub project_id: u64,
@@ -36,7 +36,7 @@ pub struct MergeRequest {
     pub reactions: Vec<AwardEmoji>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Discussion {
     pub id: String,
     pub notes: Vec<Note>,
@@ -45,21 +45,21 @@ pub struct Discussion {
     pub resolved: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MRDiff {
     pub old_path: String,
     pub new_path: String,
     pub diff: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum LineType {
     Addition,
     Removal,
     Unchanged,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Note {
     pub body: String,
     pub author: Author,
@@ -69,7 +69,7 @@ pub struct Note {
     pub context: Option<Vec<(u64, String, LineType, bool)>>, // (line_number, content, type, is_target)
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Position {
     pub new_path: Option<String>,
     pub old_path: Option<String>,
@@ -77,32 +77,32 @@ pub struct Position {
     pub old_line: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct References {
     pub full: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Author {
     pub id: u64,
     pub username: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum MenuSelection {
     MergeRequests,
     Issues,
     Pipelines,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum ViewMode {
     List,
     Detail,
     JobLog,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Label {
     pub id: u64,
     pub name: String,
@@ -110,25 +110,25 @@ pub struct Label {
     pub text_color: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Milestone {
     pub id: u64,
     pub title: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TaskCompletionStatus {
     pub count: u64,
     pub completed_count: u64,
 }
 
-#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct PipelineVariable {
     pub key: String,
     pub value: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Pipeline {
     pub id: u64,
     pub project_id: u64,
@@ -142,12 +142,12 @@ pub struct Pipeline {
     pub duration: Option<f64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Runner {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Job {
     pub id: u64,
     pub name: String,
@@ -164,7 +164,7 @@ pub struct Job {
     pub tag_list: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Issue {
     pub iid: u64,
     pub project_id: u64,
@@ -188,10 +188,11 @@ pub struct Issue {
     pub reactions: Vec<AwardEmoji>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Branch {
     pub name: String,
 }
+
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputTarget {
