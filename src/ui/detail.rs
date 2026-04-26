@@ -400,6 +400,7 @@ mod tests {
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
         app.active_selection = MenuSelection::Issues;
 
+
         // Render Issue all sections & fields
         for sec in [DetailSection::Metadata, DetailSection::Discussions] {
             app.detail_section = sec;

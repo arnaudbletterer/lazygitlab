@@ -196,6 +196,10 @@ mod tests {
         assert!(s.contains("years") || s.contains("months") || s.contains("days"));
         let s2 = format_relative_time("2020-01-01T00:00:00.000Z");
         assert!(s2.contains("years") || s2.contains("months") || s2.contains("days"));
+        
+        // This format might fail RFC3339 depending on chrono version/strictness but match our custom format
+        // Actually RFC3339 is very broad. Let's try to hit the Err case of the first match if possible.
+        // If not, we still hit 100% if we just test the functionalities.
     }
 
     #[test]
@@ -218,9 +222,18 @@ mod tests {
         assert_eq!(get_status_style("success", &theme).fg, Some(theme.success));
         assert_eq!(get_status_style("failed", &theme).fg, Some(theme.failed));
         assert_eq!(get_status_style("opened", &theme).fg, Some(theme.open_mr));
+        assert_eq!(get_status_style("open", &theme).fg, Some(theme.open_mr));
         assert_eq!(get_status_style("merged", &theme).fg, Some(theme.merged_mr));
+        assert_eq!(get_status_style("resolved", &theme).fg, Some(theme.merged_mr));
+        assert_eq!(get_status_style("closed", &theme).fg, Some(theme.closed_mr));
         assert_eq!(get_status_style("running", &theme).fg, Some(theme.running));
         assert_eq!(get_status_style("pending", &theme).fg, Some(theme.pending));
+        
+        // Dim statuses
+        for s in ["canceled", "skipped", "manual", "created", "scheduled"] {
+            assert_eq!(get_status_style(s, &theme).fg, Some(theme.dim));
+        }
+        
         assert_eq!(get_status_style("unknown", &theme).fg, None);
     }
 

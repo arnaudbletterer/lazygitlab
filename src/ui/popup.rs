@@ -275,6 +275,14 @@ mod tests {
 
         // 6. Calendar Popup
         terminal.draw(|f| render_calendar_popup(f, &mut app)).unwrap();
+        
+        // Test December branch
+        app.calendar_date = chrono::NaiveDate::from_ymd_opt(2023, 12, 1).unwrap();
+        terminal.draw(|f| render_calendar_popup(f, &mut app)).unwrap();
+
+        // Test month with exactly 28 days starting on Monday (no leftover row)
+        app.calendar_date = chrono::NaiveDate::from_ymd_opt(2021, 2, 1).unwrap();
+        terminal.draw(|f| render_calendar_popup(f, &mut app)).unwrap();
 
         // 7. Pipeline Popup
         app.input_target = InputTarget::PipelineRef;
