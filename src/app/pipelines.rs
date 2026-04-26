@@ -341,6 +341,12 @@ mod tests {
     #[test]
     fn test_pipeline_actions_exhaustive() {
         let (server, mut app) = block_on(setup_app());
+        
+        // Test fetch without project
+        app.selected_project = None;
+        let _ = block_on(app.fetch_pipelines());
+        assert!(app.pipelines.is_empty());
+
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
 
         block_on(async {
@@ -349,35 +355,57 @@ mod tests {
 
             let _ = app.fetch_pipelines().await;
             let _ = app.fetch_jobs(1, 1).await;
-            let _ = app.fetch_pipeline(1, 1).await;
+            
+            // fetch_pipeline with match/no match
+            let pipeline_json = r#"{"id": 100, "project_id": 1, "status": "success", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z"}"#;
+            Mock::given(path("/api/v4/projects/1/pipelines/100")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<Pipeline>(pipeline_json).unwrap())).mount(&server).await;
+            
+            app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
+            let _ = app.fetch_pipeline(1, 100).await;
+            
+            app.selected_pipeline = None;
+            let _ = app.fetch_pipeline(1, 100).await;
+
             let _ = app.fetch_job_log(1, 1).await;
             let _ = app.fetch_branches(1).await;
             
-            // Popups
+            // Popups & variables
             app.show_pipeline_launch_popup().await;
             app.pipeline_variable_key_input = "K".into();
             app.pipeline_variable_value_input = "V".into();
             app.add_pipeline_variable();
+            
+            app.pipeline_variables_state.select(Some(0));
             app.remove_pipeline_variable();
+            // remove from empty
+            app.remove_pipeline_variable();
+            
             app.submit_pipeline_launch().await;
             
             let _ = app.create_pipeline(1, "m", vec![]).await;
             let _ = app.retry_pipeline(1, 1).await;
             let _ = app.cancel_pipeline(1, 1).await;
 
-            let pipeline_json = r#"{"id": 100, "project_id": 1, "status": "success", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z"}"#;
             app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
-            
             let _ = app.retry_job(1, 1).await;
             let _ = app.cancel_job(1, 1).await;
             let _ = app.play_job(1, 1).await;
 
             // Log navigation logic
-            app.job_log_lines = vec![LogLine { timestamp: "t".into(), content: "c".into(), section: Some("s".into()), is_section_start: true, is_section_end: false }];
+            app.job_log_lines = vec![
+                LogLine { timestamp: "t".into(), content: "c1".into(), section: Some("s1".into()), is_section_start: true, is_section_end: false },
+                LogLine { timestamp: "t".into(), content: "c2".into(), section: Some("s1".into()), is_section_start: false, is_section_end: false },
+                LogLine { timestamp: "t".into(), content: "c3".into(), section: Some("s1".into()), is_section_start: false, is_section_end: true },
+            ];
             app.collapsed_sections = std::collections::HashSet::new();
             app.job_log_scroll = 0;
             app.toggle_job_section();
             app.get_visible_job_log_lines_count();
+            
+            // Branches filter
+            app.project_branches = vec![Branch { name: "main".into() }];
+            app.pipeline_ref_input = "xyz".into();
+            app.filter_branches();
         });
     }
 }

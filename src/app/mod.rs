@@ -1126,17 +1126,120 @@ mod tests {
                 KeyCode::Char('n'), KeyCode::Char(' '), KeyCode::Char('v'), KeyCode::Char('o'), KeyCode::Char('q')
             ];
 
-            // 1. Popups exhaustive keys
-            for setup in [
-                |a: &mut App| a.show_project_popup = true, |a: &mut App| a.show_calendar_popup = true, |a: &mut App| a.show_label_popup = true,
-                |a: &mut App| a.show_assignee_popup = true, |a: &mut App| a.show_milestone_popup = true, |a: &mut App| a.show_weight_popup = true,
-                |a: &mut App| a.show_pipeline_popup = true,
-            ] {
+            // Populate lists and select first item
+            app.project_labels = vec![Label { id: 1, name: "l".into(), color: "c".into(), text_color: "t".into() }];
+            app.label_state.select(Some(0));
+            app.project_members = vec![Author { id: 1, username: "u".into() }];
+            app.assignee_state.select(Some(0));
+            app.project_milestones = vec![Milestone { id: 1, title: "m".into() }];
+            app.milestone_state.select(Some(0));
+            app.pipeline_variables = vec![PipelineVariable { key: "k".into(), value: "v".into() }];
+            app.pipeline_variables_state.select(Some(0));
+            app.filtered_branches = vec!["b".into()];
+            app.branches_state.select(Some(0));
+            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() }];
+            app.projects_state.select(Some(0));
+            app.merge_requests = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#).unwrap()];
+            app.mrs_state.select(Some(0));
+            app.issues = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#).unwrap()];
+            app.issues_state.select(Some(0));
+            app.pipelines = vec![serde_json::from_str(r#"{"id": 1, "project_id": 1, "status": "success", "source": "push", "ref": "m", "web_url": "u", "created_at": "t"}"#).unwrap()];
+            app.pipelines_state.select(Some(0));
+            app.jobs = vec![serde_json::from_str(r#"{"id": 1, "name": "j", "stage": "s", "status": "success", "created_at": "t", "web_url": "u", "tag_list": [], "allow_failure": false}"#).unwrap()];
+            app.jobs_state.select(Some(0));
+            app.discussions = vec![serde_json::from_str(r#"{"id": "1", "notes": [{"id":1,"body":"b","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}]}"#).unwrap()];
+            app.discussion_state.select(Some(0));
+
+            // 1. Popups exhaustive keys (Test with selection)
+            let popups: [ (fn(&mut App), &str); 8] = [
+                (|a: &mut App| a.show_project_popup = true, "project"),
+                (|a: &mut App| a.show_calendar_popup = true, "calendar"),
+                (|a: &mut App| a.show_label_popup = true, "label"),
+                (|a: &mut App| a.show_assignee_popup = true, "assignee"),
+                (|a: &mut App| a.show_milestone_popup = true, "milestone"),
+                (|a: &mut App| a.show_weight_popup = true, "weight"),
+                (|a: &mut App| { a.show_pipeline_popup = true; a.input_target = InputTarget::PipelineVariableList; }, "pipeline_var"),
+                (|a: &mut App| { a.show_pipeline_popup = true; a.show_branches_dropdown = true; }, "pipeline_branch"),
+            ];
+
+            for (setup, _name) in popups {
                 app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
                 app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
+                app.show_branches_dropdown = false; app.input_mode = false;
                 setup(&mut app);
                 for k in &keys { app.handle_key(key(k.clone())).await; }
             }
+
+            // 2. Test Input Mode with all targets
+            app.input_mode = true;
+            let targets = [
+                InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
+                InputTarget::PipelineRef, InputTarget::PipelineRefSearch, InputTarget::PipelineVariableKey,
+                InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList
+            ];
+            for target in targets {
+                app.input_target = target;
+                app.cursor_index = 0;
+                for k in &keys { app.handle_key(key(k.clone())).await; }
+                // Test special key combinations
+                app.handle_key(key_mod(KeyCode::Enter, KeyModifiers::SHIFT)).await;
+            }
+            app.input_mode = false;
+
+            // 3. Test ViewModes and Selections
+            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog] {
+                app.view_mode = mode;
+                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+                    app.active_selection = sel;
+                    for focus in [true, false] {
+                        app.focus_on_menu = focus;
+                        for k in &keys { app.handle_key(key(k.clone())).await; }
+                    }
+                }
+            }
+
+            // 4. Metadata fields detail navigation
+            app.view_mode = ViewMode::Detail;
+            app.selected_mr = Some(serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#).unwrap());
+            app.selected_issue = None;
+            for field in [MetadataField::Title, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::Description] {
+                app.selected_metadata_field = field;
+                app.detail_section = DetailSection::Metadata;
+                app.move_down(); app.move_up();
+            }
+            app.selected_issue = Some(serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#).unwrap());
+            app.selected_mr = None;
+            for field in [MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential, MetadataField::Description] {
+                app.selected_metadata_field = field;
+                app.detail_section = DetailSection::Metadata;
+                app.move_down(); app.move_up();
+            }
+
+            // 5. Discussion navigation
+            app.detail_section = DetailSection::Discussions;
+            app.discussion_state.select(Some(0));
+            app.move_down(); app.move_up();
+            app.discussion_state.select(None);
+            app.move_down(); app.move_up();
+
+            // 6. Action methods
+            let _ = app.fetch_projects().await;
+            let _ = app.fetch_merge_requests().await;
+            let _ = app.fetch_issues().await;
+            let _ = app.fetch_pipelines().await;
+            let _ = app.fetch_project_metadata().await;
+            let _ = app.update_issue().await;
+            let _ = app.update_mr().await;
+            let _ = app.toggle_issue_state().await;
+            let _ = app.toggle_confidential().await;
+            let _ = app.submit_pipeline_launch().await;
+            let _ = app.refresh().await;
+            app.open_in_browser();
+            app.switch_project();
+            app.back().await;
+            app.toggle_focus();
+            app.page_down(); app.page_up();
+            app.toggle_discussion();
 
             // 2. ViewModes exhaustive keys
             app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;

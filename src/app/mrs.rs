@@ -314,22 +314,44 @@ mod tests {
     }
 
     #[test]
-    fn test_mr_updates_logic() {
+    fn test_mr_updates_logic_exhaustive() {
         let (server, mut app) = block_on(setup_app());
+        
+        // Test fetch without project
+        app.selected_project = None;
+        let _ = block_on(app.fetch_merge_requests());
+        assert!(app.merge_requests.is_empty());
+
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
         let mr_json = r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#;
         app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
 
         block_on(async {
             use wiremock::matchers::method;
+            Mock::given(path("/api/v4/projects/1/merge_requests/1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(serde_json::from_str::<MergeRequest>(mr_json).unwrap()))).mount(&server).await;
+            Mock::given(path("/api/v4/projects/1/merge_requests/1/award_emoji")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(path("/api/v4/projects/1/merge_requests/1/discussions")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "d1", "notes": [{"id": 1, "body": "b", "author": {"id": 1, "username": "u"}, "system": false, "created_at": "t", "position": {"new_path": "f", "new_line": 1}}]}
+            ]))).mount(&server).await;
+            Mock::given(path("/api/v4/projects/1/merge_requests/1/diffs")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"old_path": "f", "new_path": "f", "diff": "@@ -1,1 +1,1 @@\n-old\n+new\n"}
+            ]))).mount(&server).await;
+
             Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
 
             let _ = app.fetch_merge_requests().await;
             let _ = app.fetch_discussions(1, 1).await;
+            
+            app.input_target = InputTarget::EditTitle;
             let _ = app.update_mr().await;
+            app.input_target = InputTarget::EditDescription;
+            let _ = app.update_mr().await;
+            
             let _ = app.update_mr_labels().await;
             let _ = app.update_mr_assignees().await;
+            
+            app.milestone_state.select(Some(0));
             let _ = app.update_mr_milestone().await;
         });
     }

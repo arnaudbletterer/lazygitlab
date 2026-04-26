@@ -381,11 +381,24 @@ mod tests {
     #[test]
     fn test_issue_updates_logic_exhaustive() {
         let (server, mut app) = block_on(setup_app());
+        
+        // Test fetch_issues without project
+        app.selected_project = None;
+        let _ = block_on(app.fetch_issues());
+        assert!(app.issues.is_empty());
+
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
         let issue_json = r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#;
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
 
         block_on(async {
+            // Mocks for fetch_issue_discussions
+            Mock::given(path("/api/v4/projects/1/issues/1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(serde_json::from_str::<Issue>(issue_json).unwrap()))).mount(&server).await;
+            Mock::given(path("/api/v4/projects/1/issues/1/award_emoji")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+            Mock::given(path("/api/v4/projects/1/issues/1/discussions")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "1", "notes": [{"id": 1, "body": "n", "author": {"id": 1, "username": "u"}, "system": false, "created_at": "t"}]}
+            ]))).mount(&server).await;
+
             Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
 
@@ -395,9 +408,20 @@ mod tests {
             let _ = app.update_issue_labels().await;
             let _ = app.update_issue_assignees().await;
             let _ = app.update_issue_milestone().await;
+            
+            // Set some selections for date/weight
+            app.calendar_date = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
             let _ = app.update_issue_due_date().await;
+            
+            app.weight_state.select(Some(5));
             let _ = app.update_issue_weight().await;
+            
             let _ = app.toggle_confidential().await;
+            let _ = app.toggle_issue_state().await;
+
+            // Test toggle when closed
+            if let Some(i) = &mut app.selected_issue { i.state = "closed".into(); }
+            let _ = app.toggle_issue_state().await;
         });
     }
 }
