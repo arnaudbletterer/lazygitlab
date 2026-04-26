@@ -117,8 +117,12 @@ impl Endpoint for EditIssue {
         if let Some(s) = &self.state_event { params.push("state_event", s); }
         if let Some(l) = &self.labels { params.push("labels", l); }
         if let Some(a) = &self.assignee_ids { 
-            for id in a {
-                params.push("assignee_ids[]", *id);
+            if a.is_empty() {
+                params.push("assignee_ids[]", 0);
+            } else {
+                for id in a {
+                    params.push("assignee_ids[]", *id);
+                }
             }
         }
         if let Some(m) = &self.milestone_id {
@@ -136,11 +140,33 @@ impl Endpoint for EditIssue {
         if let Some(w) = &self.weight {
             match w {
                 Some(val) => { params.push("weight", *val as u64); },
-                None => { params.push("weight", 0); } // Check gitlab docs for clear weight
+                None => { params.push("weight", ""); } // Clear weight by sending empty string
             }
         }
         if let Some(c) = &self.confidential { params.push("confidential", *c); }
         params.into_body()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SingleIssue {
+    pub project: u64,
+    pub issue: u64,
+}
+
+impl Endpoint for SingleIssue {
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn endpoint(&self) -> Cow<'static, str> {
+        format!("projects/{}/issues/{}", self.project, self.issue).into()
+    }
+
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
     }
 }
 
@@ -241,8 +267,12 @@ impl Endpoint for EditMergeRequest {
         if let Some(s) = &self.state_event { params.push("state_event", s); }
         if let Some(l) = &self.labels { params.push("labels", l); }
         if let Some(a) = &self.assignee_ids { 
-            for id in a {
-                params.push("assignee_ids[]", *id);
+            if a.is_empty() {
+                params.push("assignee_ids[]", 0);
+            } else {
+                for id in a {
+                    params.push("assignee_ids[]", *id);
+                }
             }
         }
         if let Some(m) = &self.milestone_id {

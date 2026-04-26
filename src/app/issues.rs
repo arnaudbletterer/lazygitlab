@@ -20,13 +20,11 @@ impl App {
     }
 
     pub async fn fetch_issue_discussions(&mut self, project_id: u64, issue_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
-        use gitlab::api::projects::issues::Issue;
-
         // Fetch single issue to get latest upvotes/downvotes
-        let issue_endpoint = Issue::builder()
-            .project(project_id)
-            .issue(issue_iid)
-            .build()?;
+        let issue_endpoint = SingleIssue {
+            project: project_id,
+            issue: issue_iid,
+        };
         let issue: crate::models::Issue = issue_endpoint.query_async(&self.gitlab).await?;
         self.selected_issue = Some(issue.clone());
 
