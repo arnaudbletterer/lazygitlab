@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::models::App;
+use crate::models::{App, InputTarget};
 use crate::ui::widgets::{centered_rect, render_shortcuts};
 
 pub fn render_project_popup(f: &mut Frame, app: &mut App) {
@@ -223,6 +223,130 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
             .highlight_symbol(">> ");
         f.render_stateful_widget(list, dropdown_area, &mut app.branches_state);
     }
+}
+
+pub fn render_help_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 70, f.area());
+    f.render_widget(Clear, area);
+    
+    let block = Block::default()
+        .bg(Color::Black)
+        .borders(Borders::ALL)
+        .title(" Help & Shortcuts (Esc to close, / to search) ")
+        .border_style(Style::default().fg(app.theme.border));
+    f.render_widget(block, area);
+
+    let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(if app.show_help_filter { 3 } else { 0 }),
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    if app.show_help_filter {
+        let filter_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Search Command ")
+            .border_style(Style::default().fg(app.theme.highlight_bg));
+        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str())
+            .block(filter_block);
+        f.render_widget(filter_paragraph, chunks[0]);
+
+        f.set_cursor_position(Position::new(
+            chunks[0].x + app.help_filter_input.chars().count() as u16 + 1,
+            chunks[0].y + 1,
+        ));
+    }
+
+    let items: Vec<ListItem> = app.filtered_help.iter()
+        .map(|h| {
+            let line = Line::from(vec![
+                Span::styled(format!("{:<20}", h.shortcut), Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+                Span::styled(&h.description, Style::default().fg(app.theme.shortcut_desc)),
+            ]);
+            ListItem::new(line)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .highlight_style(Style::default().bg(app.theme.highlight_bg))
+        .highlight_symbol(">> ");
+    f.render_stateful_widget(list, chunks[1], &mut app.help_state);
+}
+
+pub fn render_create_issue_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 40, f.area());
+    f.render_widget(Clear, area);
+    let block = Block::default().borders(Borders::ALL).title(" Create New Issue ").border_style(Style::default().fg(app.theme.border));
+    f.render_widget(block, area);
+
+    let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Title input
+            Constraint::Min(0),    // Description input
+            Constraint::Length(1), // Help
+        ])
+        .split(inner);
+
+    let title_style = if app.input_target == InputTarget::CreateIssueTitle { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
+    let title_block = Block::default().borders(Borders::ALL).title(" Title ").border_style(title_style);
+    let title_para = Paragraph::new(app.create_issue_title.as_str()).block(title_block);
+    f.render_widget(title_para, chunks[0]);
+
+    let desc_style = if app.input_target == InputTarget::CreateIssueDescription { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
+    let desc_block = Block::default().borders(Borders::ALL).title(" Description ").border_style(desc_style);
+    let desc_para = Paragraph::new(app.create_issue_description.as_str()).block(desc_block).wrap(Wrap { trim: false });
+    f.render_widget(desc_para, chunks[1]);
+
+    if app.input_target == InputTarget::CreateIssueTitle {
+        f.set_cursor_position(Position::new(chunks[0].x + app.cursor_index as u16 + 1, chunks[0].y + 1));
+    } else if app.input_target == InputTarget::CreateIssueDescription {
+        // Simple cursor placement for description (doesn't handle wraps perfectly)
+        f.set_cursor_position(Position::new(chunks[1].x + (app.cursor_index % chunks[1].width as usize) as u16 + 1, chunks[1].y + (app.cursor_index / chunks[1].width as usize) as u16 + 1));
+    }
+
+    render_shortcuts(f, chunks[2], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
+}
+
+pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(70, 60, f.area());
+    f.render_widget(Clear, area);
+    let block = Block::default().borders(Borders::ALL).title(" Create New Merge Request ").border_style(Style::default().fg(app.theme.border));
+    f.render_widget(block, area);
+
+    let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Title
+            Constraint::Length(3), // Source Branch
+            Constraint::Length(3), // Target Branch
+            Constraint::Min(0),    // Description
+            Constraint::Length(1), // Help
+        ])
+        .split(inner);
+
+    let field_chunks = [chunks[0], chunks[1], chunks[2], chunks[3]];
+    let targets = [InputTarget::CreateMRTitle, InputTarget::CreateMRSourceBranch, InputTarget::CreateMRTargetBranch, InputTarget::CreateMRDescription];
+    let titles = [" Title ", " Source Branch ", " Target Branch ", " Description "];
+    let contents = [&app.create_mr_title, &app.create_mr_source_branch, &app.create_mr_target_branch, &app.create_mr_description];
+
+    for i in 0..4 {
+        let style = if app.input_target == targets[i] { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
+        let block = Block::default().borders(Borders::ALL).title(titles[i]).border_style(style);
+        let para = Paragraph::new(contents[i].as_str()).block(block);
+        f.render_widget(para, field_chunks[i]);
+        
+        if app.input_target == targets[i] {
+            f.set_cursor_position(Position::new(field_chunks[i].x + app.cursor_index as u16 + 1, field_chunks[i].y + 1));
+        }
+    }
+
+    render_shortcuts(f, chunks[4], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
 }
 
 #[cfg(test)]

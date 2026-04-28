@@ -3,6 +3,7 @@ pub mod widgets;
 pub mod list;
 pub mod detail;
 pub mod popup;
+pub mod diff;
 
 pub use widgets::Theme;
 use ratatui::prelude::*;
@@ -10,6 +11,7 @@ use ratatui::widgets::*;
 use crate::models::{App, ViewMode};
 use list::render_list_view;
 use detail::render_detail_view;
+use diff::render_diff_view;
 use popup::*;
 use ansi_to_tui::IntoText;
 use crate::ui::widgets::{format_relative_time, format_time_only};
@@ -24,6 +26,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         }
         ViewMode::JobLog => {
             render_job_log_view(f, app);
+        }
+        ViewMode::Diff => {
+            render_diff_view(f, app);
         }
     }
 
@@ -47,6 +52,18 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
     if app.show_pipeline_popup {
         render_pipeline_popup(f, app);
+    }
+
+    if app.show_help_popup {
+        render_help_popup(f, app);
+    }
+
+    if app.show_create_issue_popup {
+        render_create_issue_popup(f, app);
+    }
+
+    if app.show_create_mr_popup {
+        render_create_mr_popup(f, app);
     }
 }
 
