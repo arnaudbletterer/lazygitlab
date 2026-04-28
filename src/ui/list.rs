@@ -36,12 +36,39 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
     let content_style = if !app.focus_on_menu { Style::default().fg(app.theme.border) } else { Style::default() };
     let content_highlight_style = if !app.focus_on_menu { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() };
 
+    let content_chunks = if app.show_filter_input {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Filter input
+                Constraint::Min(0),    // List
+            ])
+            .split(main_chunks[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0)])
+            .split(main_chunks[1])
+    };
+
+    if app.show_filter_input {
+        let filter_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Filter (Esc to clear) ")
+            .border_style(Style::default().fg(app.theme.highlight_bg));
+        let filter_paragraph = Paragraph::new(app.filter_input.as_str())
+            .block(filter_block);
+        f.render_widget(filter_paragraph, content_chunks[0]);
+    }
+
+    let list_area = if app.show_filter_input { content_chunks[1] } else { content_chunks[0] };
+
     if app.selected_project.is_none() {
-        f.render_widget(Paragraph::new("\n\n  No project selected.\n  Press Ctrl+R to select a project.").block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style)), main_chunks[1]);
+        f.render_widget(Paragraph::new("\n\n  No project selected.\n  Press Ctrl+R to select a project.").block(Block::default().borders(Borders::ALL).title(" Content ").border_style(content_style)), list_area);
     } else {
         match app.active_selection {
             MenuSelection::MergeRequests => {
-                let mrs: Vec<ListItem> = app.merge_requests.iter().map(|mr| {
+                let mrs: Vec<ListItem> = app.filtered_mrs.iter().map(|mr| {
                     let state_style = get_status_style(&mr.state, &app.theme);
                     let mut line_spans = vec![
                         Span::styled(format!("[{}]", mr.state), state_style),
@@ -60,10 +87,10 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                     }
                     ListItem::from(Line::from(line_spans))
                 }).collect();
-                f.render_stateful_widget(List::new(mrs).block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.mrs_state);
+                f.render_stateful_widget(List::new(mrs).block(Block::default().borders(Borders::ALL).title(format!(" MRs for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), list_area, &mut app.mrs_state);
             }
             MenuSelection::Issues => {
-                let issues: Vec<ListItem> = app.issues.iter().map(|issue| {
+                let issues: Vec<ListItem> = app.filtered_issues.iter().map(|issue| {
                     let state_style = get_status_style(&issue.state, &app.theme);
                     let mut spans = vec![
                         Span::styled(format!("[{}]", issue.state), state_style),
@@ -87,16 +114,16 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                     }
                     ListItem::from(Line::from(spans))
                 }).collect();
-                f.render_stateful_widget(List::new(issues).block(Block::default().borders(Borders::ALL).title(format!(" Issues for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.issues_state);
+                f.render_stateful_widget(List::new(issues).block(Block::default().borders(Borders::ALL).title(format!(" Issues for {} ", proj_name)).border_style(content_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), list_area, &mut app.issues_state);
             }
             MenuSelection::Pipelines => {
                 let pipelines_title = if app.is_loading { format!(" Pipelines for {} (Refreshing...) ", proj_name) } else { format!(" Pipelines for {} [LIVE] ", proj_name) };
                 let pipelines_style = if app.is_loading { Style::default().fg(Color::Yellow) } else if !app.focus_on_menu { Style::default().fg(Color::Green) } else { content_style };
 
-                if app.pipelines.is_empty() {
-                    f.render_widget(Paragraph::new("No pipelines found").block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)), main_chunks[1]);
+                if app.filtered_pipelines.is_empty() {
+                    f.render_widget(Paragraph::new("No pipelines found").block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)), list_area);
                 } else {
-                    let pipelines: Vec<ListItem> = app.pipelines.iter().map(|pipeline| {
+                    let pipelines: Vec<ListItem> = app.filtered_pipelines.iter().map(|pipeline| {
                         let state_style = get_status_style(&pipeline.status, &app.theme);
                         let mut spans = vec![
                             Span::styled(format!("[{}]", pipeline.status), state_style),
@@ -116,17 +143,25 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
 
                         ListItem::from(Line::from(spans))
                     }).collect();
-                    f.render_stateful_widget(List::new(pipelines).block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), main_chunks[1], &mut app.pipelines_state);
+                    f.render_stateful_widget(List::new(pipelines).block(Block::default().borders(Borders::ALL).title(pipelines_title).border_style(pipelines_style)).highlight_style(content_highlight_style).highlight_symbol(if !app.focus_on_menu { "> " } else { "  " }), list_area, &mut app.pipelines_state);
                 }
                 
-                let shortcuts = vec![("j/k", "nav"), ("p", "run pipeline"), ("c", "cancel"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")];
+                let shortcuts = if app.show_filter_input {
+                    vec![("j/k", "nav"), ("esc", "clear filter"), ("p", "run pipeline"), ("c", "cancel"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")]
+                } else {
+                    vec![("j/k", "nav"), ("/", "filter"), ("p", "run pipeline"), ("c", "cancel"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")]
+                };
                 render_shortcuts(f, chunks[1], shortcuts, &app.theme);
                 return; // Prevent double rendering of shortcuts
             }
         }
     }
 
-    let shortcuts = vec![("j/k", "nav"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")];
+    let shortcuts = if app.show_filter_input {
+        vec![("j/k", "nav"), ("esc", "clear filter"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")]
+    } else {
+        vec![("j/k", "nav"), ("/", "filter"), ("tab", "switch"), ("ctrl+r", "switch project"), ("enter", "select"), ("o", "open"), ("q", "quit")]
+    };
     render_shortcuts(f, chunks[1], shortcuts, &app.theme);
 }
 

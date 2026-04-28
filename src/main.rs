@@ -33,14 +33,14 @@ impl Config {
 pub async fn run_with_terminal(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, event::EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let res = run_app(&mut terminal, app).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, event::DisableMouseCapture)?;
     terminal.show_cursor()?;
     if let Err(err) = res { eprintln!("Application Error: {err}"); }
     Ok(())
@@ -93,10 +93,16 @@ where
         }
 
         if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    app.handle_key(key).await;
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        app.handle_key(key).await;
+                    }
                 }
+                Event::Mouse(mouse) => {
+                    app.handle_mouse(mouse).await;
+                }
+                _ => {}
             }
         }
     }
