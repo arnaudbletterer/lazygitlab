@@ -92,7 +92,7 @@ async fn test_issue_weight_update_refresh() {
     app.weight_state.select(Some(5)); // Select weight 5 (Assuming the list logic works)
 
     Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"weight":5}))).mount(&server).await;
-    Mock::given(path("/api/v4/projects/1/issues/1")).and(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<Issue>(updated_issue_json).unwrap())).mount(&server).await;
+    Mock::given(path("/api/v4/projects/1/issues")).and(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([serde_json::from_str::<Issue>(updated_issue_json).unwrap()]))).mount(&server).await;
     Mock::given(PathContains("award_emoji")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
     Mock::given(PathContains("discussions")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
 

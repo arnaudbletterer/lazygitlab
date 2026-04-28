@@ -113,6 +113,7 @@ async fn test_navigation_and_focus() {
     app.merge_requests = vec![
         serde_json::from_str(r##"{"iid": 1, "project_id": 1, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##).unwrap(),
     ];
+    app.filter_lists();
     app.mrs_state.select(Some(0));
     app.view_mode = ViewMode::List;
     app.active_selection = MenuSelection::MergeRequests;
