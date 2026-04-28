@@ -5,16 +5,96 @@ use crate::app::parse_reactions;
 
 impl App {
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.mrs_page = 1;
+        self.mrs_has_more = true;
         let mrs: Vec<MergeRequest> = if let Some(project) = &self.selected_project {
             let endpoint = api::projects::merge_requests::MergeRequests::builder()
                 .project(project.id)
                 .build()?;
-            endpoint.query_async(&self.gitlab).await?
+            let res: Vec<MergeRequest> = gitlab::api::paged(endpoint, gitlab::api::Pagination::Limit(20)).query_async(&self.gitlab).await?;
+            self.mrs_has_more = res.len() == 20;
+            res
         } else {
             Vec::new()
         };
         
         self.merge_requests = mrs;
+        self.filter_lists();
+        Ok(())
+    }
+
+    pub async fn fetch_next_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.mrs_has_more || self.is_loading { return Ok(()); }
+
+        if let Some(project) = &self.selected_project {
+            self.is_loading = true;
+            self.mrs_page += 1;
+            let endpoint = PagedMergeRequests {
+                project: project.id,
+                page: self.mrs_page as u64,
+                per_page: 20,
+            };
+            let res: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
+
+            if res.is_empty() {
+                self.mrs_has_more = false;
+            } else {
+                self.merge_requests.extend(res.clone());
+                self.mrs_has_more = res.len() >= 20;
+                self.filter_lists();
+            }
+            self.is_loading = false;
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_mr_diffs(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let endpoint = MergeRequestDiffs {
+            project: project_id,
+            merge_request: mr_iid,
+        };
+        let diffs: Vec<MRDiff> = endpoint.query_async(&self.gitlab).await?;
+        self.mr_diffs = diffs;
+        self.mr_diff_state.select(Some(0));
+        Ok(())
+    }
+
+    pub async fn approve_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let endpoint = ApproveMergeRequest {
+                project: mr.project_id,
+                merge_request: mr.iid,
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+        }
+        Ok(())
+    }
+
+    pub async fn unapprove_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let endpoint = UnapproveMergeRequest {
+                project: mr.project_id,
+                merge_request: mr.iid,
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+        }
+        Ok(())
+    }
+
+    pub async fn merge_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let endpoint = AcceptMergeRequest {
+                project: mr.project_id,
+                merge_request: mr.iid,
+                squash: false,
+                should_remove_source_branch: true,
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            self.view_mode = ViewMode::List;
+            let _ = self.fetch_merge_requests().await;
+        }
         Ok(())
     }
 
@@ -84,6 +164,35 @@ impl App {
 
         discussions.retain(|d| !d.notes.is_empty());
         self.discussions = discussions;
+        Ok(())
+    }
+
+    pub async fn toggle_mr_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let iid = mr.iid;
+            let project_id = mr.project_id;
+            self.is_loading = true;
+            let event = if mr.state == "opened" { "close" } else { "reopen" };
+            let edit = EditMergeRequest {
+                project: project_id,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: Some(event.to_string()),
+                labels: None,
+                assignee_ids: None,
+                milestone_id: None,
+                remove_source_branch: None,
+                squash: None,
+            };
+
+            let res: Result<serde_json::Value, _> = edit.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                let _ = self.fetch_merge_requests().await;
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        }
         Ok(())
     }
 

@@ -346,14 +346,161 @@ impl Endpoint for ProjectMembers {
 #[derive(Debug, Clone)]
 pub struct ProjectPipelines {
     pub project: u64,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
 }
 
 impl Endpoint for ProjectPipelines {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(p) = self.page { params.push("page", p); }
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params
+    }
 }
 
 impl Pageable for ProjectPipelines {}
+
+#[derive(Debug, Clone)]
+pub struct PagedIssues {
+    pub project: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+impl Endpoint for PagedIssues {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("page", self.page);
+        params.push("per_page", self.per_page);
+        params.push("with_labels_details", true);
+        params
+    }
+}
+
+impl Pageable for PagedIssues {}
+
+#[derive(Debug, Clone)]
+pub struct PagedMergeRequests {
+    pub project: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+impl Endpoint for PagedMergeRequests {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("page", self.page);
+        params.push("per_page", self.per_page);
+        params
+    }
+}
+
+impl Pageable for PagedMergeRequests {}
+
+#[derive(Debug, Clone)]
+pub struct MergeRequestDiffs {
+    pub project: u64,
+    pub merge_request: u64,
+}
+
+impl Endpoint for MergeRequestDiffs {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/diffs", self.project, self.merge_request).into() }
+}
+
+impl Pageable for MergeRequestDiffs {}
+
+#[derive(Debug, Clone)]
+pub struct ApproveMergeRequest {
+    pub project: u64,
+    pub merge_request: u64,
+}
+
+impl Endpoint for ApproveMergeRequest {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/approve", self.project, self.merge_request).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnapproveMergeRequest {
+    pub project: u64,
+    pub merge_request: u64,
+}
+
+impl Endpoint for UnapproveMergeRequest {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/unapprove", self.project, self.merge_request).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct AcceptMergeRequest {
+    pub project: u64,
+    pub merge_request: u64,
+    pub squash: bool,
+    pub should_remove_source_branch: bool,
+}
+
+impl Endpoint for AcceptMergeRequest {
+    fn method(&self) -> Method { Method::PUT }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/merge", self.project, self.merge_request).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("squash", self.squash);
+        params.push("should_remove_source_branch", self.should_remove_source_branch);
+        params.into_body()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateIssue {
+    pub project: u64,
+    pub title: String,
+    pub description: Option<String>,
+    pub assignee_ids: Vec<u64>,
+    pub label_names: Vec<String>,
+}
+
+impl Endpoint for CreateIssue {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues", self.project).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("title", &self.title);
+        if let Some(d) = &self.description { params.push("description", d); }
+        for id in &self.assignee_ids { params.push("assignee_ids[]", *id); }
+        if !self.label_names.is_empty() { params.push("labels", self.label_names.join(",")); }
+        params.into_body()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateMergeRequest {
+    pub project: u64,
+    pub source_branch: String,
+    pub target_branch: String,
+    pub title: String,
+    pub description: Option<String>,
+}
+
+impl Endpoint for CreateMergeRequest {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("source_branch", &self.source_branch);
+        params.push("target_branch", &self.target_branch);
+        params.push("title", &self.title);
+        if let Some(d) = &self.description { params.push("description", d); }
+        params.into_body()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ProjectBranches {
@@ -546,7 +693,7 @@ mod tests {
         assert_eq!(ep.method(), Method::GET);
         assert_eq!(ep.endpoint(), "projects/1/members/all");
 
-        let ep = ProjectPipelines { project: 1 };
+        let ep = ProjectPipelines { project: 1, page: None, per_page: None };
         assert_eq!(ep.method(), Method::GET);
         assert_eq!(ep.endpoint(), "projects/1/pipelines");
 

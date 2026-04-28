@@ -100,6 +100,7 @@ pub enum ViewMode {
     List,
     Detail,
     JobLog,
+    Diff,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -205,6 +206,13 @@ pub enum InputTarget {
     PipelineVariableKey,
     PipelineVariableValue,
     PipelineVariableList,
+    Filter,
+    CreateIssueTitle,
+    CreateIssueDescription,
+    CreateMRTitle,
+    CreateMRDescription,
+    CreateMRSourceBranch,
+    CreateMRTargetBranch,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -234,6 +242,36 @@ pub struct LogLine {
     pub is_section_end: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpAction {
+    Quit,
+    SwitchProject,
+    Back,
+    Select,
+    ToggleHelp,
+    ToggleFocus,
+    Filter,
+    OpenBrowser,
+    LaunchPipeline,
+    CancelPipeline,
+    PlayJob,
+    RetryJob,
+    CancelJob,
+    NewComment,
+    ResolveDiscussion,
+    ToggleIssueState,
+    ToggleCollapse,
+    EditField,
+    None,
+}
+
+#[derive(Debug, Clone)]
+pub struct HelpItem {
+    pub shortcut: String,
+    pub description: String,
+    pub action: HelpAction,
+}
+
 pub struct App {
     pub should_quit: bool,
     pub menu_state: ListState,
@@ -260,6 +298,8 @@ pub struct App {
     pub selected_issue: Option<Issue>,
     pub selected_pipeline: Option<Pipeline>,
     pub selected_job: Option<Job>,
+    pub mr_diffs: Vec<MRDiff>,
+    pub mr_diff_state: ListState,
     pub job_log: String,
     pub job_log_lines: Vec<LogLine>,
     pub collapsed_sections: std::collections::HashSet<String>,
@@ -311,4 +351,36 @@ pub struct App {
     pub filtered_branches: Vec<String>,
     pub branches_state: ListState,
     pub show_branches_dropdown: bool,
+
+    // Pagination
+    pub mrs_page: u64,
+    pub mrs_has_more: bool,
+    pub issues_page: u64,
+    pub issues_has_more: bool,
+    pub pipelines_page: u64,
+    pub pipelines_has_more: bool,
+
+    pub show_help_popup: bool,
+    pub help_state: ListState,
+    pub help_filter_input: String,
+    pub show_help_filter: bool,
+    pub filtered_help: Vec<HelpItem>,
+
+    pub show_create_issue_popup: bool,
+    pub create_issue_title: String,
+    pub create_issue_description: String,
+
+    pub show_create_mr_popup: bool,
+    pub create_mr_title: String,
+    pub create_mr_description: String,
+    pub create_mr_source_branch: String,
+    pub create_mr_target_branch: String,
+    pub create_mr_source_branch_state: ListState,
+    pub create_mr_target_branch_state: ListState,
+
+    pub filter_input: String,
+    pub show_filter_input: bool,
+    pub filtered_mrs: Vec<MergeRequest>,
+    pub filtered_issues: Vec<Issue>,
+    pub filtered_pipelines: Vec<Pipeline>,
 }

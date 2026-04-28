@@ -5,17 +5,47 @@ use crate::app::parse_reactions;
 
 impl App {
     pub async fn fetch_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.issues_page = 1;
+        self.issues_has_more = true;
         let issues: Vec<Issue> = if let Some(project) = &self.selected_project {
             let endpoint = api::projects::issues::Issues::builder()
                 .project(project.id)
                 .with_labels_details(true)
                 .build()?;
-            endpoint.query_async(&self.gitlab).await?
+            let res: Vec<Issue> = gitlab::api::paged(endpoint, gitlab::api::Pagination::Limit(20)).query_async(&self.gitlab).await?;
+            self.issues_has_more = res.len() == 20;
+            res
         } else {
             Vec::new()
         };
         
         self.issues = issues;
+        self.filter_lists();
+        Ok(())
+    }
+
+    pub async fn fetch_next_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.issues_has_more || self.is_loading { return Ok(()); }
+
+        if let Some(project) = &self.selected_project {
+            self.is_loading = true;
+            self.issues_page += 1;
+            let endpoint = PagedIssues {
+                project: project.id,
+                page: self.issues_page as u64,
+                per_page: 20,
+            };
+            let res: Vec<Issue> = endpoint.query_async(&self.gitlab).await?;
+
+            if res.is_empty() {
+                self.issues_has_more = false;
+            } else {
+                self.issues.extend(res.clone());
+                self.issues_has_more = res.len() >= 20;
+                self.filter_lists();
+            }
+            self.is_loading = false;
+        }
         Ok(())
     }
 

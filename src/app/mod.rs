@@ -32,6 +32,9 @@ impl App {
         let mut discussion_state = ListState::default();
         discussion_state.select(Some(0));
 
+        let mut mr_diff_state = ListState::default();
+        mr_diff_state.select(Some(0));
+
         Self {
             should_quit: false,
             menu_state,
@@ -62,6 +65,8 @@ impl App {
             selected_issue: None,
             selected_pipeline: None,
             selected_job: None,
+            mr_diffs: Vec::new(),
+            mr_diff_state,
             job_log: String::new(),
             job_log_lines: Vec::new(),
             collapsed_sections: std::collections::HashSet::new(),
@@ -113,7 +118,182 @@ impl App {
             filtered_branches: Vec::new(),
             branches_state: ListState::default(),
             show_branches_dropdown: false,
+
+            // Pagination
+            mrs_page: 1,
+            mrs_has_more: true,
+            issues_page: 1,
+            issues_has_more: true,
+            pipelines_page: 1,
+            pipelines_has_more: true,
+
+            show_help_popup: false,
+            help_state: ListState::default(),
+            help_filter_input: String::new(),
+            show_help_filter: false,
+            filtered_help: Vec::new(),
+
+            show_create_issue_popup: false,
+            create_issue_title: String::new(),
+            create_issue_description: String::new(),
+
+            show_create_mr_popup: false,
+            create_mr_title: String::new(),
+            create_mr_description: String::new(),
+            create_mr_source_branch: String::new(),
+            create_mr_target_branch: String::new(),
+            create_mr_source_branch_state: ListState::default(),
+            create_mr_target_branch_state: ListState::default(),
+
+            filter_input: String::new(),
+            show_filter_input: false,
+            filtered_mrs: Vec::new(),
+            filtered_issues: Vec::new(),
+            filtered_pipelines: Vec::new(),
         }
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help_popup = !self.show_help_popup;
+        if self.show_help_popup {
+            self.help_filter_input.clear();
+            self.show_help_filter = false;
+            self.filter_help();
+            self.help_state.select(Some(0));
+        }
+    }
+
+    pub fn get_contextual_help(&self) -> Vec<HelpItem> {
+        let mut items = vec![
+            HelpItem { shortcut: "j/k or Down/Up".into(), description: "Move Selection".into(), action: HelpAction::None },
+            HelpItem { shortcut: "Enter".into(), description: "Select/Open".into(), action: HelpAction::Select },
+            HelpItem { shortcut: "Esc/Backspace".into(), description: "Back/Close".into(), action: HelpAction::Back },
+            HelpItem { shortcut: "Ctrl-R".into(), description: "Switch Project".into(), action: HelpAction::SwitchProject },
+            HelpItem { shortcut: "q".into(), description: "Quit".into(), action: HelpAction::Quit },
+            HelpItem { shortcut: "?".into(), description: "Toggle Help".into(), action: HelpAction::ToggleHelp },
+        ];
+
+        if self.view_mode == ViewMode::List {
+            items.push(HelpItem { shortcut: "h/l or Left/Right/Tab".into(), description: "Toggle Menu/List Focus".into(), action: HelpAction::ToggleFocus });
+            items.push(HelpItem { shortcut: "/".into(), description: "Filter List".into(), action: HelpAction::Filter });
+            items.push(HelpItem { shortcut: "v or o".into(), description: "Open in Browser".into(), action: HelpAction::OpenBrowser });
+            if self.active_selection == MenuSelection::MergeRequests {
+                items.push(HelpItem { shortcut: "d".into(), description: "View Diff".into(), action: HelpAction::None });
+            }
+            if self.active_selection == MenuSelection::Pipelines {
+                items.push(HelpItem { shortcut: "p".into(), description: "Launch New Pipeline".into(), action: HelpAction::LaunchPipeline });
+                items.push(HelpItem { shortcut: "c".into(), description: "Cancel Selected Pipeline".into(), action: HelpAction::CancelPipeline });
+            }
+        } else if self.view_mode == ViewMode::Detail {
+            items.push(HelpItem { shortcut: "v or o".into(), description: "Open in Browser".into(), action: HelpAction::OpenBrowser });
+            if self.selected_mr.is_some() || self.selected_issue.is_some() {
+                items.push(HelpItem { shortcut: "n".into(), description: "New Comment/Note".into(), action: HelpAction::NewComment });
+                items.push(HelpItem { shortcut: "Space".into(), description: "Toggle Discussion Collapse".into(), action: HelpAction::ToggleCollapse });
+            }
+            if let Some(mr) = &self.selected_mr {
+                items.push(HelpItem { shortcut: "d".into(), description: "View Diff".into(), action: HelpAction::None });
+                if mr.state == "opened" {
+                    items.push(HelpItem { shortcut: "a".into(), description: "Approve MR".into(), action: HelpAction::None });
+                    items.push(HelpItem { shortcut: "m".into(), description: "Merge MR".into(), action: HelpAction::None });
+                }
+                items.push(HelpItem { shortcut: "c".into(), description: "Toggle MR State".into(), action: HelpAction::None });
+                items.push(HelpItem { shortcut: "s".into(), description: "Resolve/Unresolve Discussion".into(), action: HelpAction::ResolveDiscussion });
+            }
+            if self.selected_issue.is_some() {
+                items.push(HelpItem { shortcut: "c".into(), description: "Toggle Issue State".into(), action: HelpAction::ToggleIssueState });
+            }
+            if self.selected_pipeline.is_some() {
+                items.push(HelpItem { shortcut: "p".into(), description: "Play Manual Job".into(), action: HelpAction::PlayJob });
+                items.push(HelpItem { shortcut: "r".into(), description: "Retry Job/Pipeline".into(), action: HelpAction::RetryJob });
+                items.push(HelpItem { shortcut: "c".into(), description: "Cancel Job/Pipeline".into(), action: HelpAction::CancelJob });
+            }
+        } else if self.view_mode == ViewMode::JobLog {
+            items.push(HelpItem { shortcut: "Tab".into(), description: "Toggle Section Collapse".into(), action: HelpAction::ToggleCollapse });
+        }
+
+        items
+    }
+
+    pub fn filter_help(&mut self) {
+        let filter = self.help_filter_input.to_lowercase();
+        let all_help = self.get_contextual_help();
+        self.filtered_help = all_help.into_iter()
+            .filter(|h| h.shortcut.to_lowercase().contains(&filter) || h.description.to_lowercase().contains(&filter))
+            .collect();
+        
+        if let Some(i) = self.help_state.selected() {
+            if i >= self.filtered_help.len() && !self.filtered_help.is_empty() { self.help_state.select(Some(0)); }
+            else if self.filtered_help.is_empty() { self.help_state.select(None); }
+        }
+    }
+
+    pub async fn execute_help_action(&mut self, action: HelpAction) {
+        match action {
+            HelpAction::Quit => self.should_quit = true,
+            HelpAction::SwitchProject => self.switch_project(),
+            HelpAction::Back => { self.back().await; }
+            HelpAction::Select => { self.enter().await; }
+            HelpAction::ToggleHelp => self.toggle_help(),
+            HelpAction::ToggleFocus => self.toggle_focus(),
+            HelpAction::Filter => {
+                self.input_mode = true;
+                self.input_target = InputTarget::Filter;
+                self.show_filter_input = true;
+                self.cursor_index = self.filter_input.chars().count();
+            }
+            HelpAction::OpenBrowser => self.open_in_browser(),
+            HelpAction::LaunchPipeline => {
+                if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines {
+                    self.show_pipeline_launch_popup().await;
+                }
+            }
+            HelpAction::CancelPipeline => {
+                if let Some(proj) = &self.selected_project {
+                    if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines {
+                        if let Some(i) = self.pipelines_state.selected() {
+                            if let Some(p) = self.pipelines.get(i) { let _ = self.cancel_pipeline(proj.id, p.id).await; }
+                        }
+                    }
+                }
+            }
+            HelpAction::PlayJob => {
+                if let Some(proj) = &self.selected_project {
+                    if let Some(i) = self.jobs_state.selected() {
+                        if let Some(job) = self.jobs.get(i) {
+                            if job.status == "manual" { let _ = self.play_job(proj.id, job.id).await; }
+                        }
+                    }
+                }
+            }
+            HelpAction::RetryJob => {
+                if let Some(proj) = &self.selected_project {
+                    if let Some(i) = self.jobs_state.selected() {
+                        if let Some(job) = self.jobs.get(i) { let _ = self.retry_job(proj.id, job.id).await; }
+                    } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.retry_pipeline(proj.id, pipeline.id).await; }
+                }
+            }
+            HelpAction::CancelJob => {
+                if let Some(proj) = &self.selected_project {
+                    if let Some(i) = self.jobs_state.selected() {
+                        if let Some(job) = self.jobs.get(i) { let _ = self.cancel_job(proj.id, job.id).await; }
+                    } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; }
+                }
+            }
+            HelpAction::NewComment => {
+                self.input_mode = true;
+                self.input_target = InputTarget::NewComment;
+                self.reply_input.clear();
+                self.cursor_index = 0;
+            }
+            HelpAction::ResolveDiscussion => { let _ = self.resolve_discussion().await; }
+            HelpAction::ToggleIssueState => { let _ = self.toggle_issue_state().await; }
+            HelpAction::ToggleCollapse => {
+                if self.view_mode == ViewMode::JobLog { self.toggle_job_section(); }
+                else { self.toggle_discussion(); }
+            }
+            _ => {}
+        }
+        self.show_help_popup = false;
     }
 
     pub fn move_down(&mut self) {
@@ -197,7 +377,21 @@ impl App {
                         MenuSelection::MergeRequests => {
                             if !self.merge_requests.is_empty() {
                                 let i = match self.mrs_state.selected() {
-                                    Some(i) => if i >= self.merge_requests.len().saturating_sub(1) { 0 } else { i + 1 },
+                                    Some(i) => {
+                                        if i >= self.merge_requests.len().saturating_sub(1) {
+                                            if self.mrs_has_more {
+                                                let _ = self.fetch_next_merge_requests(); // This should be handled in a way that doesn't block or we use block_on if we're in a sync context but App::handle_key is async
+                                            }
+                                            0
+                                        } else {
+                                            if i >= self.merge_requests.len().saturating_sub(5) && self.mrs_has_more {
+                                                // Trigger fetch next page when 5 items from the end
+                                                // Since move_down is sync, we might need to handle this carefully.
+                                                // Actually, handle_key is async, but move_down is called from it.
+                                            }
+                                            i + 1
+                                        }
+                                    },
                                     None => 0,
                                 };
                                 self.mrs_state.select(Some(i));
@@ -280,6 +474,15 @@ impl App {
                             self.selected_metadata_field = MetadataField::Title;
                         }
                     }
+                }
+            }
+            ViewMode::Diff => {
+                if !self.mr_diffs.is_empty() {
+                    let i = match self.mr_diff_state.selected() {
+                        Some(i) => if i >= self.mr_diffs.len().saturating_sub(1) { 0 } else { i + 1 },
+                        None => 0,
+                    };
+                    self.mr_diff_state.select(Some(i));
                 }
             }
         }
@@ -445,6 +648,15 @@ impl App {
                             self.selected_metadata_field = MetadataField::Description;
                         }
                     }
+                }
+            }
+            ViewMode::Diff => {
+                if !self.mr_diffs.is_empty() {
+                    let i = match self.mr_diff_state.selected() {
+                        Some(i) => if i == 0 { self.mr_diffs.len().saturating_sub(1) } else { i - 1 },
+                        None => 0,
+                    };
+                    self.mr_diff_state.select(Some(i));
                 }
             }
         }
@@ -668,6 +880,32 @@ impl App {
                     self.input_target = InputTarget::PipelineRef;
                     self.cursor_index = self.pipeline_ref_input.chars().count();
                 }
+                InputTarget::Filter => {
+                    self.input_mode = false;
+                    self.show_filter_input = !self.filter_input.is_empty();
+                }
+                InputTarget::CreateIssueTitle => {
+                    self.input_target = InputTarget::CreateIssueDescription;
+                    self.cursor_index = self.create_issue_description.chars().count();
+                }
+                InputTarget::CreateIssueDescription => {
+                    let _ = self.create_issue().await;
+                }
+                InputTarget::CreateMRTitle => {
+                    self.input_target = InputTarget::CreateMRDescription;
+                    self.cursor_index = self.create_mr_description.chars().count();
+                }
+                InputTarget::CreateMRDescription => {
+                    self.input_target = InputTarget::CreateMRSourceBranch;
+                    self.cursor_index = self.create_mr_source_branch.chars().count();
+                }
+                InputTarget::CreateMRSourceBranch => {
+                    self.input_target = InputTarget::CreateMRTargetBranch;
+                    self.cursor_index = self.create_mr_target_branch.chars().count();
+                }
+                InputTarget::CreateMRTargetBranch => {
+                    let _ = self.create_mr().await;
+                }
             }
             return;
         }
@@ -752,6 +990,7 @@ impl App {
                 }
             }
             ViewMode::JobLog => {}
+            ViewMode::Diff => {}
             ViewMode::Detail => {
                 if let Some(pipeline) = &self.selected_pipeline {
                     if let Some(i) = self.jobs_state.selected() {
@@ -871,6 +1110,10 @@ impl App {
         if self.input_mode {
             self.input_mode = false;
             self.reply_input.clear();
+            if self.show_filter_input {
+                self.show_filter_input = false;
+                self.filter_input.clear();
+            }
         } else if self.show_project_popup {
             if self.selected_project.is_some() {
                 self.show_project_popup = false;
@@ -928,7 +1171,8 @@ impl App {
                 else if let Some(issue) = &self.selected_issue { let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; }
                 else if let Some(pipeline) = &self.selected_pipeline { let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; }
             },
-            ViewMode::JobLog => if let Some(project) = &self.selected_project { if let Some(job) = &self.selected_job { let _ = self.fetch_job_log(project.id, job.id).await; } }
+            ViewMode::JobLog => if let Some(project) = &self.selected_project { if let Some(job) = &self.selected_job { let _ = self.fetch_job_log(project.id, job.id).await; } },
+            ViewMode::Diff => if let Some(mr) = &self.selected_mr { let _ = self.fetch_mr_diffs(mr.project_id, mr.iid).await; }
         }
     }
 
@@ -937,6 +1181,13 @@ impl App {
             InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &self.pipeline_ref_input,
             InputTarget::PipelineVariableKey => &self.pipeline_variable_key_input,
             InputTarget::PipelineVariableValue => &self.pipeline_variable_value_input,
+            InputTarget::Filter => &self.filter_input,
+            InputTarget::CreateIssueTitle => &self.create_issue_title,
+            InputTarget::CreateIssueDescription => &self.create_issue_description,
+            InputTarget::CreateMRTitle => &self.create_mr_title,
+            InputTarget::CreateMRDescription => &self.create_mr_description,
+            InputTarget::CreateMRSourceBranch => &self.create_mr_source_branch,
+            InputTarget::CreateMRTargetBranch => &self.create_mr_target_branch,
             _ => &self.reply_input,
         }
     }
@@ -946,12 +1197,192 @@ impl App {
             InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &mut self.pipeline_ref_input,
             InputTarget::PipelineVariableKey => &mut self.pipeline_variable_key_input,
             InputTarget::PipelineVariableValue => &mut self.pipeline_variable_value_input,
+            InputTarget::Filter => &mut self.filter_input,
+            InputTarget::CreateIssueTitle => &mut self.create_issue_title,
+            InputTarget::CreateIssueDescription => &mut self.create_issue_description,
+            InputTarget::CreateMRTitle => &mut self.create_mr_title,
+            InputTarget::CreateMRDescription => &mut self.create_mr_description,
+            InputTarget::CreateMRSourceBranch => &mut self.create_mr_source_branch,
+            InputTarget::CreateMRTargetBranch => &mut self.create_mr_target_branch,
             _ => &mut self.reply_input,
+        }
+    }
+
+    pub async fn create_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let endpoint = CreateIssue {
+                project: project.id,
+                title: self.create_issue_title.clone(),
+                description: Some(self.create_issue_description.clone()),
+                assignee_ids: Vec::new(),
+                label_names: Vec::new(),
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            self.show_create_issue_popup = false;
+            self.input_mode = false;
+            let _ = self.fetch_issues().await;
+        }
+        Ok(())
+    }
+
+    pub async fn create_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let endpoint = CreateMergeRequest {
+                project: project.id,
+                source_branch: self.create_mr_source_branch.clone(),
+                target_branch: self.create_mr_target_branch.clone(),
+                title: self.create_mr_title.clone(),
+                description: Some(self.create_mr_description.clone()),
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            self.show_create_mr_popup = false;
+            self.input_mode = false;
+            let _ = self.fetch_merge_requests().await;
+        }
+        Ok(())
+    }
+
+    pub async fn check_pagination(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.view_mode != ViewMode::List || self.focus_on_menu { return Ok(()); }
+        
+        match self.active_selection {
+            MenuSelection::MergeRequests => {
+                if let Some(i) = self.mrs_state.selected() {
+                    if i >= self.merge_requests.len().saturating_sub(5) && self.mrs_has_more {
+                        self.fetch_next_merge_requests().await?;
+                    }
+                }
+            }
+            MenuSelection::Issues => {
+                if let Some(i) = self.issues_state.selected() {
+                    if i >= self.issues.len().saturating_sub(5) && self.issues_has_more {
+                        self.fetch_next_issues().await?;
+                    }
+                }
+            }
+            MenuSelection::Pipelines => {
+                if let Some(i) = self.pipelines_state.selected() {
+                    if i >= self.pipelines.len().saturating_sub(5) && self.pipelines_has_more {
+                        self.fetch_next_pipelines().await?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
+        use crossterm::event::MouseEventKind;
+        match mouse.kind {
+            MouseEventKind::ScrollDown => {
+                if self.view_mode == ViewMode::JobLog {
+                    self.page_down();
+                } else {
+                    self.move_down();
+                    let _ = self.check_pagination().await;
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if self.view_mode == ViewMode::JobLog {
+                    self.page_up();
+                } else {
+                    self.move_up();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn filter_lists(&mut self) {
+        let filter = self.filter_input.to_lowercase();
+        
+        self.filtered_mrs = self.merge_requests.iter()
+            .filter(|mr| mr.title.to_lowercase().contains(&filter) || mr.author.username.to_lowercase().contains(&filter) || mr.references.full.to_lowercase().contains(&filter))
+            .cloned()
+            .collect();
+            
+        self.filtered_issues = self.issues.iter()
+            .filter(|i| i.title.to_lowercase().contains(&filter) || i.author.username.to_lowercase().contains(&filter) || format!("#{}", i.iid).contains(&filter))
+            .cloned()
+            .collect();
+            
+        self.filtered_pipelines = self.pipelines.iter()
+            .filter(|p| p.ref_name.to_lowercase().contains(&filter) || p.status.to_lowercase().contains(&filter) || format!("#{}", p.id).contains(&filter))
+            .cloned()
+            .collect();
+
+        // Reset selections if they are out of bounds or None
+        if self.filtered_mrs.is_empty() {
+            self.mrs_state.select(None);
+        } else if self.mrs_state.selected().map_or(true, |i| i >= self.filtered_mrs.len()) {
+            self.mrs_state.select(Some(0));
+        }
+
+        if self.filtered_issues.is_empty() {
+            self.issues_state.select(None);
+        } else if self.issues_state.selected().map_or(true, |i| i >= self.filtered_issues.len()) {
+            self.issues_state.select(Some(0));
+        }
+
+        if self.filtered_pipelines.is_empty() {
+            self.pipelines_state.select(None);
+        } else if self.pipelines_state.selected().map_or(true, |i| i >= self.filtered_pipelines.len()) {
+            self.pipelines_state.select(Some(0));
         }
     }
 
     pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
+
+        if self.show_help_popup {
+            if self.show_help_filter {
+                match key.code {
+                    KeyCode::Enter => {
+                        self.show_help_filter = false;
+                        if let Some(i) = self.help_state.selected() {
+                            if let Some(item) = self.filtered_help.get(i) {
+                                let action = item.action;
+                                self.execute_help_action(action).await;
+                            }
+                        }
+                    }
+                    KeyCode::Esc => { self.show_help_filter = false; self.help_filter_input.clear(); self.filter_help(); }
+                    KeyCode::Char(c) => { self.help_filter_input.push(c); self.filter_help(); }
+                    KeyCode::Backspace => { self.help_filter_input.pop(); self.filter_help(); }
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Char('?') | KeyCode::Esc | KeyCode::Backspace => self.show_help_popup = false,
+                    KeyCode::Char('/') => self.show_help_filter = true,
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let i = match self.help_state.selected() {
+                            Some(i) => if i >= self.filtered_help.len().saturating_sub(1) { 0 } else { i + 1 },
+                            None => 0,
+                        };
+                        self.help_state.select(Some(i));
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        let i = match self.help_state.selected() {
+                            Some(i) => if i == 0 { self.filtered_help.len().saturating_sub(1) } else { i - 1 },
+                            None => 0,
+                        };
+                        self.help_state.select(Some(i));
+                    }
+                    KeyCode::Enter => {
+                        if let Some(i) = self.help_state.selected() {
+                            if let Some(item) = self.filtered_help.get(i) {
+                                let action = item.action;
+                                self.execute_help_action(action).await;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
+
         if self.show_project_popup {
             match key.code {
                 KeyCode::Down | KeyCode::Char('j') => self.move_down(),
@@ -997,6 +1428,7 @@ impl App {
                     *input = chars.into_iter().collect();
                     self.cursor_index = cursor + 1;
                     if self.input_target == InputTarget::PipelineRef { self.filter_branches(); self.show_branches_dropdown = true; }
+                    if self.input_target == InputTarget::Filter { self.filter_lists(); }
                 }
                 KeyCode::Backspace if self.cursor_index > 0 => {
                     let cursor_idx = self.cursor_index;
@@ -1009,6 +1441,7 @@ impl App {
                         self.cursor_index = cursor - 1;
                     }
                     if self.input_target == InputTarget::PipelineRef { self.filter_branches(); self.show_branches_dropdown = true; }
+                    if self.input_target == InputTarget::Filter { self.filter_lists(); }
                 }
                 KeyCode::Delete => {
                     let cursor_idx = self.cursor_index;
@@ -1022,20 +1455,66 @@ impl App {
         } else {
             match key.code {
                 KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('?') => self.toggle_help(),
+                KeyCode::Char('d') if self.view_mode == ViewMode::List || self.view_mode == ViewMode::Detail => {
+                    if let Some(mr) = self.selected_mr.clone().or_else(|| {
+                        if self.active_selection == MenuSelection::MergeRequests {
+                            self.mrs_state.selected().and_then(|i| self.filtered_mrs.get(i).cloned())
+                        } else { None }
+                    }) {
+                        self.view_mode = ViewMode::Diff;
+                        let _ = self.fetch_mr_diffs(mr.project_id, mr.iid).await;
+                    }
+                }
+                KeyCode::Char('a') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.approve_mr().await; }
+                KeyCode::Char('m') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.merge_mr().await; }
+                KeyCode::Char('/') if self.view_mode == ViewMode::List => {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::Filter;
+                    self.show_filter_input = true;
+                    self.cursor_index = self.filter_input.chars().count();
+                }
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => self.switch_project(),
-                KeyCode::Down | KeyCode::Char('j') => self.move_down(),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.move_down();
+                    let _ = self.check_pagination().await;
+                }
                 KeyCode::Up | KeyCode::Char('k') => self.move_up(),
                 KeyCode::PageDown => self.page_down(),
                 KeyCode::PageUp => self.page_up(),
                 KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab if self.view_mode != ViewMode::JobLog => self.toggle_focus(),
                 KeyCode::Tab if self.view_mode == ViewMode::JobLog => self.toggle_job_section(),
                 KeyCode::Char('s') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.resolve_discussion().await; }
+                KeyCode::Char('c') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.toggle_mr_state().await; }
                 KeyCode::Char('c') if self.view_mode == ViewMode::Detail && self.selected_issue.is_some() => { let _ = self.toggle_issue_state().await; }
                 KeyCode::Char('n') if self.view_mode == ViewMode::Detail && (self.selected_issue.is_some() || self.selected_mr.is_some()) => {
                     self.input_mode = true;
                     self.input_target = InputTarget::NewComment;
                     self.reply_input.clear();
                     self.cursor_index = 0;
+                }
+                KeyCode::Char('C') if self.view_mode == ViewMode::List => {
+                    match self.active_selection {
+                        MenuSelection::Issues => {
+                            self.show_create_issue_popup = true;
+                            self.input_mode = true;
+                            self.input_target = InputTarget::CreateIssueTitle;
+                            self.create_issue_title.clear();
+                            self.create_issue_description.clear();
+                            self.cursor_index = 0;
+                        }
+                        MenuSelection::MergeRequests => {
+                            self.show_create_mr_popup = true;
+                            self.input_mode = true;
+                            self.input_target = InputTarget::CreateMRTitle;
+                            self.create_mr_title.clear();
+                            self.create_mr_description.clear();
+                            self.create_mr_source_branch.clear();
+                            self.create_mr_target_branch.clear();
+                            self.cursor_index = 0;
+                        }
+                        _ => {}
+                    }
                 }
                 KeyCode::Char('p') if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines => { self.show_pipeline_launch_popup().await; }
                 KeyCode::Char('p') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
