@@ -5,7 +5,6 @@ use wiremock::matchers::{method, path};
 use gitlab::GitlabBuilder;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use std::time::Instant;
 
 struct PathContains(&'static str);
 impl wiremock::Match for PathContains {
@@ -34,7 +33,7 @@ fn assert_buffer_contains(terminal: &Terminal<TestBackend>, expected: &str) {
     let mut content = String::new();
     for y in 0..buffer.area().height {
         for x in 0..buffer.area().width {
-            content.push(buffer.get(x, y).symbol().chars().next().unwrap_or(' '));
+            content.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
         }
         content.push('\n');
     }

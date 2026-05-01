@@ -1,4 +1,3 @@
-use lazygitlab::models::*;
 use lazygitlab::models::App;
 use gitlab::GitlabBuilder;
 use dotenvy::dotenv;

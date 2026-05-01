@@ -1,7 +1,7 @@
 use lazygitlab::models::*;
 use lazygitlab::ui::ui;
 use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path, any};
+use wiremock::matchers::{method, path};
 use gitlab::GitlabBuilder;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;

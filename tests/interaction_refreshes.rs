@@ -28,7 +28,7 @@ fn assert_buffer_contains(terminal: &Terminal<TestBackend>, expected: &str) {
     let mut content = String::new();
     for y in 0..buffer.area().height {
         for x in 0..buffer.area().width {
-            content.push(buffer.get(x, y).symbol().chars().next().unwrap_or(' '));
+            content.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
         }
         content.push('\n');
     }
@@ -244,7 +244,7 @@ async fn test_pipeline_variable_refresh() {
     let mut content = String::new();
     for y in 0..buffer.area().height {
         for x in 0..buffer.area().width {
-            content.push(buffer.get(x, y).symbol().chars().next().unwrap_or(' '));
+            content.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
         }
         content.push('\n');
     }
@@ -281,7 +281,7 @@ async fn test_job_log_and_back_navigation_refresh() {
     let buffer = terminal.backend().buffer();
     for y in 0..buffer.area().height {
         for x in 0..buffer.area().width {
-            content.push(buffer.get(x, y).symbol().chars().next().unwrap_or(' '));
+            content.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
         }
         content.push('\n');
     }

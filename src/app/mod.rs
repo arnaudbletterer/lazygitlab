@@ -3,7 +3,7 @@ pub mod mrs;
 pub mod pipelines;
 pub mod global;
 
-use gitlab::{AsyncGitlab, api::{self, AsyncQuery}};
+use gitlab::{AsyncGitlab, api::AsyncQuery};
 use crate::models::*;
 use crate::api::*;
 use ratatui::widgets::ListState;
@@ -1785,7 +1785,7 @@ mod tests {
     use gitlab::GitlabBuilder;
     use tokio_test::block_on;
     use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{path, method, any};
+    use wiremock::matchers::{path, method};
     use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
 
     async fn setup_test_app() -> (MockServer, App) {
