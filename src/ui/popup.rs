@@ -373,7 +373,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         // 1. Project Popup
-        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: "ns/p1".into() }];
+        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: "ns/p1".into(), web_url: "u".into() }];
         terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
 
         // 2. Label Popup
