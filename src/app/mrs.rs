@@ -433,7 +433,7 @@ mod tests {
         let _ = block_on(app.fetch_merge_requests());
         assert!(app.merge_requests.is_empty());
 
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
         let mr_json = r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#;
         app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
 

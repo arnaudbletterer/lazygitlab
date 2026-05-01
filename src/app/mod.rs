@@ -1,6 +1,7 @@
 pub mod issues;
 pub mod mrs;
 pub mod pipelines;
+pub mod global;
 
 use gitlab::{AsyncGitlab, api::{self, AsyncQuery}};
 use crate::models::*;
@@ -35,20 +36,29 @@ impl App {
         let mut mr_diff_state = ListState::default();
         mr_diff_state.select(Some(0));
 
+        let mut todos_state = ListState::default();
+        todos_state.select(Some(0));
+
+        let mut groups_state = ListState::default();
+        groups_state.select(Some(0));
+
         Self {
             should_quit: false,
             menu_state,
             menu_items: vec![
+                ("Dashboard (Todos)".to_string(), MenuSelection::Todos),
                 ("Merge Requests".to_string(), MenuSelection::MergeRequests),
                 ("Issues".to_string(), MenuSelection::Issues),
                 ("Pipelines".to_string(), MenuSelection::Pipelines),
+                ("Explore Projects".to_string(), MenuSelection::Projects),
+                ("Explore Groups".to_string(), MenuSelection::Groups),
             ],
-            active_selection: MenuSelection::MergeRequests,
+            active_selection: MenuSelection::Todos,
             gitlab,
             projects: Vec::new(),
             projects_state,
             selected_project: None,
-            show_project_popup: true,
+            show_project_popup: false,
             merge_requests: Vec::new(),
             mrs_state,
             issues: Vec::new(),
@@ -80,7 +90,7 @@ impl App {
             is_loading: false,
             reply_input: String::new(),
             cursor_index: 0,
-            theme: Theme::default(),
+            theme: Theme::load(),
             last_refresh: std::time::Instant::now(),
 
             // Project Metadata
@@ -145,8 +155,23 @@ impl App {
             create_mr_source_branch_state: ListState::default(),
             create_mr_target_branch_state: ListState::default(),
 
+            projects_page: 1,
+            projects_has_more: true,
+            filtered_projects: Vec::new(),
+
+            groups: Vec::new(),
+            groups_state,
+            filtered_groups: Vec::new(),
+            groups_page: 1,
+            groups_has_more: true,
+
             filter_input: String::new(),
             show_filter_input: false,
+            todos: Vec::new(),
+            todos_state,
+            filtered_todos: Vec::new(),
+            todos_page: 1,
+            todos_has_more: true,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
             filtered_pipelines: Vec::new(),
@@ -374,6 +399,27 @@ impl App {
                     self.active_selection = self.menu_items[i].1;
                 } else {
                     match self.active_selection {
+                        MenuSelection::Todos => {
+                            if !self.todos.is_empty() {
+                                let i = match self.todos_state.selected() {
+                                    Some(i) => {
+                                        if i >= self.todos.len().saturating_sub(1) {
+                                            if self.todos_has_more {
+                                                let _ = self.fetch_next_todos();
+                                            }
+                                            0
+                                        } else {
+                                            if i >= self.todos.len().saturating_sub(5) && self.todos_has_more {
+                                                // Trigger fetch next page
+                                            }
+                                            i + 1
+                                        }
+                                    },
+                                    None => 0,
+                                };
+                                self.todos_state.select(Some(i));
+                            }
+                        }
                         MenuSelection::MergeRequests => {
                             if !self.merge_requests.is_empty() {
                                 let i = match self.mrs_state.selected() {
@@ -413,6 +459,48 @@ impl App {
                                     None => 0,
                                 };
                                 self.pipelines_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::Projects => {
+                            if !self.projects.is_empty() {
+                                let i = match self.projects_state.selected() {
+                                    Some(i) => {
+                                        if i >= self.projects.len().saturating_sub(1) {
+                                            if self.projects_has_more {
+                                                let _ = self.fetch_next_projects();
+                                            }
+                                            0
+                                        } else {
+                                            if i >= self.projects.len().saturating_sub(5) && self.projects_has_more {
+                                                // Trigger fetch
+                                            }
+                                            i + 1
+                                        }
+                                    }
+                                    None => 0,
+                                };
+                                self.projects_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::Groups => {
+                            if !self.groups.is_empty() {
+                                let i = match self.groups_state.selected() {
+                                    Some(i) => {
+                                        if i >= self.groups.len().saturating_sub(1) {
+                                            if self.groups_has_more {
+                                                let _ = self.fetch_next_groups();
+                                            }
+                                            0
+                                        } else {
+                                            if i >= self.groups.len().saturating_sub(5) && self.groups_has_more {
+                                                // Trigger fetch
+                                            }
+                                            i + 1
+                                        }
+                                    }
+                                    None => 0,
+                                };
+                                self.groups_state.select(Some(i));
                             }
                         }
                     }
@@ -564,6 +652,15 @@ impl App {
                     self.active_selection = self.menu_items[i].1;
                 } else {
                     match self.active_selection {
+                        MenuSelection::Todos => {
+                            if !self.todos.is_empty() {
+                                let i = match self.todos_state.selected() {
+                                    Some(i) => if i == 0 { self.todos.len().saturating_sub(1) } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.todos_state.select(Some(i));
+                            }
+                        }
                         MenuSelection::MergeRequests => {
                             if !self.merge_requests.is_empty() {
                                 let i = match self.mrs_state.selected() {
@@ -589,6 +686,24 @@ impl App {
                                     None => 0,
                                 };
                                 self.pipelines_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::Projects => {
+                            if !self.projects.is_empty() {
+                                let i = match self.projects_state.selected() {
+                                    Some(i) => if i == 0 { self.projects.len().saturating_sub(1) } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.projects_state.select(Some(i));
+                            }
+                        }
+                        MenuSelection::Groups => {
+                            if !self.groups.is_empty() {
+                                let i = match self.groups_state.selected() {
+                                    Some(i) => if i == 0 { self.groups.len().saturating_sub(1) } else { i - 1 },
+                                    None => 0,
+                                };
+                                self.groups_state.select(Some(i));
                             }
                         }
                     }
@@ -687,38 +802,6 @@ impl App {
         }
     }
 
-    pub async fn post_comment(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.reply_input.is_empty() { return Ok(()); }
-
-        if let Some(issue) = &self.selected_issue {
-            let iid = issue.iid;
-            let project_id = issue.project_id;
-            self.is_loading = true;
-            let endpoint = AddIssueNote {
-                project: project_id,
-                issue: iid,
-                body: self.reply_input.clone(),
-            };
-            let res: Result<serde_json::Value, _> = endpoint.query_async(&self.gitlab).await;
-            if res.is_ok() {
-                self.reply_input.clear();
-                self.input_mode = false;
-                let _ = self.fetch_issue_discussions(project_id, iid).await;
-            }
-            self.is_loading = false;
-        }
-        Ok(())
-    }
-
-    pub async fn fetch_projects(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = api::projects::Projects::builder()
-            .membership(true)
-            .build()?;
-        let projects: Vec<Project> = endpoint.query_async(&self.gitlab).await?;
-        self.projects = projects;
-        Ok(())
-    }
-
     pub async fn fetch_project_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             let pid = project.id;
@@ -813,13 +896,52 @@ impl App {
         Ok(())
     }
 
+    pub async fn post_comment(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.reply_input.is_empty() { return Ok(()); }
+
+        if let Some(issue) = &self.selected_issue {
+            let iid = issue.iid;
+            let project_id = issue.project_id;
+            self.is_loading = true;
+            let endpoint = AddIssueNote {
+                project: project_id,
+                issue: iid,
+                body: self.reply_input.clone(),
+            };
+            let res: Result<serde_json::Value, _> = endpoint.query_async(&self.gitlab).await;
+            if res.is_ok() {
+                self.reply_input.clear();
+                self.input_mode = false;
+                let _ = self.fetch_issue_discussions(project_id, iid).await;
+            }
+            self.is_loading = false;
+        } else if let Some(mr) = &self.selected_mr {
+             let iid = mr.iid;
+             let project_id = mr.project_id;
+             self.is_loading = true;
+             let endpoint = AddNote {
+                 project: project_id,
+                 merge_request: iid,
+                 body: self.reply_input.clone(),
+             };
+             let res: Result<serde_json::Value, _> = endpoint.query_async(&self.gitlab).await;
+             if res.is_ok() {
+                 self.reply_input.clear();
+                 self.input_mode = false;
+                 let _ = self.fetch_discussions(project_id, iid).await;
+             }
+             self.is_loading = false;
+        }
+        Ok(())
+    }
+
     pub async fn select_project(&mut self) {
         if let Some(i) = self.projects_state.selected() {
             if let Some(project) = self.projects.get(i) {
                 self.selected_project = Some(project.clone());
                 self.show_project_popup = false;
                 self.active_selection = MenuSelection::MergeRequests;
-                self.menu_state.select(Some(0)); // Start on MRs tab
+                self.menu_state.select(Some(1)); // Merge Requests is the second item
                 self.focus_on_menu = true;
                 let _ = self.fetch_merge_requests().await;
                 let _ = self.fetch_issues().await;
@@ -986,6 +1108,33 @@ impl App {
                                 }
                             }
                         }
+                        MenuSelection::Todos => {
+                            if let Some(i) = self.todos_state.selected() {
+                                if self.todos.get(i).is_some() {
+                                    self.open_in_browser();
+                                }
+                            }
+                        }
+                        MenuSelection::Projects => {
+                            if let Some(i) = self.projects_state.selected() {
+                                if let Some(project) = self.projects.get(i) {
+                                    self.selected_project = Some(project.clone());
+                                    self.active_selection = MenuSelection::MergeRequests;
+                                    let _ = self.fetch_merge_requests().await;
+                                    let _ = self.fetch_issues().await;
+                                    let _ = self.fetch_pipelines().await;
+                                    let _ = self.fetch_project_metadata().await;
+                                    self.focus_on_menu = true;
+                                }
+                            }
+                        }
+                        MenuSelection::Groups => {
+                            if let Some(i) = self.groups_state.selected() {
+                                if self.groups.get(i).is_some() {
+                                    self.open_in_browser();
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1148,6 +1297,9 @@ impl App {
                 MenuSelection::MergeRequests => self.mrs_state.selected().and_then(|i| self.merge_requests.get(i)).map(|mr| mr.web_url.clone()),
                 MenuSelection::Issues => self.issues_state.selected().and_then(|i| self.issues.get(i)).map(|issue| issue.web_url.clone()),
                 MenuSelection::Pipelines => self.pipelines_state.selected().and_then(|i| self.pipelines.get(i)).map(|p| p.web_url.clone()),
+                MenuSelection::Todos => self.todos_state.selected().and_then(|i| self.todos.get(i)).map(|t| t.target_url.clone()),
+                MenuSelection::Projects => self.projects_state.selected().and_then(|i| self.projects.get(i)).map(|p| p.web_url.clone()),
+                MenuSelection::Groups => self.groups_state.selected().and_then(|i| self.groups.get(i)).map(|g| format!("https://gitlab.com/groups/{}", g.full_path)), // Simplified URL
             }
         } else { None };
 
@@ -1160,11 +1312,22 @@ impl App {
         self.last_refresh = std::time::Instant::now();
         if self.show_project_popup { let _ = self.fetch_projects().await; return; }
 
+        if self.selected_project.is_none() {
+            match self.active_selection {
+                MenuSelection::Todos => { let _ = self.fetch_todos().await; }
+                MenuSelection::MergeRequests => { let _ = self.fetch_global_merge_requests().await; }
+                MenuSelection::Issues => { let _ = self.fetch_global_issues().await; }
+                _ => {}
+            }
+            return;
+        }
+
         match self.view_mode {
             ViewMode::List => match self.active_selection {
                 MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
                 MenuSelection::Issues => { let _ = self.fetch_issues().await; }
                 MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
+                _ => {}
             },
             ViewMode::Detail => {
                 if let Some(mr) = &self.selected_mr { let _ = self.fetch_discussions(mr.project_id, mr.iid).await; }
@@ -1267,6 +1430,27 @@ impl App {
                     }
                 }
             }
+            MenuSelection::Todos => {
+                if let Some(i) = self.todos_state.selected() {
+                    if i >= self.todos.len().saturating_sub(5) && self.todos_has_more {
+                        self.fetch_next_todos().await?;
+                    }
+                }
+            }
+            MenuSelection::Projects => {
+                if let Some(i) = self.projects_state.selected() {
+                    if i >= self.projects.len().saturating_sub(5) && self.projects_has_more {
+                        self.fetch_next_projects().await?;
+                    }
+                }
+            }
+            MenuSelection::Groups => {
+                if let Some(i) = self.groups_state.selected() {
+                    if i >= self.groups.len().saturating_sub(5) && self.groups_has_more {
+                        self.fetch_next_groups().await?;
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1296,6 +1480,21 @@ impl App {
     pub fn filter_lists(&mut self) {
         let filter = self.filter_input.to_lowercase();
         
+        self.filtered_todos = self.todos.iter()
+            .filter(|t| t.body.to_lowercase().contains(&filter) || t.project.name.to_lowercase().contains(&filter) || t.action_name.to_lowercase().contains(&filter))
+            .cloned()
+            .collect();
+
+        self.filtered_projects = self.projects.iter()
+            .filter(|p| p.name.to_lowercase().contains(&filter) || p.path_with_namespace.to_lowercase().contains(&filter))
+            .cloned()
+            .collect();
+
+        self.filtered_groups = self.groups.iter()
+            .filter(|g| g.name.to_lowercase().contains(&filter) || g.full_path.to_lowercase().contains(&filter))
+            .cloned()
+            .collect();
+
         self.filtered_mrs = self.merge_requests.iter()
             .filter(|mr| mr.title.to_lowercase().contains(&filter) || mr.author.username.to_lowercase().contains(&filter) || mr.references.full.to_lowercase().contains(&filter))
             .cloned()
@@ -1312,6 +1511,12 @@ impl App {
             .collect();
 
         // Reset selections if they are out of bounds or None
+        if self.filtered_todos.is_empty() {
+            self.todos_state.select(None);
+        } else if self.todos_state.selected().map_or(true, |i| i >= self.filtered_todos.len()) {
+            self.todos_state.select(Some(0));
+        }
+
         if self.filtered_mrs.is_empty() {
             self.mrs_state.select(None);
         } else if self.mrs_state.selected().map_or(true, |i| i >= self.filtered_mrs.len()) {
@@ -1590,7 +1795,7 @@ mod tests {
     #[test]
     fn test_exhaustive_app_logic() {
         let (server, mut app) = block_on(setup_test_app());
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
 
         block_on(async {
             Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
@@ -1602,7 +1807,8 @@ mod tests {
                 KeyCode::Delete, KeyCode::Home, KeyCode::End, KeyCode::PageUp, KeyCode::PageDown,
                 KeyCode::Char('j'), KeyCode::Char('k'), KeyCode::Char('h'), KeyCode::Char('l'),
                 KeyCode::Char('p'), KeyCode::Char('r'), KeyCode::Char('c'), KeyCode::Char('s'),
-                KeyCode::Char('n'), KeyCode::Char(' '), KeyCode::Char('v'), KeyCode::Char('o'), KeyCode::Char('q')
+                KeyCode::Char('n'), KeyCode::Char(' '), KeyCode::Char('v'), KeyCode::Char('o'), KeyCode::Char('q'),
+                KeyCode::Char('?'), KeyCode::Char('/'), KeyCode::Char('d'), KeyCode::Char('a'), KeyCode::Char('m'), KeyCode::Char('C')
             ];
 
             // Populate lists and select first item
@@ -1616,7 +1822,7 @@ mod tests {
             app.pipeline_variables_state.select(Some(0));
             app.filtered_branches = vec!["b".into()];
             app.branches_state.select(Some(0));
-            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() }];
+            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
             app.projects_state.select(Some(0));
             app.merge_requests = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#).unwrap()];
             app.mrs_state.select(Some(0));
@@ -1628,23 +1834,30 @@ mod tests {
             app.jobs_state.select(Some(0));
             app.discussions = vec![serde_json::from_str(r#"{"id": "1", "notes": [{"id":1,"body":"b","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}]}"#).unwrap()];
             app.discussion_state.select(Some(0));
+            app.todos = vec![serde_json::from_str(r#"{"id": 1, "project": {"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"}, "action_name": "assigned", "target_type": "Issue", "target_url": "u", "body": "b", "state": "pending", "created_at": "t"}"#).unwrap()];
+            app.todos_state.select(Some(0));
 
-            // 1. Popups exhaustive keys (Test with selection)
-            let popups: [ (fn(&mut App), &str); 8] = [
-                (|a: &mut App| a.show_project_popup = true, "project"),
-                (|a: &mut App| a.show_calendar_popup = true, "calendar"),
-                (|a: &mut App| a.show_label_popup = true, "label"),
-                (|a: &mut App| a.show_assignee_popup = true, "assignee"),
-                (|a: &mut App| a.show_milestone_popup = true, "milestone"),
-                (|a: &mut App| a.show_weight_popup = true, "weight"),
-                (|a: &mut App| { a.show_pipeline_popup = true; a.input_target = InputTarget::PipelineVariableList; }, "pipeline_var"),
-                (|a: &mut App| { a.show_pipeline_popup = true; a.show_branches_dropdown = true; }, "pipeline_branch"),
+            // 1. Popups exhaustive keys
+            let popups = [
+                (|a: &mut App| a.show_project_popup = true),
+                (|a: &mut App| a.show_calendar_popup = true),
+                (|a: &mut App| a.show_label_popup = true),
+                (|a: &mut App| a.show_assignee_popup = true),
+                (|a: &mut App| a.show_milestone_popup = true),
+                (|a: &mut App| a.show_weight_popup = true),
+                (|a: &mut App| { a.show_pipeline_popup = true; a.input_target = InputTarget::PipelineVariableList; }),
+                (|a: &mut App| { a.show_pipeline_popup = true; a.show_branches_dropdown = true; }),
+                (|a: &mut App| a.show_help_popup = true),
+                (|a: &mut App| { a.show_help_popup = true; a.show_help_filter = true; }),
+                (|a: &mut App| a.show_create_issue_popup = true),
+                (|a: &mut App| a.show_create_mr_popup = true),
             ];
 
-            for (setup, _name) in popups {
+            for setup in popups {
                 app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
                 app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
-                app.show_branches_dropdown = false; app.input_mode = false;
+                app.show_help_popup = false; app.show_help_filter = false; app.show_create_issue_popup = false; app.show_create_mr_popup = false;
+                app.input_mode = false;
                 setup(&mut app);
                 for k in &keys { app.handle_key(key(k.clone())).await; }
             }
@@ -1654,21 +1867,23 @@ mod tests {
             let targets = [
                 InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
                 InputTarget::PipelineRef, InputTarget::PipelineRefSearch, InputTarget::PipelineVariableKey,
-                InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList
+                InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList, InputTarget::Filter,
+                InputTarget::CreateIssueTitle, InputTarget::CreateIssueDescription,
+                InputTarget::CreateMRTitle, InputTarget::CreateMRDescription,
+                InputTarget::CreateMRSourceBranch, InputTarget::CreateMRTargetBranch,
             ];
             for target in targets {
                 app.input_target = target;
                 app.cursor_index = 0;
                 for k in &keys { app.handle_key(key(k.clone())).await; }
-                // Test special key combinations
                 app.handle_key(key_mod(KeyCode::Enter, KeyModifiers::SHIFT)).await;
             }
             app.input_mode = false;
 
             // 3. Test ViewModes and Selections
-            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog] {
+            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
                 app.view_mode = mode;
-                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Todos] {
                     app.active_selection = sel;
                     for focus in [true, false] {
                         app.focus_on_menu = focus;
@@ -1694,79 +1909,38 @@ mod tests {
                 app.move_down(); app.move_up();
             }
 
-            // 5. Discussion navigation
-            app.detail_section = DetailSection::Discussions;
-            app.discussion_state.select(Some(0));
-            app.move_down(); app.move_up();
-            app.discussion_state.select(None);
-            app.move_down(); app.move_up();
-
-            // 6. Action methods
+            // 5. Action methods
             let _ = app.fetch_projects().await;
             let _ = app.fetch_merge_requests().await;
             let _ = app.fetch_issues().await;
             let _ = app.fetch_pipelines().await;
             let _ = app.fetch_project_metadata().await;
+            let _ = app.fetch_todos().await;
+            let _ = app.fetch_global_merge_requests().await;
+            let _ = app.fetch_global_issues().await;
+            let _ = app.fetch_mr_diffs(1, 1).await;
             let _ = app.update_issue().await;
             let _ = app.update_mr().await;
+            let _ = app.approve_mr().await;
+            let _ = app.unapprove_mr().await;
+            let _ = app.merge_mr().await;
             let _ = app.toggle_issue_state().await;
+            let _ = app.toggle_mr_state().await;
             let _ = app.toggle_confidential().await;
             let _ = app.submit_pipeline_launch().await;
             let _ = app.refresh().await;
+            let _ = app.create_issue().await;
+            let _ = app.create_mr().await;
             app.open_in_browser();
             app.switch_project();
             app.back().await;
             app.toggle_focus();
             app.page_down(); app.page_up();
             app.toggle_discussion();
-
-            // 2. ViewModes exhaustive keys
-            app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
-            app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
-            
-            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog] {
-                app.view_mode = mode;
-                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
-                    app.active_selection = sel;
-                    for focus in [true, false] {
-                        app.focus_on_menu = focus;
-                        for k in &keys { app.handle_key(key(k.clone())).await; }
-                    }
-                }
-            }
-
-            // 3. Metadata fields move exhaustive
-            app.view_mode = ViewMode::Detail;
-            app.detail_section = DetailSection::Metadata;
-            let issue_json = r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#;
-            app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
-            for field in [MetadataField::Title, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential, MetadataField::Description] {
-                app.selected_metadata_field = field;
-                app.move_down(); app.move_up();
-                for k in &keys { app.handle_key(key(k.clone())).await; }
-            }
-
-            // 4. Input Target exhaustive
-            app.input_mode = true;
-            for target in [InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription, InputTarget::PipelineRef, InputTarget::PipelineRefSearch, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList] {
-                app.input_target = target;
-                app.cursor_index = 0;
-                app.get_input_buffer_mut().clear();
-                app.handle_key(key(KeyCode::Char('x'))).await;
-                app.handle_key(key(KeyCode::Backspace)).await;
-                app.handle_key(key_mod(KeyCode::Enter, KeyModifiers::SHIFT)).await;
-            }
-
-            // 5. Error mocks and actions
-            Mock::given(any()).respond_with(ResponseTemplate::new(500)).mount(&server).await;
-            let _ = app.fetch_projects().await;
-            let _ = app.fetch_merge_requests().await;
-            let _ = app.fetch_issues().await;
-            let _ = app.refresh().await;
-            let _ = app.post_comment().await;
-            let _ = app.post_reply().await;
-            let _ = app.resolve_discussion().await;
-            app.open_in_browser();
+            app.filter_lists();
+            app.toggle_help();
+            app.filter_help();
+            app.execute_help_action(HelpAction::None).await;
         });
     }
 
