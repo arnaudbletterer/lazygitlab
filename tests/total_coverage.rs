@@ -17,7 +17,7 @@ async fn run_monolithic_tests() {
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let mut app = App::new(client);
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
 
     // 1. Logic exhaustive
     let _ = app.fetch_projects().await;

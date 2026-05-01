@@ -24,7 +24,7 @@ async fn setup_app() -> (MockServer, App) {
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let mut app = App::new(client);
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into() });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
     app.show_project_popup = false;
     (server, app)
 }
@@ -88,8 +88,8 @@ async fn test_navigation_and_focus() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     app.projects = vec![
-        Project { id: 1, name: "Proj 1".into(), path_with_namespace: "n/p1".into() },
-        Project { id: 2, name: "Proj 2".into(), path_with_namespace: "n/p2".into() },
+        Project { id: 1, name: "Proj 1".into(), path_with_namespace: "n/p1".into(), web_url: "u".into() },
+        Project { id: 2, name: "Proj 2".into(), path_with_namespace: "n/p2".into(), web_url: "u".into() },
     ];
     app.show_project_popup = true;
     app.projects_state.select(Some(0));
