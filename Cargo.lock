@@ -1428,6 +1428,7 @@ name = "lazygitlab"
 version = "0.4.0"
 dependencies = [
  "ansi-to-tui",
+ "async-trait",
  "chrono",
  "chrono-humanize",
  "crossterm 0.29.0",

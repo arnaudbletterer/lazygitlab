@@ -199,6 +199,7 @@ pub struct Issue {
     pub assignees: Vec<Author>,
     pub state: String,
     pub web_url: String,
+    pub references: References,
     pub issue_type: Option<String>,
     pub labels: Vec<Label>,
     pub milestone: Option<Milestone>,

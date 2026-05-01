@@ -1,12 +1,13 @@
 [package]
 name = "lazygitlab"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 
 [dependencies]
 crossterm = "0.29.0"
 gitlab = "0.1810.0"
 ratatui = { version = "0.30.0", features = ["serde"] }
+async-trait = "0.1.89"
 tokio = {version = "1.51.1" , features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8.19"

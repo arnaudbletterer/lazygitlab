@@ -874,5 +874,103 @@ mod tests {
         ep.due_date = Some(None);
         ep.weight = Some(None);
         assert!(ep.body().is_ok());
+
+        // New endpoints
+        let ep = PagedProjects { membership: true, page: 1, per_page: 20 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects");
+        let _ = ep.parameters();
+
+        let ep = GlobalIssues { scope: Some("a".into()), page: Some(1), per_page: Some(20) };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "issues");
+        let _ = ep.parameters();
+
+        let ep = GlobalMergeRequests { scope: Some("a".into()), page: Some(1), per_page: Some(20) };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "merge_requests");
+        let _ = ep.parameters();
+
+        let ep = Todos { page: Some(1), per_page: Some(20) };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "todos");
+        let _ = ep.parameters();
+
+        let ep = Groups { page: Some(1), per_page: Some(20) };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "groups");
+        let _ = ep.parameters();
+
+        let ep = MergeRequestDiffs { project: 1, merge_request: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/diffs");
+
+        let ep = ApproveMergeRequest { project: 1, merge_request: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/approve");
+
+        let ep = UnapproveMergeRequest { project: 1, merge_request: 2 };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/unapprove");
+
+        let ep = AcceptMergeRequest { project: 1, merge_request: 2, squash: true, should_remove_source_branch: true };
+        assert_eq!(ep.method(), Method::PUT);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/merge");
+        assert!(ep.body().is_ok());
+
+        let ep = CreateIssue { project: 1, title: "t".into(), description: Some("d".into()), assignee_ids: vec![1], label_names: vec!["l".into()] };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/issues");
+        assert!(ep.body().is_ok());
+
+        let ep2 = CreateIssue { project: 1, title: "t".into(), description: None, assignee_ids: vec![], label_names: vec![] };
+        assert!(ep2.body().is_ok());
+
+        let ep = CreateMergeRequest { project: 1, source_branch: "s".into(), target_branch: "t".into(), title: "t".into(), description: Some("d".into()) };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests");
+        assert!(ep.body().is_ok());
+
+        let ep2 = CreateMergeRequest { project: 1, source_branch: "s".into(), target_branch: "t".into(), title: "t".into(), description: None };
+        assert!(ep2.body().is_ok());
+
+        let ep = ProjectBranches { project: 1 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/repository/branches");
+
+        let ep = MergeRequestAwardEmoji { project: 1, merge_request: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/award_emoji");
+
+        let ep = IssueAwardEmoji { project: 1, issue: 2 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/issues/2/award_emoji");
+
+        let ep = AddNote { project: 1, merge_request: 2, body: "b".into() };
+        assert_eq!(ep.method(), Method::POST);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests/2/notes");
+        assert!(ep.body().is_ok());
+
+        let ep = PagedIssues { project: 1, page: 1, per_page: 20 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/issues");
+        let _ = ep.parameters();
+
+        let ep = PagedMergeRequests { project: 1, page: 1, per_page: 20 };
+        assert_eq!(ep.method(), Method::GET);
+        assert_eq!(ep.endpoint(), "projects/1/merge_requests");
+        let _ = ep.parameters();
+
+        let ep = GlobalIssues { scope: None, page: None, per_page: None };
+        let _ = ep.parameters();
+        let ep = GlobalMergeRequests { scope: None, page: None, per_page: None };
+        let _ = ep.parameters();
+        let ep = Todos { page: None, per_page: None };
+        let _ = ep.parameters();
+        let ep = Groups { page: None, per_page: None };
+        let _ = ep.parameters();
+        let ep = ProjectPipelines { project: 1, page: None, per_page: None };
+        let _ = ep.parameters();
     }
 }
+
