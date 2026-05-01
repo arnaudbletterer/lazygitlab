@@ -46,7 +46,7 @@ async fn test_mr_visual_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 123, "project_id": 1, "title": "Implement Feature X", "description": "This is a detailed description.", "author": {"id": 1, "username": "alice"}, "web_url": "u", "state": "opened", "references": {"full": "n/p!123"}, "upvotes": 5, "downvotes": 0, "labels": [{"id":1,"name":"bug","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"v1.0"}, "assignees": [{"id":2,"username":"bob"}], "created_at": "2026-04-25T12:00:00Z"}"##;
+    let mr_json = r##"{"iid": 123, "project_id": 1, "title": "Implement Feature X", "description": "This is a detailed description.", "author": {"id": 1, "username": "alice"}, "web_url": "u", "state": "opened", "references": {"full": "n/p!123"}, "upvotes": 5, "downvotes": 0, "labels": [{"id":1,"name":"bug","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"v1.0"}, "assignees": [{"id":2,"username":"bob"}], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
     let disc_json = r##"{"id": "1", "notes": [{"id":1,"body":"Please review this part.","author":{"id":2,"username":"bob"},"system":false,"created_at":"2026-04-25T12:30:00Z"}]}"##;
 
     Mock::given(path("/api/v4/projects/1/merge_requests/123")).and(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<MergeRequest>(mr_json).unwrap())).mount(&server).await;
@@ -108,9 +108,11 @@ async fn test_navigation_and_focus() {
     // Select and go to list
     let enter = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     app.handle_key(enter).await;
+    terminal.draw(|f| ui(f, &mut app)).unwrap();
+    assert_buffer_contains(&terminal, "Scope: Proj 2");
 
     app.merge_requests = vec![
-        serde_json::from_str(r##"{"iid": 1, "project_id": 1, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##).unwrap(),
+        serde_json::from_str(r##"{"iid": 1, "project_id": 2, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##).unwrap(),
     ];
     app.filter_lists();
     app.mrs_state.select(Some(0));
@@ -119,13 +121,13 @@ async fn test_navigation_and_focus() {
     app.focus_on_menu = false;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "> [opened] r1 - MR 1 by @u");
+    assert_buffer_contains(&terminal, "> [opened] !1 - MR 1 by @u");
 
     // Toggle focus to menu
     let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     app.handle_key(tab).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    // In menu, we expect highlighting. Menu items: Merge Requests, Issues, Pipelines
+    // In menu, we expect highlighting. Menu items: Dashboard (Todos), Merge Requests, Issues, ...
     assert_buffer_contains(&terminal, " Merge Requests "); 
 }
 
@@ -158,7 +160,7 @@ async fn test_issue_visual_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let issue_json = r##"{"iid": 456, "project_id": 1, "title": "Fix Critical Bug", "description": "Critical bug in engine.", "author": {"id": 1, "username": "alice"}, "assignees": [{"id":2,"username":"bob"}], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": "2026-05-20", "weight": 9, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "task_completion_status": {"count": 5, "completed_count": 2}}"##;
+    let issue_json = r##"{"iid": 456, "project_id": 1, "title": "Fix Critical Bug", "description": "Critical bug in engine.", "author": {"id": 1, "username": "alice"}, "assignees": [{"id":2,"username":"bob"}], "state": "opened", "web_url": "u", "references": {"full": "n/p#456"}, "labels": [], "milestone": null, "due_date": "2026-05-20", "weight": 9, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "task_completion_status": {"count": 5, "completed_count": 2}, "reactions": []}"##;
     app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
     app.view_mode = ViewMode::Detail;
 
@@ -178,7 +180,7 @@ async fn test_interaction_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
     let disc_resolved_json = r##"{"id": "1", "notes": [{"id":1,"body":"resolved note","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}], "resolved": true}"##;
 
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
