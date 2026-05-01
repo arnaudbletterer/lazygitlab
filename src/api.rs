@@ -344,6 +344,25 @@ impl Endpoint for ProjectMembers {
 }
 
 #[derive(Debug, Clone)]
+pub struct Groups {
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+impl Endpoint for Groups {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "groups".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(p) = self.page { params.push("page", p); }
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params
+    }
+}
+
+impl Pageable for Groups {}
+
+#[derive(Debug, Clone)]
 pub struct ProjectPipelines {
     pub project: u64,
     pub page: Option<u64>,
@@ -403,6 +422,105 @@ impl Endpoint for PagedMergeRequests {
 }
 
 impl Pageable for PagedMergeRequests {}
+
+#[derive(Debug, Clone)]
+pub struct PagedProjects {
+    pub membership: bool,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+impl Endpoint for PagedProjects {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "projects".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("membership", self.membership);
+        params.push("page", self.page);
+        params.push("per_page", self.per_page);
+        params
+    }
+}
+
+impl Pageable for PagedProjects {}
+
+#[derive(Debug, Clone)]
+pub struct AddNote {
+    pub project: u64,
+    pub merge_request: u64,
+    pub body: String,
+}
+
+impl Endpoint for AddNote {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/notes", self.project, self.merge_request).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("body", &self.body);
+        params.into_body()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalIssues {
+    pub scope: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+impl Endpoint for GlobalIssues {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "issues".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(s) = &self.scope { params.push("scope", s); }
+        if let Some(p) = self.page { params.push("page", p); }
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params
+    }
+}
+
+impl Pageable for GlobalIssues {}
+
+#[derive(Debug, Clone)]
+pub struct GlobalMergeRequests {
+    pub scope: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+impl Endpoint for GlobalMergeRequests {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "merge_requests".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(s) = &self.scope { params.push("scope", s); }
+        if let Some(p) = self.page { params.push("page", p); }
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params
+    }
+}
+
+impl Pageable for GlobalMergeRequests {}
+
+#[derive(Debug, Clone)]
+pub struct Todos {
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+impl Endpoint for Todos {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "todos".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(p) = self.page { params.push("page", p); }
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params
+    }
+}
+
+impl Pageable for Todos {}
 
 #[derive(Debug, Clone)]
 pub struct MergeRequestDiffs {

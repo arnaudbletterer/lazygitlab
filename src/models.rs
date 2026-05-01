@@ -8,6 +8,7 @@ pub struct Project {
     pub id: u64,
     pub name: String,
     pub path_with_namespace: String,
+    pub web_url: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -88,14 +89,37 @@ pub struct Author {
     pub username: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
-pub enum MenuSelection {
-    MergeRequests,
-    Issues,
-    Pipelines,
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Group {
+    pub id: u64,
+    pub name: String,
+    pub path: String,
+    pub full_path: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+pub enum MenuSelection {
+    Todos,
+    MergeRequests,
+    Issues,
+    Pipelines,
+    Projects,
+    Groups,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Todo {
+    pub id: u64,
+    pub project: Project,
+    pub action_name: String,
+    pub target_type: String,
+    pub target_url: String,
+    pub body: String,
+    pub state: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ViewMode {
     List,
     Detail,
@@ -378,8 +402,23 @@ pub struct App {
     pub create_mr_source_branch_state: ListState,
     pub create_mr_target_branch_state: ListState,
 
+    pub projects_page: u64,
+    pub projects_has_more: bool,
+    pub filtered_projects: Vec<Project>,
+
+    pub groups: Vec<Group>,
+    pub groups_state: ListState,
+    pub filtered_groups: Vec<Group>,
+    pub groups_page: u64,
+    pub groups_has_more: bool,
+
     pub filter_input: String,
     pub show_filter_input: bool,
+    pub todos: Vec<Todo>,
+    pub todos_state: ListState,
+    pub filtered_todos: Vec<Todo>,
+    pub todos_page: u64,
+    pub todos_has_more: bool,
     pub filtered_mrs: Vec<MergeRequest>,
     pub filtered_issues: Vec<Issue>,
     pub filtered_pipelines: Vec<Pipeline>,
