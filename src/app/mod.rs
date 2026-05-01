@@ -1304,7 +1304,13 @@ impl App {
         } else { None };
 
         if let Some(url) = url {
-            let _ = std::process::Command::new("powershell").arg("-Command").arg(format!("Start-Process '{}'", url)).spawn();
+            if url.starts_with("http") {
+                let _ = std::process::Command::new("powershell")
+                    .arg("-NoProfile")
+                    .arg("-Command")
+                    .arg(format!("Start-Process '{}'", url))
+                    .spawn();
+            }
         }
     }
 
