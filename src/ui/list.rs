@@ -18,8 +18,8 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(main_chunks[0]);
 
-    let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("Dashboard");
-    let status_info = Paragraph::new(format!("Context: {}", proj_name))
+    let proj_name = app.selected_project.as_ref().map(|p| p.name.as_str()).unwrap_or("Global Dashboard");
+    let status_info = Paragraph::new(format!(" Scope: {}", proj_name))
         .block(Block::default().borders(Borders::ALL).title(" Context ").border_style(Style::default().fg(app.theme.border)));
     f.render_widget(status_info, left_chunks[0]);
 
@@ -89,7 +89,8 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                 let status_style = if todo.state == "pending" { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Green) };
                 let line = Line::from(vec![
                     Span::styled(format!("[{}]", todo.state), status_style),
-                    Span::raw(format!(" {}: {} - ", todo.project.name, todo.action_name)),
+                    Span::styled(format!(" {} ", todo.project.path_with_namespace), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::raw(format!(": {} - ", todo.action_name)),
                     Span::raw(&todo.body),
                 ]);
                 ListItem::new(line)
@@ -101,9 +102,17 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                 let state_style = get_status_style(&mr.state, &app.theme);
                 let mut line_spans = vec![
                     Span::styled(format!("[{}]", mr.state), state_style),
-                    Span::raw(format!(" {} - {} by ", mr.references.full, mr.title)),
-                    Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
                 ];
+                
+                if is_global {
+                    line_spans.push(Span::styled(format!(" {} ", mr.references.full), Style::default().fg(Color::Cyan)));
+                } else {
+                    line_spans.push(Span::raw(format!(" !{} ", mr.iid)));
+                }
+                
+                line_spans.push(Span::raw(format!("- {} by ", mr.title)));
+                line_spans.push(Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)));
+
                 if mr.upvotes > 0 || mr.downvotes > 0 {
                     line_spans.push(Span::raw(" | "));
                     if mr.upvotes > 0 {
@@ -125,9 +134,17 @@ pub fn render_list_view(f: &mut Frame, app: &mut App) {
                 let mut spans = vec![
                     Span::styled(format!("[{}]", issue.state), state_style),
                     Span::styled(format!(" [{}]", issue.issue_type.as_deref().unwrap_or("issue")), Style::default().fg(app.theme.dim)),
-                    Span::raw(format!(" #{} - {} by ", issue.iid, issue.title)),
-                    Span::styled(format!("@{}", issue.author.username), Style::default().fg(app.theme.author)),
                 ];
+
+                if is_global {
+                    spans.push(Span::styled(format!(" {} ", issue.references.full), Style::default().fg(Color::Cyan)));
+                } else {
+                    spans.push(Span::raw(format!(" #{} ", issue.iid)));
+                }
+
+                spans.push(Span::raw(format!("- {} by ", issue.title)));
+                spans.push(Span::styled(format!("@{}", issue.author.username), Style::default().fg(app.theme.author)));
+
                 for label in &issue.labels {
                     spans.push(Span::raw(" "));
                     spans.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
@@ -214,23 +231,28 @@ mod tests {
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups, MenuSelection::Todos] {
             app.active_selection = sel;
             // Empty
             terminal.draw(|f| render_list_view(f, &mut app)).unwrap();
         }
 
         // With data
-        let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##;
+        let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
         app.merge_requests = vec![serde_json::from_str(mr_json).unwrap()];
         
-        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue"}"##;
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue", "references": {"full": "r"}}"##;
         app.issues = vec![serde_json::from_str(issue_json).unwrap()];
 
         let pipeline_json = r##"{"id": 100, "project_id": 1, "status": "running", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z", "duration": 100.0}"##;
         app.pipelines = vec![serde_json::from_str(pipeline_json).unwrap()];
 
-        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines] {
+        app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
+        app.groups = vec![Group { id: 1, name: "g".into(), path: "g".into(), full_path: "g".into() }];
+        app.todos = vec![serde_json::from_str(r#"{"id": 1, "project": {"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"}, "action_name": "assigned", "target_type": "Issue", "target_url": "u", "body": "b", "state": "pending", "created_at": "t"}"#).unwrap()];
+        app.filter_lists();
+
+        for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups, MenuSelection::Todos] {
             app.active_selection = sel;
             for focus in [true, false] {
                 app.focus_on_menu = focus;

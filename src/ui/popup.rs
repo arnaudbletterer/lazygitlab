@@ -425,5 +425,26 @@ mod tests {
         app.show_branches_dropdown = true;
         app.filtered_branches = vec!["b1".into(), "b2".into()];
         terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
+
+        // 8. Help Popup
+        app.show_help_popup = true;
+        app.filter_help();
+        terminal.draw(|f| render_help_popup(f, &mut app)).unwrap();
+        app.show_help_filter = true;
+        terminal.draw(|f| render_help_popup(f, &mut app)).unwrap();
+
+        // 9. Create Issue Popup
+        app.show_create_issue_popup = true;
+        app.input_target = InputTarget::CreateIssueTitle;
+        terminal.draw(|f| render_create_issue_popup(f, &mut app)).unwrap();
+        app.input_target = InputTarget::CreateIssueDescription;
+        terminal.draw(|f| render_create_issue_popup(f, &mut app)).unwrap();
+
+        // 10. Create MR Popup
+        app.show_create_mr_popup = true;
+        for target in [InputTarget::CreateMRTitle, InputTarget::CreateMRSourceBranch, InputTarget::CreateMRTargetBranch, InputTarget::CreateMRDescription] {
+            app.input_target = target;
+            terminal.draw(|f| render_create_mr_popup(f, &mut app)).unwrap();
+        }
     }
 }

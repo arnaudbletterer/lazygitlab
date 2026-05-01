@@ -128,6 +128,33 @@ mod tests {
     }
 
     #[test]
+    fn test_render_markdown_exhaustive() {
+        let theme = Theme::default();
+        let text = "# H1\n## H2\n### H3\n> quote\n- item 1\n* item 2\n\n```\ncode\n```\nplain **bold** `code`";
+        let lines = render_markdown(text, &theme);
+        assert!(lines.len() >= 9);
+        
+        // H1
+        assert_eq!(lines[0].spans[0].content, "H1");
+        // H2
+        assert_eq!(lines[1].spans[0].content, "H2");
+        // H3
+        assert_eq!(lines[2].spans[0].content, "H3");
+        // Quote
+        assert!(lines[3].spans[0].content.contains("│ quote"));
+        // Lists
+        assert!(lines[4].spans[0].content.contains("•"));
+        assert!(lines[5].spans[0].content.contains("•"));
+        // Empty line
+        assert_eq!(lines[6].spans.len(), 0);
+        // Code block
+        assert_eq!(lines[7].spans[0].content, "code");
+        // Inline
+        assert!(lines[8].spans.iter().any(|s| s.content == "bold"));
+        assert!(lines[8].spans.iter().any(|s| s.content == "code"));
+    }
+
+    #[test]
     fn test_render_markdown_bold() {
         let theme = Theme::default();
         let lines = render_markdown("Hello **bold** text", &theme);

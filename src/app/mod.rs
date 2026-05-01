@@ -67,7 +67,7 @@ impl App {
             pipelines_state,
             jobs: Vec::new(),
             jobs_state,
-            focus_on_menu: false,
+            focus_on_menu: true,
             view_mode: ViewMode::List,
             detail_section: DetailSection::Discussions,
             selected_metadata_field: MetadataField::Title,
@@ -778,8 +778,18 @@ impl App {
     }
 
     pub fn toggle_focus(&mut self) {
-        if !self.show_project_popup && self.view_mode == ViewMode::List {
-            self.focus_on_menu = !self.focus_on_menu;
+        if self.show_project_popup { return; }
+        match self.view_mode {
+            ViewMode::List => {
+                self.focus_on_menu = !self.focus_on_menu;
+            }
+            ViewMode::Detail => {
+                self.detail_section = match self.detail_section {
+                    DetailSection::Metadata => DetailSection::Discussions,
+                    DetailSection::Discussions => DetailSection::Metadata,
+                };
+            }
+            _ => {}
         }
     }
 
@@ -1785,7 +1795,7 @@ mod tests {
     use gitlab::GitlabBuilder;
     use tokio_test::block_on;
     use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{path, method};
+    use wiremock::matchers::{path, method, any};
     use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
 
     async fn setup_test_app() -> (MockServer, App) {
@@ -1799,11 +1809,70 @@ mod tests {
     fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent { KeyEvent { code, modifiers, kind: KeyEventKind::Press, state: KeyEventState::NONE } }
 
     #[test]
-    fn test_exhaustive_app_logic() {
-        let (server, mut app) = block_on(setup_test_app());
+    fn test_help_actions_and_focus_logic() {
+        let (_server, mut app) = block_on(setup_test_app());
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
 
         block_on(async {
+            // Test execute_help_action exhaustive
+            let actions = [
+                HelpAction::ToggleFocus, HelpAction::Filter, HelpAction::OpenBrowser,
+                HelpAction::LaunchPipeline, HelpAction::CancelPipeline, HelpAction::PlayJob,
+                HelpAction::RetryJob, HelpAction::CancelJob, HelpAction::NewComment,
+                HelpAction::ResolveDiscussion, HelpAction::ToggleIssueState, HelpAction::ToggleCollapse,
+                HelpAction::Quit, HelpAction::SwitchProject, HelpAction::Back, HelpAction::Select, HelpAction::ToggleHelp
+            ];
+            for action in actions {
+                app.execute_help_action(action).await;
+            }
+
+            // Test toggle_focus
+            app.show_project_popup = false;
+            app.view_mode = ViewMode::List;
+            app.focus_on_menu = true;
+            app.toggle_focus();
+            assert!(!app.focus_on_menu);
+            app.toggle_focus();
+            assert!(app.focus_on_menu);
+
+            app.view_mode = ViewMode::Detail;
+            app.detail_section = DetailSection::Metadata;
+            app.toggle_focus();
+            assert_eq!(app.detail_section, DetailSection::Discussions);
+            app.toggle_focus();
+            assert_eq!(app.detail_section, DetailSection::Metadata);
+        });
+    }
+
+    #[test]
+    fn test_back_navigation_exhaustive() {
+        let (_server, mut app) = block_on(setup_test_app());
+        block_on(async {
+            // Test back() from every popup
+            app.show_label_popup = true; app.back().await; assert!(!app.show_label_popup);
+            app.show_assignee_popup = true; app.back().await; assert!(!app.show_assignee_popup);
+            app.show_milestone_popup = true; app.back().await; assert!(!app.show_milestone_popup);
+            app.show_calendar_popup = true; app.back().await; assert!(!app.show_calendar_popup);
+            app.show_weight_popup = true; app.back().await; assert!(!app.show_weight_popup);
+            app.show_pipeline_popup = true; app.back().await; assert!(!app.show_pipeline_popup);
+            
+            // Test back() from input mode
+            app.input_mode = true; app.show_filter_input = true; app.back().await; 
+            assert!(!app.input_mode); assert!(!app.show_filter_input);
+
+            // Test back() from ViewModes
+            app.view_mode = ViewMode::JobLog; app.back().await; assert_eq!(app.view_mode, ViewMode::Detail);
+            app.view_mode = ViewMode::Detail; app.back().await; assert_eq!(app.view_mode, ViewMode::List);
+            app.view_mode = ViewMode::List; app.focus_on_menu = false; app.back().await; assert!(app.focus_on_menu);
+        });
+    }
+
+    #[test]
+    fn test_exhaustive_app_logic() {
+        let (server, mut app) = block_on(setup_test_app());
+        
+        block_on(async {
+            // Mock all endpoints to return 200 or empty lists by default
             Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
             Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
@@ -1817,136 +1886,136 @@ mod tests {
                 KeyCode::Char('?'), KeyCode::Char('/'), KeyCode::Char('d'), KeyCode::Char('a'), KeyCode::Char('m'), KeyCode::Char('C')
             ];
 
-            // Populate lists and select first item
-            app.project_labels = vec![Label { id: 1, name: "l".into(), color: "c".into(), text_color: "t".into() }];
-            app.label_state.select(Some(0));
-            app.project_members = vec![Author { id: 1, username: "u".into() }];
-            app.assignee_state.select(Some(0));
-            app.project_milestones = vec![Milestone { id: 1, title: "m".into() }];
-            app.milestone_state.select(Some(0));
-            app.pipeline_variables = vec![PipelineVariable { key: "k".into(), value: "v".into() }];
-            app.pipeline_variables_state.select(Some(0));
-            app.filtered_branches = vec!["b".into()];
-            app.branches_state.select(Some(0));
-            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
-            app.projects_state.select(Some(0));
-            app.merge_requests = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#).unwrap()];
-            app.mrs_state.select(Some(0));
-            app.issues = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#).unwrap()];
-            app.issues_state.select(Some(0));
-            app.pipelines = vec![serde_json::from_str(r#"{"id": 1, "project_id": 1, "status": "success", "source": "push", "ref": "m", "web_url": "u", "created_at": "t"}"#).unwrap()];
-            app.pipelines_state.select(Some(0));
-            app.jobs = vec![serde_json::from_str(r#"{"id": 1, "name": "j", "stage": "s", "status": "success", "created_at": "t", "web_url": "u", "tag_list": [], "allow_failure": false}"#).unwrap()];
-            app.jobs_state.select(Some(0));
-            app.discussions = vec![serde_json::from_str(r#"{"id": "1", "notes": [{"id":1,"body":"b","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}]}"#).unwrap()];
-            app.discussion_state.select(Some(0));
+            // 1. Test every MenuSelection with empty data
+            app.selected_project = None;
+            for sel in [MenuSelection::Todos, MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups] {
+                app.active_selection = sel;
+                app.move_down(); app.move_up();
+                app.enter().await;
+            }
+
+            // 2. Test every MenuSelection with populated data (exercise saturating math)
             app.todos = vec![serde_json::from_str(r#"{"id": 1, "project": {"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"}, "action_name": "assigned", "target_type": "Issue", "target_url": "u", "body": "b", "state": "pending", "created_at": "t"}"#).unwrap()];
-            app.todos_state.select(Some(0));
+            app.merge_requests = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "t", "reactions": []}"#).unwrap()];
+            app.issues = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "t", "upvotes": 0, "downvotes": 0, "references": {"full": "n/p#1"}}"#).unwrap()];
+            app.pipelines = vec![serde_json::from_str(r#"{"id": 1, "project_id": 1, "status": "success", "source": "push", "ref": "m", "web_url": "u", "created_at": "t"}"#).unwrap()];
+            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
+            app.groups = vec![Group { id: 1, name: "g".into(), path: "g".into(), full_path: "g".into() }];
+            app.filter_lists();
 
-            // 1. Popups exhaustive keys
-            let popups = [
-                (|a: &mut App| a.show_project_popup = true),
-                (|a: &mut App| a.show_calendar_popup = true),
-                (|a: &mut App| a.show_label_popup = true),
-                (|a: &mut App| a.show_assignee_popup = true),
-                (|a: &mut App| a.show_milestone_popup = true),
-                (|a: &mut App| a.show_weight_popup = true),
-                (|a: &mut App| { a.show_pipeline_popup = true; a.input_target = InputTarget::PipelineVariableList; }),
-                (|a: &mut App| { a.show_pipeline_popup = true; a.show_branches_dropdown = true; }),
-                (|a: &mut App| a.show_help_popup = true),
-                (|a: &mut App| { a.show_help_popup = true; a.show_help_filter = true; }),
-                (|a: &mut App| a.show_create_issue_popup = true),
-                (|a: &mut App| a.show_create_mr_popup = true),
-            ];
-
-            for setup in popups {
-                app.show_project_popup = false; app.show_calendar_popup = false; app.show_label_popup = false;
-                app.show_assignee_popup = false; app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
-                app.show_help_popup = false; app.show_help_filter = false; app.show_create_issue_popup = false; app.show_create_mr_popup = false;
-                app.input_mode = false;
-                setup(&mut app);
-                for k in &keys { app.handle_key(key(k.clone())).await; }
-            }
-
-            // 2. Test Input Mode with all targets
-            app.input_mode = true;
-            let targets = [
-                InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
-                InputTarget::PipelineRef, InputTarget::PipelineRefSearch, InputTarget::PipelineVariableKey,
-                InputTarget::PipelineVariableValue, InputTarget::PipelineVariableList, InputTarget::Filter,
-                InputTarget::CreateIssueTitle, InputTarget::CreateIssueDescription,
-                InputTarget::CreateMRTitle, InputTarget::CreateMRDescription,
-                InputTarget::CreateMRSourceBranch, InputTarget::CreateMRTargetBranch,
-            ];
-            for target in targets {
-                app.input_target = target;
-                app.cursor_index = 0;
-                for k in &keys { app.handle_key(key(k.clone())).await; }
-                app.handle_key(key_mod(KeyCode::Enter, KeyModifiers::SHIFT)).await;
-            }
-            app.input_mode = false;
-
-            // 3. Test ViewModes and Selections
             for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
                 app.view_mode = mode;
-                for sel in [MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Todos] {
+                for sel in [MenuSelection::Todos, MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups] {
                     app.active_selection = sel;
-                    for focus in [true, false] {
-                        app.focus_on_menu = focus;
-                        for k in &keys { app.handle_key(key(k.clone())).await; }
-                    }
+                    app.filter_help();
+                    app.open_in_browser();
+                    let _ = app.check_pagination().await;
+                    app.focus_on_menu = false;
+                    app.move_down(); app.move_up();
+                    app.enter().await;
+                    app.focus_on_menu = true;
+                    app.move_down(); app.move_up();
                 }
             }
 
-            // 4. Metadata fields detail navigation
+            // 3. Test Detail View with every MetadataField
             app.view_mode = ViewMode::Detail;
-            app.selected_mr = Some(serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"#).unwrap());
-            app.selected_issue = None;
-            for field in [MetadataField::Title, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::Description] {
-                app.selected_metadata_field = field;
-                app.detail_section = DetailSection::Metadata;
-                app.move_down(); app.move_up();
+            app.selected_mr = Some(app.merge_requests[0].clone());
+            app.detail_section = DetailSection::Metadata;
+            for _ in 0..10 { app.move_down(); } // Should eventually hit discussions and loop back
+            for _ in 0..10 { app.move_up(); }
+            
+            // 4. Input targets exhaustive with characters
+            app.input_mode = true;
+            let targets = [
+                InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
+                InputTarget::PipelineRef, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue,
+                InputTarget::CreateIssueTitle, InputTarget::CreateMRTitle
+            ];
+            for target in targets {
+                app.input_target = target;
+                app.handle_key(key(KeyCode::Char('x'))).await;
+                app.handle_key(key(KeyCode::Backspace)).await;
+                app.handle_key(key(KeyCode::Delete)).await;
             }
-            app.selected_issue = Some(serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#).unwrap());
-            app.selected_mr = None;
-            for field in [MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential, MetadataField::Description] {
-                app.selected_metadata_field = field;
-                app.detail_section = DetailSection::Metadata;
-                app.move_down(); app.move_up();
-            }
+            app.input_mode = false;
 
-            // 5. Action methods
+            // 5. Trigger all fetch/action methods
             let _ = app.fetch_projects().await;
-            let _ = app.fetch_merge_requests().await;
-            let _ = app.fetch_issues().await;
-            let _ = app.fetch_pipelines().await;
-            let _ = app.fetch_project_metadata().await;
+            let _ = app.fetch_groups().await;
             let _ = app.fetch_todos().await;
             let _ = app.fetch_global_merge_requests().await;
             let _ = app.fetch_global_issues().await;
             let _ = app.fetch_mr_diffs(1, 1).await;
+            let _ = app.approve_mr().await;
+            let _ = app.unapprove_mr().await;
+            let _ = app.merge_mr().await;
+            let _ = app.toggle_mr_state().await;
+            let _ = app.toggle_issue_state().await;
+            let _ = app.refresh().await;
+            app.toggle_focus();
+            app.open_in_browser();
+            let _ = app.update_issue_weight().await;
+            let _ = app.update_issue_due_date().await;
+            let _ = app.clear_due_date().await;
+            let _ = app.cancel_pipeline(1, 1).await;
+            let _ = app.retry_pipeline(1, 1).await;
+            let _ = app.play_job(1, 1).await;
+            let _ = app.retry_job(1, 1).await;
+            let _ = app.cancel_job(1, 1).await;
+
+            // 6. Handle key exhaustive (direct key hits)
+            app.show_project_popup = false;
+            app.input_mode = false;
+            app.view_mode = ViewMode::List;
+            let direct_keys = [
+                KeyCode::Char('q'), KeyCode::Char('?'), KeyCode::Char('d'), 
+                KeyCode::Char('a'), KeyCode::Char('m'), KeyCode::Char('/'),
+                KeyCode::Char('p'), KeyCode::Char(' '), KeyCode::Enter, KeyCode::Esc,
+                KeyCode::Tab, KeyCode::Char('h'), KeyCode::Char('l'), KeyCode::Backspace,
+                KeyCode::Left, KeyCode::Right, KeyCode::Up, KeyCode::Down, KeyCode::PageUp, KeyCode::PageDown,
+                KeyCode::Home, KeyCode::End, KeyCode::Delete
+            ];
+            for k in direct_keys { 
+                app.handle_key(key(k)).await; 
+                app.handle_key(key_mod(k, KeyModifiers::CONTROL)).await;
+                app.handle_key(key_mod(k, KeyModifiers::SHIFT)).await;
+            }
+
+            // 7. Mouse wheel exhaustive
+            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
+                app.view_mode = mode;
+                for kind in [crossterm::event::MouseEventKind::ScrollDown, crossterm::event::MouseEventKind::ScrollUp] {
+                    app.handle_mouse(crossterm::event::MouseEvent {
+                        kind, column: 0, row: 0, modifiers: KeyModifiers::NONE,
+                    }).await;
+                }
+            }
+
+            // 8. Error paths
+            server.reset().await;
+            Mock::given(any()).respond_with(ResponseTemplate::new(500)).mount(&server).await;
+            let _ = app.fetch_projects().await;
+            let _ = app.submit_pipeline_launch().await;
             let _ = app.update_issue().await;
             let _ = app.update_mr().await;
+            let _ = app.post_comment().await;
+            let _ = app.post_reply().await;
+            let _ = app.resolve_discussion().await;
             let _ = app.approve_mr().await;
             let _ = app.unapprove_mr().await;
             let _ = app.merge_mr().await;
             let _ = app.toggle_issue_state().await;
             let _ = app.toggle_mr_state().await;
             let _ = app.toggle_confidential().await;
-            let _ = app.submit_pipeline_launch().await;
-            let _ = app.refresh().await;
-            let _ = app.create_issue().await;
-            let _ = app.create_mr().await;
-            app.open_in_browser();
-            app.switch_project();
-            app.back().await;
-            app.toggle_focus();
-            app.page_down(); app.page_up();
-            app.toggle_discussion();
-            app.filter_lists();
-            app.toggle_help();
-            app.filter_help();
-            app.execute_help_action(HelpAction::None).await;
+            let _ = app.update_issue_weight().await;
+            let _ = app.update_issue_due_date().await;
+            let _ = app.clear_due_date().await;
+            let _ = app.cancel_pipeline(1, 1).await;
+            let _ = app.retry_pipeline(1, 1).await;
+            let _ = app.play_job(1, 1).await;
+            let _ = app.retry_job(1, 1).await;
+            let _ = app.cancel_job(1, 1).await;
         });
     }
 

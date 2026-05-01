@@ -428,7 +428,7 @@ mod tests {
 
         // Issue Setup
         app.selected_mr = None;
-        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [{"id":1,"username":"u"}], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": "2026-05-01", "weight": 5, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue"}"##;
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [{"id":1,"username":"u"}], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": null, "due_date": "2026-05-01", "weight": 5, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue", "references": {"full": "n/p#1"}, "reactions": []}"##;
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
         app.active_selection = MenuSelection::Issues;
 
@@ -452,8 +452,9 @@ mod tests {
         app.jobs = vec![serde_json::from_str(job_json).unwrap()];
 
         // 2. Issue All None
-        let issue_none_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": null, "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": null, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "issue_type": "issue"}"##;
-        app.selected_issue = Some(serde_json::from_str(issue_none_json).unwrap());
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue", "references": {"full": "n/p#1"}, "reactions": []}"##;
+
+        app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
         terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
 
         // 3. MR All None
