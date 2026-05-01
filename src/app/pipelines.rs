@@ -26,26 +26,30 @@ impl App {
 
         if let Some(project) = &self.selected_project {
             self.is_loading = true;
-            self.pipelines_page += 1;
             let endpoint = ProjectPipelines { 
                 project: project.id,
-                page: Some(self.pipelines_page),
+                page: Some(self.pipelines_page + 1),
                 per_page: Some(20),
             };
-            let res: Vec<Pipeline> = endpoint.query_async(&self.gitlab).await?;
-
-            if res.is_empty() {
-                self.pipelines_has_more = false;
-            } else {
-                self.pipelines.extend(res.clone());
-                self.pipelines_has_more = res.len() >= 20;
-                self.filter_lists();
-            }
+            let res: Result<Vec<Pipeline>, _> = endpoint.query_async(&self.gitlab).await;
             self.is_loading = false;
+
+            match res {
+                Ok(res) => {
+                    if res.is_empty() {
+                        self.pipelines_has_more = false;
+                    } else {
+                        self.pipelines_page += 1;
+                        self.pipelines.extend(res.clone());
+                        self.pipelines_has_more = res.len() >= 20;
+                        self.filter_lists();
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }
-
     pub async fn fetch_jobs(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = ProjectPipelineJobs { project: project_id, pipeline: pipeline_id };
         let jobs: Vec<Job> = paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&self.gitlab).await?;

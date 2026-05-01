@@ -25,25 +25,30 @@ impl App {
 
     pub async fn fetch_next_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.mrs_has_more || self.is_loading { return Ok(()); }
-
+        
         if let Some(project) = &self.selected_project {
             self.is_loading = true;
-            self.mrs_page += 1;
             let endpoint = PagedMergeRequests {
                 project: project.id,
-                page: self.mrs_page as u64,
+                page: self.mrs_page + 1,
                 per_page: 20,
             };
-            let res: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
-
-            if res.is_empty() {
-                self.mrs_has_more = false;
-            } else {
-                self.merge_requests.extend(res.clone());
-                self.mrs_has_more = res.len() >= 20;
-                self.filter_lists();
-            }
+            let res: Result<Vec<MergeRequest>, _> = endpoint.query_async(&self.gitlab).await;
             self.is_loading = false;
+            
+            match res {
+                Ok(res) => {
+                    if res.is_empty() {
+                        self.mrs_has_more = false;
+                    } else {
+                        self.mrs_page += 1;
+                        self.merge_requests.extend(res.clone());
+                        self.mrs_has_more = res.len() >= 20;
+                        self.filter_lists();
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }

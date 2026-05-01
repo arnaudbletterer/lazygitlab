@@ -58,3 +58,67 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App) {
 
     render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("esc", "back"), ("q", "quit")], &app.theme);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use crate::models::{MRDiff, MergeRequest, Author, References};
+    use gitlab::GitlabBuilder;
+
+    #[tokio::test]
+    async fn test_render_diff_view() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::any()).respond_with(wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+        let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t").insecure().build_async().await.unwrap();
+        let mut app = App::new(client);
+
+        let backend = TestBackend::new(100, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // Empty diffs
+        app.selected_mr = Some(MergeRequest {
+            iid: 1,
+            project_id: 1,
+            title: "T".into(),
+            description: Some("D".into()),
+            author: Author { id: 1, username: "u".into() },
+            assignees: vec![],
+            state: "opened".into(),
+            web_url: "u".into(),
+            references: References { full: "r".into() },
+            labels: vec![],
+            milestone: None,
+            created_at: "t".into(),
+            upvotes: 0,
+            downvotes: 0,
+            reactions: vec![],
+        });
+        terminal.draw(|f| render_diff_view(f, &mut app)).unwrap();
+
+        // With diffs
+        app.mr_diffs = vec![
+            MRDiff {
+                old_path: "a.txt".into(),
+                new_path: "b.txt".into(),
+                diff: "@@ -1 +1 @@\n-old\n+new\n unchanged".into(),
+            }
+        ];
+        app.mr_diff_state.select(Some(0));
+
+        terminal.draw(|f| render_diff_view(f, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut content = String::new();
+        for y in 0..buffer.area().height {
+            for x in 0..buffer.area().width {
+                content.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
+            }
+            content.push('\n');
+        }
+        assert!(content.contains("a.txt -> b.txt"));
+        assert!(content.contains("-old"));
+        assert!(content.contains("+new"));
+        assert!(content.contains("unchanged"));
+    }
+}

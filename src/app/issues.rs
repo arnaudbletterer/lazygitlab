@@ -29,22 +29,27 @@ impl App {
 
         if let Some(project) = &self.selected_project {
             self.is_loading = true;
-            self.issues_page += 1;
             let endpoint = PagedIssues {
                 project: project.id,
-                page: self.issues_page as u64,
+                page: self.issues_page + 1,
                 per_page: 20,
             };
-            let res: Vec<Issue> = endpoint.query_async(&self.gitlab).await?;
-
-            if res.is_empty() {
-                self.issues_has_more = false;
-            } else {
-                self.issues.extend(res.clone());
-                self.issues_has_more = res.len() >= 20;
-                self.filter_lists();
-            }
+            let res: Result<Vec<Issue>, _> = endpoint.query_async(&self.gitlab).await;
             self.is_loading = false;
+
+            match res {
+                Ok(res) => {
+                    if res.is_empty() {
+                        self.issues_has_more = false;
+                    } else {
+                        self.issues_page += 1;
+                        self.issues.extend(res.clone());
+                        self.issues_has_more = res.len() >= 20;
+                        self.filter_lists();
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }
@@ -419,7 +424,8 @@ mod tests {
         assert!(app.issues.is_empty());
 
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
-        let issue_json = r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0}"#;
+        let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 1, "confidential": false, "created_at": "t", "upvotes": 0, "downvotes": 0, "references": {"full": "r"}}"##;
+
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
 
         block_on(async {
