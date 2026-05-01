@@ -1,0 +1,17 @@
+# lazygitlab theme configuration
+# Colors can be: Black, Red, Green, Yellow, Blue, Magenta, Cyan, Gray, DarkGray, LightRed, etc.
+# Or Rgb(r, g, b) like Rgb(255, 255, 255)
+
+border = "Green"
+highlight_bg = "Blue"
+author = "Magenta"
+dim = "Gray"
+success = "Green"
+failed = "Red"
+running = "Blue"
+pending = "Yellow"
+open_mr = "Blue"
+merged_mr = "Magenta"
+closed_mr = "Red"
+shortcut_key = "Cyan"
+shortcut_desc = "White"

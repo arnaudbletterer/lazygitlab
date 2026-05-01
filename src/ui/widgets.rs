@@ -66,6 +66,9 @@ pub fn format_time_only(datetime_str: &str) -> String {
     }
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Theme {
     pub border: Color,
     pub highlight_bg: Color,
@@ -99,6 +102,16 @@ impl Theme {
             shortcut_key: Color::Cyan,
             shortcut_desc: Color::White,
         }
+    }
+
+    pub fn load() -> Self {
+        let config_path = "theme.toml";
+        if let Ok(content) = std::fs::read_to_string(config_path) {
+            if let Ok(theme) = toml::from_str(&content) {
+                return theme;
+            }
+        }
+        Self::default()
     }
 }
 
