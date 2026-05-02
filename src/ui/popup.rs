@@ -9,7 +9,7 @@ pub fn render_project_popup(f: &mut Frame, app: &mut App) {
 
     let projects: Vec<ListItem> = app.projects
         .iter()
-        .map(|p| ListItem::new(format!("{} ({})", p.name, p.path_with_namespace)))
+        .map(|p| ListItem::new(format!("{} ({})", p.name, p.path_with_namespace.as_deref().unwrap_or(""))))
         .collect();
 
     let list = List::new(projects)
@@ -373,7 +373,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         // 1. Project Popup
-        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: "ns/p1".into(), web_url: "u".into() }];
+        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: Some("ns/p1".into()), web_url: Some("u".into()) }];
         terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
 
         // 2. Label Popup
