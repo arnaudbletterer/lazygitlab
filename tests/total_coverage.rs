@@ -5,8 +5,7 @@ use wiremock::matchers::{method, path};
 use gitlab::GitlabBuilder;
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use std::time::{Duration, Instant};
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::KeyCode;
 
 struct PathContains(&'static str);
 impl wiremock::Match for PathContains {
@@ -25,7 +24,9 @@ async fn run_monolithic_tests() {
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let mut app = App::new(client);
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.tx = tx;
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
 
     // 1. Logic exhaustive
     let _ = app.fetch_projects().await;
@@ -34,6 +35,13 @@ async fn run_monolithic_tests() {
     let _ = app.fetch_global_merge_requests().await;
     let _ = app.fetch_global_issues().await;
     let _ = app.fetch_project_metadata().await;
+    
+    // Pump updates
+    let start = std::time::Instant::now();
+    while std::time::Instant::now().duration_since(start) < std::time::Duration::from_millis(500) {
+        app.process_updates(&mut rx);
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     
     let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [{"id":1,"username":"u"}], "state": "opened", "web_url": "u", "labels": [{"id":1,"name":"l","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"m"}, "due_date": "2026-04-25", "weight": 5, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue", "references": {"full": "n/p#1"}, "reactions": []}"##;
     app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
@@ -45,7 +53,7 @@ async fn run_monolithic_tests() {
     for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
         app.view_mode = mode;
         for focus in [true, false] {
-            app.focus_on_menu = focus;
+            app.active_panel = if focus { Panel::Sidebar } else { Panel::Content };
             for _ in 0..10 { app.move_down(); app.move_up(); }
         }
         app.page_down(); app.page_up();
@@ -115,7 +123,7 @@ async fn run_monolithic_tests() {
     app.selected_pipeline = None;
     app.selected_job = None;
     
-    app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
+    app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) }];
     app.projects_state.select(Some(0));
     app.active_selection = MenuSelection::Projects;
     app.open_in_browser();
@@ -173,7 +181,7 @@ async fn run_monolithic_tests() {
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     app.active_selection = MenuSelection::Pipelines;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    app.focus_on_menu = true;
+    app.active_panel = Panel::Sidebar;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     
     // Input mode variants
@@ -220,7 +228,7 @@ async fn run_monolithic_tests() {
             for focus in [true, false] {
                 app.view_mode = mode;
                 app.active_selection = sel;
-                app.focus_on_menu = focus;
+                app.active_panel = if focus { Panel::Sidebar } else { Panel::Content };
                 
                 // Normal keys
                 for k in &keys {

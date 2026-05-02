@@ -23,7 +23,7 @@ async fn setup_app() -> (MockServer, App) {
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let mut app = App::new(client);
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
     app.show_project_popup = false;
     (server, app)
 }
@@ -87,8 +87,8 @@ async fn test_navigation_and_focus() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     app.projects = vec![
-        Project { id: 1, name: "Proj 1".into(), path_with_namespace: "n/p1".into(), web_url: "u".into() },
-        Project { id: 2, name: "Proj 2".into(), path_with_namespace: "n/p2".into(), web_url: "u".into() },
+        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()) },
+        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()) },
     ];
     app.show_project_popup = true;
     app.projects_state.select(Some(0));
@@ -118,7 +118,7 @@ async fn test_navigation_and_focus() {
     app.mrs_state.select(Some(0));
     app.view_mode = ViewMode::List;
     app.active_selection = MenuSelection::MergeRequests;
-    app.focus_on_menu = false;
+    app.active_panel = Panel::Content;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     assert_buffer_contains(&terminal, "> [opened] !1 - MR 1 by @u");
