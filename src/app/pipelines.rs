@@ -381,7 +381,7 @@ mod tests {
         let _ = block_on(app.fetch_pipelines());
         assert!(app.pipelines.is_empty());
 
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
 
         block_on(async {
             Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;

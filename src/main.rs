@@ -17,17 +17,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env();
     let client = GitlabBuilder::new(config.url, config.token).build_async().await?;
     let mut app = App::new(client);
-    let _ = app.fetch_projects().await;
+    
+    // Start TUI first
     run_with_terminal(&mut app).await
 }
 
 struct Config { url: String, token: String }
 impl Config {
     fn from_env() -> Self {
-        Self {
-            url: std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string()),
-            token: std::env::var("GITLAB_TOKEN").expect("GITLAB_TOKEN must be set"),
+        let url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
+        let token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
+        if token.is_empty() {
+            panic!("GITLAB_TOKEN must be set");
         }
+        Self { url, token }
     }
 }
 
@@ -59,7 +62,10 @@ pub async fn run_with_terminal(app: &mut App) -> Result<(), Box<dyn std::error::
     let mut terminal = Terminal::new(backend)?;
 
     let event_source = RealEventSource;
-    let res = run_app(&mut terminal, app, &event_source).await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.tx = tx;
+
+    let res = run_app(&mut terminal, app, &event_source, &mut rx).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, event::DisableMouseCapture, event::DisableFocusChange)?;
@@ -72,11 +78,16 @@ async fn run_app<B: Backend, E: EventSource>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     event_source: &E,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
 ) -> Result<(), Box<dyn std::error::Error>> 
 where 
     <B as Backend>::Error: 'static 
 {
+    // Initial data load
+    let _ = app.refresh().await;
+
     while !app.should_quit {
+        app.process_updates(rx);
         terminal.draw(|f| ui(f, app))?;
 
         let is_live_view = (app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines) 
@@ -146,7 +157,8 @@ mod tests {
             ]),
         };
 
-        assert!(run_app(&mut terminal, &mut app, &event_source).await.is_ok());
+        let (_tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
     }
 
     #[tokio::test]
@@ -173,7 +185,8 @@ mod tests {
             ]),
         };
 
-        assert!(run_app(&mut terminal, &mut app, &event_source).await.is_ok());
+        let (_tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
     }
 
     #[test]

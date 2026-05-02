@@ -7,8 +7,8 @@ use gitlab::AsyncGitlab;
 pub struct Project {
     pub id: u64,
     pub name: String,
-    pub path_with_namespace: String,
-    pub web_url: String,
+    pub path_with_namespace: Option<String>,
+    pub web_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -67,7 +67,7 @@ pub struct Note {
     pub system: bool,
     pub position: Option<Position>,
     #[serde(skip)]
-    pub context: Option<Vec<(u64, String, LineType, bool)>>, // (line_number, content, type, is_target)
+    pub context: Option<Vec<(u64, String, LineType, bool)>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -297,6 +297,45 @@ pub struct HelpItem {
     pub action: HelpAction,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Panel {
+    Sidebar,
+    Content,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GroupedItem<T> {
+    Header(String),
+    Item(T),
+}
+
+#[derive(Debug)]
+pub enum DataUpdate {
+    Todos { data: Vec<Todo>, page: u64, has_more: bool },
+    AppendTodos(Vec<Todo>),
+    Projects { data: Vec<Project>, page: u64, has_more: bool },
+    AppendProjects(Vec<Project>),
+    Groups { data: Vec<Group>, page: u64, has_more: bool },
+    AppendGroups(Vec<Group>),
+    GlobalMRs { data: Vec<MergeRequest>, page: u64, has_more: bool },
+    ClearGlobalMRs,
+    AppendGlobalMRs(Vec<MergeRequest>),
+    GlobalIssues { data: Vec<Issue>, page: u64, has_more: bool },
+    ClearGlobalIssues,
+    AppendGlobalIssues(Vec<Issue>),
+    ProjectMRs { data: Vec<MergeRequest>, page: u64, has_more: bool },
+    ProjectIssues { data: Vec<Issue>, page: u64, has_more: bool },
+    ProjectPipelines { data: Vec<Pipeline>, page: u64, has_more: bool },
+    Discussions(Vec<Discussion>),
+    IssueDiscussions(Vec<Discussion>),
+    Jobs(Vec<Job>),
+    Log(String),
+    Diffs(Vec<MRDiff>),
+    Metadata { labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
+    Loading(bool),
+    Error(String),
+}
+
 pub struct App {
     pub should_quit: bool,
     pub menu_state: ListState,
@@ -315,7 +354,7 @@ pub struct App {
     pub pipelines_state: ListState,
     pub jobs: Vec<Job>,
     pub jobs_state: ListState,
-    pub focus_on_menu: bool,
+    pub active_panel: Panel,
     pub view_mode: ViewMode,
     pub detail_section: DetailSection,
     pub selected_metadata_field: MetadataField,
@@ -340,6 +379,7 @@ pub struct App {
     pub cursor_index: usize,
     pub theme: Theme,
     pub last_refresh: std::time::Instant,
+    pub tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
 
     // Project Metadata
     pub project_labels: Vec<Label>,
@@ -417,10 +457,20 @@ pub struct App {
     pub show_filter_input: bool,
     pub todos: Vec<Todo>,
     pub todos_state: ListState,
-    pub filtered_todos: Vec<Todo>,
+    pub filtered_todos: Vec<GroupedItem<Todo>>,
     pub todos_page: u64,
     pub todos_has_more: bool,
-    pub filtered_mrs: Vec<MergeRequest>,
-    pub filtered_issues: Vec<Issue>,
+    pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
+    pub filtered_issues: Vec<GroupedItem<Issue>>,
     pub filtered_pipelines: Vec<Pipeline>,
+    pub last_error: Option<String>,
+    pub status_message: Option<String>,
+
+    // Cache timestamps
+    pub last_fetch_todos: Option<std::time::Instant>,
+    pub last_fetch_mrs: Option<std::time::Instant>,
+    pub last_fetch_issues: Option<std::time::Instant>,
+    pub last_fetch_projects: Option<std::time::Instant>,
+    pub last_fetch_groups: Option<std::time::Instant>,
+    pub last_fetch_pipelines: Option<std::time::Instant>,
 }

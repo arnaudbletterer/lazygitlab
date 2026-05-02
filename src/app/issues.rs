@@ -423,7 +423,7 @@ mod tests {
         let _ = block_on(app.fetch_issues());
         assert!(app.issues.is_empty());
 
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
         let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 1, "confidential": false, "created_at": "t", "upvotes": 0, "downvotes": 0, "references": {"full": "r"}}"##;
 
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());

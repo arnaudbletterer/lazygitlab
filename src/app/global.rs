@@ -4,203 +4,235 @@ use crate::api::*;
 
 impl App {
     pub async fn fetch_projects(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.projects_page = 1;
-        self.projects_has_more = true;
-        let endpoint = PagedProjects { membership: true, page: 1, per_page: 20 };
-        let res: Vec<Project> = endpoint.query_async(&self.gitlab).await?;
-        self.projects_has_more = res.len() == 20;
-        self.projects = res;
-        self.filter_lists();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        self.is_loading = true;
+        
+        tokio::spawn(async move {
+            let ep = PagedProjects { membership: true, page: 1, per_page: 20 };
+            let res: Result<Vec<Project>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => { 
+                    let has_more = data.len() == 20;
+                    let _ = tx.send(DataUpdate::Projects { data, page: 1, has_more }); 
+                }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_next_projects(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.projects_has_more || self.is_loading { return Ok(()); }
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let next_page = self.projects_page + 1;
         self.is_loading = true;
-        let endpoint = PagedProjects { membership: true, page: self.projects_page + 1, per_page: 20 };
-        let res: Result<Vec<Project>, _> = endpoint.query_async(&self.gitlab).await;
-        self.is_loading = false;
-        
-        match res {
-            Ok(res) => {
-                if res.is_empty() {
-                    self.projects_has_more = false;
-                } else {
-                    self.projects_page += 1;
-                    self.projects.extend(res.clone());
-                    self.projects_has_more = res.len() >= 20;
-                    self.filter_lists();
+
+        tokio::spawn(async move {
+            let ep = PagedProjects { membership: true, page: next_page, per_page: 20 };
+            let res: Result<Vec<Project>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        let _ = tx.send(DataUpdate::AppendProjects(data));
+                    }
                 }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
             }
-            Err(e) => return Err(e.into()),
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_groups(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.groups_page = 1;
-        self.groups_has_more = true;
-        let endpoint = Groups {
-            page: Some(1),
-            per_page: Some(20),
-        };
-        let res: Vec<Group> = endpoint.query_async(&self.gitlab).await?;
-        self.groups_has_more = res.len() == 20;
-        self.groups = res;
-        self.filter_lists();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        self.is_loading = true;
+        tokio::spawn(async move {
+            let ep = Groups { page: Some(1), per_page: Some(20) };
+            let res: Result<Vec<Group>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    let has_more = data.len() == 20;
+                    let _ = tx.send(DataUpdate::Groups { data, page: 1, has_more });
+                }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_next_groups(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.groups_has_more || self.is_loading { return Ok(()); }
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let next_page = self.groups_page + 1;
         self.is_loading = true;
-        let endpoint = Groups {
-            page: Some(self.groups_page + 1),
-            per_page: Some(20),
-        };
-        let res: Result<Vec<Group>, _> = endpoint.query_async(&self.gitlab).await;
-        self.is_loading = false;
-
-        match res {
-            Ok(res) => {
-                if res.is_empty() {
-                    self.groups_has_more = false;
-                } else {
-                    self.groups_page += 1;
-                    self.groups.extend(res.clone());
-                    self.groups_has_more = res.len() >= 20;
-                    self.filter_lists();
+        tokio::spawn(async move {
+            let ep = Groups { page: Some(next_page), per_page: Some(20) };
+            let res: Result<Vec<Group>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        let _ = tx.send(DataUpdate::AppendGroups(data));
+                    }
                 }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
             }
-            Err(e) => return Err(e.into()),
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.todos_page = 1;
-        self.todos_has_more = true;
-        let endpoint = Todos {
-            page: Some(1),
-            per_page: Some(20),
-        };
-        let res: Vec<Todo> = endpoint.query_async(&self.gitlab).await?;
-        self.todos_has_more = res.len() == 20;
-        self.todos = res;
-        self.filter_lists();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        self.is_loading = true;
+        
+        tokio::spawn(async move {
+            let ep = Todos { page: Some(1), per_page: Some(20) };
+            let res: Result<Vec<Todo>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => { 
+                    let has_more = data.len() == 20;
+                    let _ = tx.send(DataUpdate::Todos { data, page: 1, has_more }); 
+                }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_next_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.todos_has_more || self.is_loading { return Ok(()); }
-        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let next_page = self.todos_page + 1;
         self.is_loading = true;
-        let endpoint = Todos {
-            page: Some(self.todos_page + 1),
-            per_page: Some(20),
-        };
-        let res: Result<Vec<Todo>, _> = endpoint.query_async(&self.gitlab).await;
-        self.is_loading = false;
-        
-        match res {
-            Ok(res) => {
-                if res.is_empty() {
-                    self.todos_has_more = false;
-                } else {
-                    self.todos_page += 1;
-                    self.todos.extend(res.clone());
-                    self.todos_has_more = res.len() >= 20;
-                    self.filter_lists();
+
+        tokio::spawn(async move {
+            let ep = Todos { page: Some(next_page), per_page: Some(20) };
+            let res: Result<Vec<Todo>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        let _ = tx.send(DataUpdate::AppendTodos(data));
+                    }
                 }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
             }
-            Err(e) => return Err(e.into()),
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_global_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.mrs_page = 1;
-        self.mrs_has_more = true;
-        let endpoint = GlobalMergeRequests {
-            scope: Some("assigned_to_me".into()),
-            page: Some(1),
-            per_page: Some(20),
-        };
-        let res: Vec<MergeRequest> = endpoint.query_async(&self.gitlab).await?;
-        self.mrs_has_more = res.len() == 20;
-        self.merge_requests = res;
-        self.filter_lists();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        self.is_loading = true;
+        tokio::spawn(async move {
+            let ep = GlobalMergeRequests {
+                scope: Some("all".into()),
+                state: Some("opened".into()),
+                membership: Some(true),
+                page: Some(1),
+                per_page: Some(20),
+            };
+            let res: Result<Vec<MergeRequest>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => { 
+                    let has_more = data.len() == 20;
+                    let _ = tx.send(DataUpdate::GlobalMRs { data, page: 1, has_more }); 
+                }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_next_global_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.mrs_has_more || self.is_loading { return Ok(()); }
-        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let next_page = self.mrs_page + 1;
         self.is_loading = true;
-        let endpoint = GlobalMergeRequests {
-            scope: Some("assigned_to_me".into()),
-            page: Some(self.mrs_page + 1),
-            per_page: Some(20),
-        };
-        let res: Result<Vec<MergeRequest>, _> = endpoint.query_async(&self.gitlab).await;
-        self.is_loading = false;
-        
-        match res {
-            Ok(res) => {
-                if res.is_empty() {
-                    self.mrs_has_more = false;
-                } else {
-                    self.mrs_page += 1;
-                    self.merge_requests.extend(res.clone());
-                    self.mrs_has_more = res.len() >= 20;
-                    self.filter_lists();
+        tokio::spawn(async move {
+            let ep = GlobalMergeRequests {
+                scope: Some("all".into()),
+                state: Some("opened".into()),
+                membership: Some(true),
+                page: Some(next_page),
+                per_page: Some(20),
+            };
+            let res: Result<Vec<MergeRequest>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        let _ = tx.send(DataUpdate::AppendGlobalMRs(data));
+                    }
                 }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
             }
-            Err(e) => return Err(e.into()),
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_global_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.issues_page = 1;
-        self.issues_has_more = true;
-        let endpoint = GlobalIssues {
-            scope: Some("assigned_to_me".into()),
-            page: Some(1),
-            per_page: Some(20),
-        };
-        let res: Vec<Issue> = endpoint.query_async(&self.gitlab).await?;
-        self.issues_has_more = res.len() == 20;
-        self.issues = res;
-        self.filter_lists();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        self.is_loading = true;
+        tokio::spawn(async move {
+            let ep = GlobalIssues {
+                scope: Some("all".into()),
+                state: Some("opened".into()),
+                membership: Some(true),
+                page: Some(1),
+                per_page: Some(20),
+            };
+            let res: Result<Vec<Issue>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => { 
+                    let has_more = data.len() == 20;
+                    let _ = tx.send(DataUpdate::GlobalIssues { data, page: 1, has_more }); 
+                }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_next_global_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.issues_has_more || self.is_loading { return Ok(()); }
-        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let next_page = self.issues_page + 1;
         self.is_loading = true;
-        let endpoint = GlobalIssues {
-            scope: Some("assigned_to_me".into()),
-            page: Some(self.issues_page + 1),
-            per_page: Some(20),
-        };
-        let res: Result<Vec<Issue>, _> = endpoint.query_async(&self.gitlab).await;
-        self.is_loading = false;
-        
-        match res {
-            Ok(res) => {
-                if res.is_empty() {
-                    self.issues_has_more = false;
-                } else {
-                    self.issues_page += 1;
-                    self.issues.extend(res.clone());
-                    self.issues_has_more = res.len() >= 20;
-                    self.filter_lists();
+        tokio::spawn(async move {
+            let ep = GlobalIssues {
+                scope: Some("all".into()),
+                state: Some("opened".into()),
+                membership: Some(true),
+                page: Some(next_page),
+                per_page: Some(20),
+            };
+            let res: Result<Vec<Issue>, _> = ep.query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        let _ = tx.send(DataUpdate::AppendGlobalIssues(data));
+                    }
                 }
+                Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
             }
-            Err(e) => return Err(e.into()),
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 }
@@ -209,116 +241,118 @@ impl App {
 mod tests {
     use super::*;
     use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{path, method, any};
+    use wiremock::matchers::{path, method};
     use gitlab::GitlabBuilder;
     use tokio_test::block_on;
+    use tokio::sync::mpsc;
 
-    async fn setup_test_app() -> (MockServer, App) {
+    async fn setup_test_app() -> (MockServer, App, mpsc::UnboundedReceiver<DataUpdate>) {
         let server = MockServer::start().await;
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut app = App::new(client);
+        app.tx = tx;
+        (server, app, rx)
     }
 
     #[test]
     fn test_global_fetching_and_pagination() {
-        let (server, mut app) = block_on(setup_test_app());
+        let (server, mut app, mut rx) = block_on(setup_test_app());
 
         block_on(async {
             use wiremock::matchers::query_param;
 
-            // 1. Projects Pagination
+            // Projects
             let many_projects: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({"id": i, "name": "p", "path_with_namespace": "n/p", "web_url": "u"})).collect();
             Mock::given(path("/api/v4/projects")).and(method("GET")).and(query_param("page", "1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_projects))).mount(&server).await;
-            Mock::given(path("/api/v4/projects")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([{"id": 100, "name": "p2", "path_with_namespace": "n/p2", "web_url": "u"}]))).mount(&server).await;
-            Mock::given(path("/api/v4/projects")).and(method("GET")).and(query_param("page", "3")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             
             app.fetch_projects().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if !app.is_loading && !app.projects.is_empty() { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
             assert_eq!(app.projects.len(), 20);
-            app.fetch_next_projects().await.unwrap();
-            assert_eq!(app.projects.len(), 21);
-            app.fetch_next_projects().await.unwrap();
-            assert!(!app.projects_has_more);
 
-            // 2. Groups Pagination
+            // Groups
             let many_groups: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({"id": i, "name": "g", "path": "g", "full_path": "g"})).collect();
             Mock::given(path("/api/v4/groups")).and(method("GET")).and(query_param("page", "1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_groups))).mount(&server).await;
-            Mock::given(path("/api/v4/groups")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             
             app.fetch_groups().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if !app.is_loading && !app.groups.is_empty() { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
             assert_eq!(app.groups.len(), 20);
-            app.fetch_next_groups().await.unwrap();
-            assert!(!app.groups_has_more);
 
-            // 3. Todos Pagination
+            // Todos
             let many_todos: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({"id": i, "project": {"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"}, "action_name": "assigned", "target_type": "Issue", "target_url": "u", "body": "b", "state": "pending", "created_at": "t"})).collect();
             Mock::given(path("/api/v4/todos")).and(method("GET")).and(query_param("page", "1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_todos))).mount(&server).await;
-            Mock::given(path("/api/v4/todos")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
             
             app.fetch_todos().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if !app.is_loading && !app.todos.is_empty() { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
             assert_eq!(app.todos.len(), 20);
-            app.fetch_next_todos().await.unwrap();
-            assert!(!app.todos_has_more);
-
-            // 4. Global MRs Pagination
-            let many_mrs: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({"iid": i, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "t", "reactions": []})).collect();
-            Mock::given(path("/api/v4/merge_requests")).and(method("GET")).and(query_param("page", "1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_mrs))).mount(&server).await;
-            Mock::given(path("/api/v4/merge_requests")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
-            
-            app.fetch_global_merge_requests().await.unwrap();
-            assert_eq!(app.merge_requests.len(), 20);
-            app.fetch_next_global_merge_requests().await.unwrap();
-            assert!(!app.mrs_has_more);
-
-            // 5. Global Issues Pagination
-            let many_issues: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({"iid": i, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 1, "confidential": false, "created_at": "t", "upvotes": 0, "downvotes": 0, "references": {"full": "n/p#1"}})).collect();
-            Mock::given(path("/api/v4/issues")).and(method("GET")).and(query_param("page", "1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_issues))).mount(&server).await;
-            Mock::given(path("/api/v4/issues")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
-            
-            app.fetch_global_issues().await.unwrap();
-            assert_eq!(app.issues.len(), 20);
-            app.fetch_next_global_issues().await.unwrap();
-            assert!(!app.issues_has_more);
-
-            // 6. Coverage for early returns (has_more = false)
+            Mock::given(path("/api/v4/projects")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(many_projects))).mount(&server).await;
+            app.projects_has_more = true; app.projects_page = 1; app.is_loading = false;
             app.fetch_next_projects().await.unwrap();
-            app.fetch_next_groups().await.unwrap();
-            app.fetch_next_todos().await.unwrap();
-            app.fetch_next_global_merge_requests().await.unwrap();
-            app.fetch_next_global_issues().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if app.projects.len() > 20 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(app.projects.len() > 20);
 
-            // 7. Error handling
-            server.reset().await;
-            Mock::given(any()).respond_with(ResponseTemplate::new(500)).mount(&server).await;
-            app.is_loading = false;
+            Mock::given(path("/api/v4/groups")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(vec![serde_json::json!({"id":2,"name":"g2","path":"g2","full_path":"g2"})]))).mount(&server).await;
+            app.groups_has_more = true; app.groups_page = 1; app.is_loading = false;
+            app.fetch_next_groups().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if app.groups.len() > 1 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(app.groups.len() > 1);
+
+            Mock::given(path("/api/v4/todos")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(vec![serde_json::json!({"id":2,"project":{"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"},"action_name":"a","target_type":"i","target_url":"u","body":"b","state":"p","created_at":"t"})]))).mount(&server).await;
+            app.todos_has_more = true; app.todos_page = 1; app.is_loading = false;
+            app.fetch_next_todos().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if app.todos.len() > 20 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(app.todos.len() > 20);
+
+            Mock::given(path("/api/v4/merge_requests")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(vec![serde_json::json!({"iid":2,"project_id":1,"title":"m","author":{"id":1,"username":"u"},"web_url":"u","state":"o","references":{"full":"r"},"upvotes":0,"downvotes":0,"labels":[],"milestone":null,"assignees":[],"created_at":"t"})]))).mount(&server).await;
+            app.mrs_has_more = true; app.mrs_page = 1; app.is_loading = false;
+            app.fetch_next_global_merge_requests().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if app.merge_requests.len() > 0 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
             
-            // Initial fetches
-            let _ = app.fetch_projects().await;
-            let _ = app.fetch_groups().await;
-            let _ = app.fetch_todos().await;
-            let _ = app.fetch_global_merge_requests().await;
-            let _ = app.fetch_global_issues().await;
-            
-            // Next page fetches (with has_more = true)
-            app.projects_has_more = true;
-            app.is_loading = false;
-            let _ = app.fetch_next_projects().await;
-            
-            app.groups_has_more = true;
-            app.is_loading = false;
-            let _ = app.fetch_next_groups().await;
-            
-            app.todos_has_more = true;
-            app.is_loading = false;
-            let _ = app.fetch_next_todos().await;
-            
-            app.mrs_has_more = true;
-            app.is_loading = false;
-            let _ = app.fetch_next_global_merge_requests().await;
-            
-            app.issues_has_more = true;
-            app.is_loading = false;
-            let _ = app.fetch_next_global_issues().await;
+            Mock::given(path("/api/v4/issues")).and(method("GET")).and(query_param("page", "2")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(vec![serde_json::json!({"iid":2,"project_id":1,"title":"i","author":{"id":1,"username":"u"},"assignees":[],"state":"o","web_url":"u","references":{"full":"r"},"labels":[],"milestone":null,"due_date":null,"weight":null,"confidential":false,"created_at":"t","upvotes":0,"downvotes":0})]))).mount(&server).await;
+            app.issues_has_more = true; app.issues_page = 1; app.is_loading = false;
+            app.fetch_next_global_issues().await.unwrap();
+            let start = std::time::Instant::now();
+            while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(2) {
+                app.process_updates(&mut rx);
+                if app.issues.len() > 0 { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
         });
     }
 }

@@ -12,8 +12,10 @@ use chrono::Local;
 
 impl App {
     pub fn new(gitlab: AsyncGitlab) -> Self {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        
         let mut menu_state = ListState::default();
-        menu_state.select(Some(0));
+        menu_state.select(Some(1));
         
         let mut projects_state = ListState::default();
         projects_state.select(Some(0));
@@ -46,12 +48,15 @@ impl App {
             should_quit: false,
             menu_state,
             menu_items: vec![
-                ("Dashboard (Todos)".to_string(), MenuSelection::Todos),
-                ("Merge Requests".to_string(), MenuSelection::MergeRequests),
-                ("Issues".to_string(), MenuSelection::Issues),
-                ("Pipelines".to_string(), MenuSelection::Pipelines),
-                ("Explore Projects".to_string(), MenuSelection::Projects),
-                ("Explore Groups".to_string(), MenuSelection::Groups),
+                (" [DASHBOARD] ".to_string(), MenuSelection::Todos),
+                (" Todos".to_string(), MenuSelection::Todos),
+                (" Merge Requests".to_string(), MenuSelection::MergeRequests),
+                (" Issues".to_string(), MenuSelection::Issues),
+                (" [EXPLORE] ".to_string(), MenuSelection::Projects),
+                (" Projects".to_string(), MenuSelection::Projects),
+                (" Groups".to_string(), MenuSelection::Groups),
+                (" [PROJECT] ".to_string(), MenuSelection::Pipelines),
+                (" Pipelines".to_string(), MenuSelection::Pipelines),
             ],
             active_selection: MenuSelection::Todos,
             gitlab,
@@ -67,7 +72,7 @@ impl App {
             pipelines_state,
             jobs: Vec::new(),
             jobs_state,
-            focus_on_menu: true,
+            active_panel: Panel::Sidebar,
             view_mode: ViewMode::List,
             detail_section: DetailSection::Discussions,
             selected_metadata_field: MetadataField::Title,
@@ -92,6 +97,7 @@ impl App {
             cursor_index: 0,
             theme: Theme::load(),
             last_refresh: std::time::Instant::now(),
+            tx,
 
             // Project Metadata
             project_labels: Vec::new(),
@@ -175,6 +181,311 @@ impl App {
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
             filtered_pipelines: Vec::new(),
+            last_error: None,
+            status_message: None,
+
+            last_fetch_todos: None,
+            last_fetch_mrs: None,
+            last_fetch_issues: None,
+            last_fetch_projects: None,
+            last_fetch_groups: None,
+            last_fetch_pipelines: None,
+        }
+    }
+
+    pub fn process_updates(&mut self, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
+        while let Ok(update) = rx.try_recv() {
+            match update {
+                DataUpdate::Todos { data, page, has_more } => { 
+                    self.todos = data; self.todos_page = page; self.todos_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_todos = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::AppendTodos(mut data) => {
+                    self.todos.append(&mut data); self.todos_page += 1; self.todos_has_more = data.len() >= 20;
+                    self.filter_lists(); self.last_fetch_todos = Some(std::time::Instant::now());
+                    self.status_message = None;
+                }
+                DataUpdate::Projects { data, page, has_more } => { 
+                    self.projects = data; self.projects_page = page; self.projects_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_projects = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::AppendProjects(mut data) => {
+                    self.projects.append(&mut data); self.projects_page += 1; self.projects_has_more = data.len() >= 20;
+                    self.filter_lists(); self.last_fetch_projects = Some(std::time::Instant::now());
+                    self.status_message = None;
+                }
+                DataUpdate::Groups { data, page, has_more } => { 
+                    self.groups = data; self.groups_page = page; self.groups_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_groups = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::AppendGroups(mut data) => {
+                    self.groups.append(&mut data); self.groups_page += 1; self.groups_has_more = data.len() >= 20;
+                    self.filter_lists(); self.last_fetch_groups = Some(std::time::Instant::now());
+                    self.status_message = None;
+                }
+                DataUpdate::GlobalMRs { data, page, has_more } | DataUpdate::ProjectMRs { data, page, has_more } => { 
+                    self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_mrs = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::ClearGlobalMRs => {
+                    self.merge_requests.clear(); self.filter_lists();
+                }
+                DataUpdate::AppendGlobalMRs(mut data) => {
+                    self.merge_requests.append(&mut data); self.filter_lists(); self.last_fetch_mrs = Some(std::time::Instant::now());
+                    self.status_message = None;
+                }
+                DataUpdate::GlobalIssues { data, page, has_more } | DataUpdate::ProjectIssues { data, page, has_more } => { 
+                    self.issues = data; self.issues_page = page; self.issues_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_issues = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::ClearGlobalIssues => {
+                    self.issues.clear(); self.filter_lists();
+                }
+                DataUpdate::AppendGlobalIssues(mut data) => {
+                    self.issues.append(&mut data); self.filter_lists(); self.last_fetch_issues = Some(std::time::Instant::now());
+                    self.status_message = None;
+                }
+                DataUpdate::ProjectPipelines { data, page, has_more } => { 
+                    self.pipelines = data; self.pipelines_page = page; self.pipelines_has_more = has_more;
+                    self.filter_lists(); self.last_fetch_pipelines = Some(std::time::Instant::now()); 
+                    self.status_message = None;
+                }
+                DataUpdate::Discussions(data) | DataUpdate::IssueDiscussions(data) => { self.discussions = data; self.status_message = None; }
+                DataUpdate::Jobs(data) => { self.jobs = data; self.status_message = None; }
+                DataUpdate::Log(data) => { self.job_log = data; self.parse_job_log(); self.status_message = None; }
+                DataUpdate::Diffs(data) => { self.mr_diffs = data; self.status_message = None; }
+                DataUpdate::Metadata { labels, milestones, members } => {
+                    self.project_labels = labels;
+                    self.project_milestones = milestones;
+                    self.project_members = members;
+                    self.status_message = None;
+                }
+                DataUpdate::Loading(b) => { self.is_loading = b; if !b { self.status_message = None; } }
+                DataUpdate::Error(e) => { self.last_error = Some(e); self.is_loading = false; self.status_message = None; }
+            }
+        }
+    }
+
+    pub async fn initial_setup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.is_loading { return Ok(()); }
+        self.is_loading = true;
+        self.last_error = None;
+        self.status_message = Some("Initializing Dashboard...".into());
+        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        
+        tokio::spawn(async move {
+            let ep_todos = Todos { page: Some(1), per_page: Some(50) };
+            let ep_projects = PagedProjects { membership: true, page: 1, per_page: 50 };
+            let ep_groups = Groups { page: Some(1), per_page: Some(50) };
+
+            let h1 = {
+                let c = client.clone(); let t = tx.clone();
+                tokio::spawn(async move {
+                    let res: Result<Vec<Todo>, _> = ep_todos.query_async(&c).await;
+                    match res {
+                        Ok(data) => { let has_more = data.len() == 50; let _ = t.send(DataUpdate::Todos { data, page: 1, has_more }); }
+                        Err(e) => { let _ = t.send(DataUpdate::Error(format!("Todos Error: {}", e))); }
+                    }
+                })
+            };
+
+            let h2 = {
+                let c = client.clone(); let t = tx.clone();
+                tokio::spawn(async move {
+                    let res: Result<Vec<Project>, _> = ep_projects.query_async(&c).await;
+                    match res {
+                        Ok(data) => { let has_more = data.len() == 50; let _ = t.send(DataUpdate::Projects { data, page: 1, has_more }); }
+                        Err(e) => { let _ = t.send(DataUpdate::Error(format!("Projects Error: {}", e))); }
+                    }
+                })
+            };
+
+            let h3 = {
+                let c = client.clone(); let t = tx.clone();
+                tokio::spawn(async move {
+                    let res: Result<Vec<Group>, _> = ep_groups.query_async(&c).await;
+                    match res {
+                        Ok(data) => { let has_more = data.len() == 50; let _ = t.send(DataUpdate::Groups { data, page: 1, has_more }); }
+                        Err(e) => { let _ = t.send(DataUpdate::Error(format!("Groups Error: {}", e))); }
+                    }
+                })
+            };
+
+            let _ = tokio::join!(h1, h2, h3);
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+
+        Ok(())
+    }
+
+    pub async fn refresh(&mut self) {
+        if self.is_loading { return; }
+        self.last_error = None;
+
+        let now = std::time::Instant::now();
+        let cache_duration = std::time::Duration::from_secs(30);
+
+        if self.selected_project.is_none() {
+            let needs_fetch = match self.active_selection {
+                MenuSelection::Todos => self.last_fetch_todos.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::MergeRequests => self.last_fetch_mrs.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::Issues => self.last_fetch_issues.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::Projects => self.last_fetch_projects.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::Groups => self.last_fetch_groups.map_or(true, |t| now.duration_since(t) > cache_duration),
+                _ => false,
+            };
+
+            if !needs_fetch { return; }
+
+            self.is_loading = true;
+            self.last_refresh = now;
+            match self.active_selection {
+                MenuSelection::Todos => { self.status_message = Some("Fetching Todos...".into()); let _ = self.fetch_todos().await; }
+                MenuSelection::MergeRequests => { self.status_message = Some("Fetching Merge Requests...".into()); let _ = self.fetch_global_merge_requests().await; }
+                MenuSelection::Issues => { self.status_message = Some("Fetching Issues...".into()); let _ = self.fetch_global_issues().await; }
+                MenuSelection::Projects => { self.status_message = Some("Fetching Projects...".into()); let _ = self.fetch_projects().await; }
+                MenuSelection::Groups => { self.status_message = Some("Fetching Groups...".into()); let _ = self.fetch_groups().await; }
+                _ => { self.is_loading = false; }
+            }
+            return;
+        }
+
+        let pid = self.selected_project.as_ref().unwrap().id;
+        
+        let needs_fetch = match self.view_mode {
+            ViewMode::List => match self.active_selection {
+                MenuSelection::MergeRequests => self.last_fetch_mrs.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::Issues => self.last_fetch_issues.map_or(true, |t| now.duration_since(t) > cache_duration),
+                MenuSelection::Pipelines => self.last_fetch_pipelines.map_or(true, |t| now.duration_since(t) > cache_duration),
+                _ => false,
+            },
+            _ => true,
+        };
+
+        if !needs_fetch { return; }
+
+        self.is_loading = true;
+        self.last_refresh = std::time::Instant::now();
+        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+
+        if self.show_project_popup {
+            tokio::spawn(async move {
+                let ep = PagedProjects { membership: true, page: 1, per_page: 100 };
+                let res: Result<Vec<Project>, _> = ep.query_async(&client).await;
+                match res {
+                    Ok(data) => { let _ = tx.send(DataUpdate::Projects { data, page: 1, has_more: true }); }
+                    Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+            return;
+        }
+
+        match self.view_mode {
+            ViewMode::List => match self.active_selection {
+                MenuSelection::MergeRequests => {
+                    tokio::spawn(async move {
+                        let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50 };
+                        let res: Result<Vec<MergeRequest>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::ProjectMRs { data, page: 1, has_more: true }); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                }
+                MenuSelection::Issues => {
+                    tokio::spawn(async move {
+                        let ep = PagedIssues { project: pid, page: 1, per_page: 50 };
+                        let res: Result<Vec<Issue>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::ProjectIssues { data, page: 1, has_more: true }); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                }
+                MenuSelection::Pipelines => {
+                    tokio::spawn(async move {
+                        let ep = ProjectPipelines { project: pid, page: Some(1), per_page: Some(50) };
+                        let res: Result<Vec<Pipeline>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::ProjectPipelines { data, page: 1, has_more: true }); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                }
+                _ => { self.is_loading = false; }
+            },
+            ViewMode::Detail => {
+                if let Some(mr) = self.selected_mr.clone() {
+                    tokio::spawn(async move {
+                        let ep = MergeRequestDiscussions { project: pid, merge_request: mr.iid };
+                        let res: Result<Vec<Discussion>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::Discussions(data)); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                } else if let Some(issue) = self.selected_issue.clone() {
+                    tokio::spawn(async move {
+                        let ep = IssueDiscussions { project: pid, issue: issue.iid };
+                        let res: Result<Vec<Discussion>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::IssueDiscussions(data)); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                } else if let Some(pipeline) = self.selected_pipeline.clone() {
+                    tokio::spawn(async move {
+                        let ep = ProjectPipelineJobs { project: pid, pipeline: pipeline.id };
+                        let res: Result<Vec<Job>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::Jobs(data)); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                } else { self.is_loading = false; }
+            }
+            ViewMode::JobLog => {
+                if let Some(job) = self.selected_job.clone() {
+                    tokio::spawn(async move {
+                        let ep = JobTrace { project: pid, job: job.id };
+                        let res: Result<Vec<u8>, _> = gitlab::api::raw(ep).query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::Log(String::from_utf8_lossy(&data).to_string())); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                } else { self.is_loading = false; }
+            }
+            ViewMode::Diff => {
+                if let Some(mr) = self.selected_mr.clone() {
+                    tokio::spawn(async move {
+                        let ep = MergeRequestDiffs { project: pid, merge_request: mr.iid };
+                        let res: Result<Vec<MRDiff>, _> = ep.query_async(&client).await;
+                        match res {
+                            Ok(data) => { let _ = tx.send(DataUpdate::Diffs(data)); }
+                            Err(e) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                } else { self.is_loading = false; }
+            }
         }
     }
 
@@ -390,66 +701,44 @@ impl App {
 
         match self.view_mode {
             ViewMode::List => {
-                if self.focus_on_menu {
-                    let i = match self.menu_state.selected() {
-                        Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 },
-                        None => 0,
-                    };
-                    self.menu_state.select(Some(i));
-                    self.active_selection = self.menu_items[i].1;
+                if self.active_panel == Panel::Sidebar {
+                    let current = self.menu_state.selected().unwrap_or(0);
+                    let mut next = if current >= self.menu_items.len() - 1 { 0 } else { current + 1 };
+                    while self.menu_items[next].0.starts_with(" [") && next != current {
+                        next = if next >= self.menu_items.len() - 1 { 0 } else { next + 1 };
+                    }
+                    self.menu_state.select(Some(next));
+                    self.active_selection = self.menu_items[next].1;
                 } else {
                     match self.active_selection {
                         MenuSelection::Todos => {
-                            if !self.todos.is_empty() {
-                                let i = match self.todos_state.selected() {
-                                    Some(i) => {
-                                        if i >= self.todos.len().saturating_sub(1) {
-                                            if self.todos_has_more {
-                                                let _ = self.fetch_next_todos();
-                                            }
-                                            0
-                                        } else {
-                                            if i >= self.todos.len().saturating_sub(5) && self.todos_has_more {
-                                                // Trigger fetch next page
-                                            }
-                                            i + 1
-                                        }
-                                    },
-                                    None => 0,
-                                };
-                                self.todos_state.select(Some(i));
+                            if !self.filtered_todos.is_empty() {
+                                let current = self.todos_state.selected().unwrap_or(0);
+                                let mut next = if current >= self.filtered_todos.len().saturating_sub(1) { 0 } else { current + 1 };
+                                while matches!(self.filtered_todos[next], GroupedItem::Header(_)) && next != current {
+                                    next = if next >= self.filtered_todos.len().saturating_sub(1) { 0 } else { next + 1 };
+                                }
+                                self.todos_state.select(Some(next));
                             }
                         }
                         MenuSelection::MergeRequests => {
-                            if !self.merge_requests.is_empty() {
-                                let i = match self.mrs_state.selected() {
-                                    Some(i) => {
-                                        if i >= self.merge_requests.len().saturating_sub(1) {
-                                            if self.mrs_has_more {
-                                                let _ = self.fetch_next_merge_requests(); // This should be handled in a way that doesn't block or we use block_on if we're in a sync context but App::handle_key is async
-                                            }
-                                            0
-                                        } else {
-                                            if i >= self.merge_requests.len().saturating_sub(5) && self.mrs_has_more {
-                                                // Trigger fetch next page when 5 items from the end
-                                                // Since move_down is sync, we might need to handle this carefully.
-                                                // Actually, handle_key is async, but move_down is called from it.
-                                            }
-                                            i + 1
-                                        }
-                                    },
-                                    None => 0,
-                                };
-                                self.mrs_state.select(Some(i));
+                            if !self.filtered_mrs.is_empty() {
+                                let current = self.mrs_state.selected().unwrap_or(0);
+                                let mut next = if current >= self.filtered_mrs.len() - 1 { 0 } else { current + 1 };
+                                while matches!(self.filtered_mrs[next], GroupedItem::Header(_)) && next != current {
+                                    next = if next >= self.filtered_mrs.len() - 1 { 0 } else { next + 1 };
+                                }
+                                self.mrs_state.select(Some(next));
                             }
                         }
                         MenuSelection::Issues => {
-                            if !self.issues.is_empty() {
-                                let i = match self.issues_state.selected() {
-                                    Some(i) => if i >= self.issues.len().saturating_sub(1) { 0 } else { i + 1 },
-                                    None => 0,
-                                };
-                                self.issues_state.select(Some(i));
+                            if !self.filtered_issues.is_empty() {
+                                let current = self.issues_state.selected().unwrap_or(0);
+                                let mut next = if current >= self.filtered_issues.len().saturating_sub(1) { 0 } else { current + 1 };
+                                while matches!(self.filtered_issues[next], GroupedItem::Header(_)) && next != current {
+                                    next = if next >= self.filtered_issues.len().saturating_sub(1) { 0 } else { next + 1 };
+                                }
+                                self.issues_state.select(Some(next));
                             }
                         }
                         MenuSelection::Pipelines => {
@@ -464,19 +753,7 @@ impl App {
                         MenuSelection::Projects => {
                             if !self.projects.is_empty() {
                                 let i = match self.projects_state.selected() {
-                                    Some(i) => {
-                                        if i >= self.projects.len().saturating_sub(1) {
-                                            if self.projects_has_more {
-                                                let _ = self.fetch_next_projects();
-                                            }
-                                            0
-                                        } else {
-                                            if i >= self.projects.len().saturating_sub(5) && self.projects_has_more {
-                                                // Trigger fetch
-                                            }
-                                            i + 1
-                                        }
-                                    }
+                                    Some(i) => if i >= self.projects.len().saturating_sub(1) { 0 } else { i + 1 },
                                     None => 0,
                                 };
                                 self.projects_state.select(Some(i));
@@ -485,19 +762,7 @@ impl App {
                         MenuSelection::Groups => {
                             if !self.groups.is_empty() {
                                 let i = match self.groups_state.selected() {
-                                    Some(i) => {
-                                        if i >= self.groups.len().saturating_sub(1) {
-                                            if self.groups_has_more {
-                                                let _ = self.fetch_next_groups();
-                                            }
-                                            0
-                                        } else {
-                                            if i >= self.groups.len().saturating_sub(5) && self.groups_has_more {
-                                                // Trigger fetch
-                                            }
-                                            i + 1
-                                        }
-                                    }
+                                    Some(i) => if i >= self.groups.len().saturating_sub(1) { 0 } else { i + 1 },
                                     None => 0,
                                 };
                                 self.groups_state.select(Some(i));
@@ -643,40 +908,44 @@ impl App {
 
         match self.view_mode {
             ViewMode::List => {
-                if self.focus_on_menu {
-                    let i = match self.menu_state.selected() {
-                        Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 },
-                        None => 0,
-                    };
-                    self.menu_state.select(Some(i));
-                    self.active_selection = self.menu_items[i].1;
+                if self.active_panel == Panel::Sidebar {
+                    let current = self.menu_state.selected().unwrap_or(0);
+                    let mut prev = if current == 0 { self.menu_items.len() - 1 } else { current - 1 };
+                    while self.menu_items[prev].0.starts_with(" [") && prev != current {
+                        prev = if prev == 0 { self.menu_items.len() - 1 } else { prev - 1 };
+                    }
+                    self.menu_state.select(Some(prev));
+                    self.active_selection = self.menu_items[prev].1;
                 } else {
                     match self.active_selection {
                         MenuSelection::Todos => {
-                            if !self.todos.is_empty() {
-                                let i = match self.todos_state.selected() {
-                                    Some(i) => if i == 0 { self.todos.len().saturating_sub(1) } else { i - 1 },
-                                    None => 0,
-                                };
-                                self.todos_state.select(Some(i));
+                            if !self.filtered_todos.is_empty() {
+                                let current = self.todos_state.selected().unwrap_or(0);
+                                let mut prev = if current == 0 { self.filtered_todos.len().saturating_sub(1) } else { current - 1 };
+                                while matches!(self.filtered_todos[prev], GroupedItem::Header(_)) && prev != current {
+                                    prev = if prev == 0 { self.filtered_todos.len().saturating_sub(1) } else { prev - 1 };
+                                }
+                                self.todos_state.select(Some(prev));
                             }
                         }
                         MenuSelection::MergeRequests => {
-                            if !self.merge_requests.is_empty() {
-                                let i = match self.mrs_state.selected() {
-                                    Some(i) => if i == 0 { self.merge_requests.len().saturating_sub(1) } else { i - 1 },
-                                    None => 0,
-                                };
-                                self.mrs_state.select(Some(i));
+                            if !self.filtered_mrs.is_empty() {
+                                let current = self.mrs_state.selected().unwrap_or(0);
+                                let mut prev = if current == 0 { self.filtered_mrs.len().saturating_sub(1) } else { current - 1 };
+                                while matches!(self.filtered_mrs[prev], GroupedItem::Header(_)) && prev != current {
+                                    prev = if prev == 0 { self.filtered_mrs.len().saturating_sub(1) } else { prev - 1 };
+                                }
+                                self.mrs_state.select(Some(prev));
                             }
                         }
                         MenuSelection::Issues => {
-                            if !self.issues.is_empty() {
-                                let i = match self.issues_state.selected() {
-                                    Some(i) => if i == 0 { self.issues.len().saturating_sub(1) } else { i - 1 },
-                                    None => 0,
-                                };
-                                self.issues_state.select(Some(i));
+                            if !self.filtered_issues.is_empty() {
+                                let current = self.issues_state.selected().unwrap_or(0);
+                                let mut prev = if current == 0 { self.filtered_issues.len().saturating_sub(1) } else { current - 1 };
+                                while matches!(self.filtered_issues[prev], GroupedItem::Header(_)) && prev != current {
+                                    prev = if prev == 0 { self.filtered_issues.len().saturating_sub(1) } else { prev - 1 };
+                                }
+                                self.issues_state.select(Some(prev));
                             }
                         }
                         MenuSelection::Pipelines => {
@@ -781,7 +1050,10 @@ impl App {
         if self.show_project_popup { return; }
         match self.view_mode {
             ViewMode::List => {
-                self.focus_on_menu = !self.focus_on_menu;
+                self.active_panel = match self.active_panel {
+                    Panel::Sidebar => Panel::Content,
+                    Panel::Content => Panel::Sidebar,
+                };
             }
             ViewMode::Detail => {
                 self.detail_section = match self.detail_section {
@@ -815,15 +1087,27 @@ impl App {
     pub async fn fetch_project_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             let pid = project.id;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
             
-            let labels_endpoint = ProjectLabels { project: pid };
-            self.project_labels = labels_endpoint.query_async(&self.gitlab).await?;
-
-            let milestones_endpoint = ProjectMilestones { project: pid };
-            self.project_milestones = milestones_endpoint.query_async(&self.gitlab).await?;
-
-            let members_endpoint = ProjectMembers { project: pid };
-            self.project_members = members_endpoint.query_async(&self.gitlab).await?;
+            self.is_loading = true;
+            tokio::spawn(async move {
+                let ep_labels = ProjectLabels { project: pid };
+                let ep_milestones = ProjectMilestones { project: pid };
+                let ep_members = ProjectMembers { project: pid };
+                
+                let labels_res = ep_labels.query_async(&client);
+                let milestones_res = ep_milestones.query_async(&client);
+                let members_res = ep_members.query_async(&client);
+                
+                let (l, m, mem) = tokio::join!(labels_res, milestones_res, members_res);
+                let labels = l.unwrap_or_default();
+                let milestones = m.unwrap_or_default();
+                let members = mem.unwrap_or_default();
+                
+                let _ = tx.send(DataUpdate::Metadata { labels, milestones, members });
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
         }
         Ok(())
     }
@@ -951,11 +1235,9 @@ impl App {
                 self.selected_project = Some(project.clone());
                 self.show_project_popup = false;
                 self.active_selection = MenuSelection::MergeRequests;
-                self.menu_state.select(Some(1)); // Merge Requests is the second item
-                self.focus_on_menu = true;
-                let _ = self.fetch_merge_requests().await;
-                let _ = self.fetch_issues().await;
-                let _ = self.fetch_pipelines().await;
+                self.menu_state.select(Some(2)); // MRs is 2nd in list with headers
+                self.active_panel = Panel::Sidebar;
+                let _ = self.refresh().await;
                 let _ = self.fetch_project_metadata().await;
             }
         }
@@ -963,7 +1245,7 @@ impl App {
 
     pub fn switch_project(&mut self) {
         self.show_project_popup = true;
-        self.focus_on_menu = false;
+        self.active_panel = Panel::Content;
     }
 
     pub async fn enter(&mut self) {
@@ -1082,15 +1364,15 @@ impl App {
 
         match self.view_mode {
             ViewMode::List => {
-                if self.focus_on_menu {
-                    self.focus_on_menu = false;
+                if self.active_panel == Panel::Sidebar {
+                    self.active_panel = Panel::Content;
                 } else {
                     match self.active_selection {
                         MenuSelection::MergeRequests => {
                             if let Some(i) = self.mrs_state.selected() {
-                                if let Some(mr) = self.merge_requests.get(i) {
+                                if let Some(GroupedItem::Item(mr)) = self.filtered_mrs.get(i) {
                                     self.selected_mr = Some(mr.clone());
-                                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                                    let _ = self.refresh().await;
                                     self.discussion_state.select(Some(0));
                                     self.detail_section = DetailSection::Discussions;
                                     self.view_mode = ViewMode::Detail;
@@ -1099,9 +1381,9 @@ impl App {
                         }
                         MenuSelection::Issues => {
                             if let Some(i) = self.issues_state.selected() {
-                                if let Some(issue) = self.issues.get(i) {
+                                if let Some(GroupedItem::Item(issue)) = self.filtered_issues.get(i) {
                                     self.selected_issue = Some(issue.clone());
-                                    let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
+                                    let _ = self.refresh().await;
                                     self.discussion_state.select(Some(0));
                                     self.detail_section = DetailSection::Discussions;
                                     self.view_mode = ViewMode::Detail;
@@ -1112,7 +1394,7 @@ impl App {
                             if let Some(i) = self.pipelines_state.selected() {
                                 if let Some(pipeline) = self.pipelines.get(i) {
                                     self.selected_pipeline = Some(pipeline.clone());
-                                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                                    let _ = self.refresh().await;
                                     self.jobs_state.select(Some(0));
                                     self.view_mode = ViewMode::Detail;
                                 }
@@ -1120,7 +1402,7 @@ impl App {
                         }
                         MenuSelection::Todos => {
                             if let Some(i) = self.todos_state.selected() {
-                                if self.todos.get(i).is_some() {
+                                if let Some(GroupedItem::Item(_)) = self.filtered_todos.get(i) {
                                     self.open_in_browser();
                                 }
                             }
@@ -1130,11 +1412,10 @@ impl App {
                                 if let Some(project) = self.projects.get(i) {
                                     self.selected_project = Some(project.clone());
                                     self.active_selection = MenuSelection::MergeRequests;
-                                    let _ = self.fetch_merge_requests().await;
-                                    let _ = self.fetch_issues().await;
-                                    let _ = self.fetch_pipelines().await;
+                                    self.menu_state.select(Some(2));
+                                    let _ = self.refresh().await;
                                     let _ = self.fetch_project_metadata().await;
-                                    self.focus_on_menu = true;
+                                    self.active_panel = Panel::Sidebar;
                                 }
                             }
                         }
@@ -1151,12 +1432,12 @@ impl App {
             ViewMode::JobLog => {}
             ViewMode::Diff => {}
             ViewMode::Detail => {
-                if let Some(pipeline) = &self.selected_pipeline {
+                if self.selected_pipeline.is_some() {
                     if let Some(i) = self.jobs_state.selected() {
                         if let Some(job) = self.jobs.get(i) {
                             self.selected_job = Some(job.clone());
                             self.follow_log = true;
-                            let _ = self.fetch_job_log(pipeline.project_id, job.id).await;
+                            let _ = self.refresh().await;
                             self.view_mode = ViewMode::JobLog;
                         }
                     }
@@ -1276,13 +1557,17 @@ impl App {
         } else if self.show_project_popup {
             if self.selected_project.is_some() {
                 self.show_project_popup = false;
-                self.focus_on_menu = true;
+                self.active_panel = Panel::Sidebar;
                 self.refresh().await;
             }
         } else if self.view_mode == ViewMode::JobLog {
             self.view_mode = ViewMode::Detail;
             self.selected_job = None;
             self.job_log.clear();
+            self.refresh().await;
+        } else if self.view_mode == ViewMode::Diff {
+            self.view_mode = ViewMode::Detail;
+            self.mr_diffs.clear();
             self.refresh().await;
         } else if self.view_mode == ViewMode::Detail {
             self.view_mode = ViewMode::List;
@@ -1292,24 +1577,39 @@ impl App {
             self.discussions.clear();
             self.jobs.clear();
             self.refresh().await;
-        } else if !self.focus_on_menu {
-            self.focus_on_menu = true;
+        } else if self.active_panel != Panel::Sidebar {
+            self.active_panel = Panel::Sidebar;
         }
     }
 
     pub fn open_in_browser(&self) {
-        let url = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) }
+        let url: Option<String> = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) }
         else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) }
         else if let Some(pipeline) = &self.selected_pipeline {
             self.jobs_state.selected().and_then(|i| self.jobs.get(i)).map(|job| job.web_url.clone()).or(Some(pipeline.web_url.clone()))
         } else if self.view_mode == ViewMode::List {
             match self.active_selection {
-                MenuSelection::MergeRequests => self.mrs_state.selected().and_then(|i| self.merge_requests.get(i)).map(|mr| mr.web_url.clone()),
-                MenuSelection::Issues => self.issues_state.selected().and_then(|i| self.issues.get(i)).map(|issue| issue.web_url.clone()),
+                MenuSelection::MergeRequests => self.mrs_state.selected().and_then(|i| {
+                    match self.filtered_mrs.get(i) {
+                        Some(GroupedItem::Item(mr)) => Some(mr.web_url.clone()),
+                        _ => None,
+                    }
+                }),
+                MenuSelection::Issues => self.issues_state.selected().and_then(|i| {
+                    match self.filtered_issues.get(i) {
+                        Some(GroupedItem::Item(issue)) => Some(issue.web_url.clone()),
+                        _ => None,
+                    }
+                }),
                 MenuSelection::Pipelines => self.pipelines_state.selected().and_then(|i| self.pipelines.get(i)).map(|p| p.web_url.clone()),
-                MenuSelection::Todos => self.todos_state.selected().and_then(|i| self.todos.get(i)).map(|t| t.target_url.clone()),
-                MenuSelection::Projects => self.projects_state.selected().and_then(|i| self.projects.get(i)).map(|p| p.web_url.clone()),
-                MenuSelection::Groups => self.groups_state.selected().and_then(|i| self.groups.get(i)).map(|g| format!("https://gitlab.com/groups/{}", g.full_path)), // Simplified URL
+                MenuSelection::Todos => self.todos_state.selected().and_then(|i| {
+                    match self.filtered_todos.get(i) {
+                        Some(GroupedItem::Item(todo)) => Some(todo.target_url.clone()),
+                        _ => None,
+                    }
+                }),
+                MenuSelection::Projects => self.projects_state.selected().and_then(|i| self.projects.get(i)).and_then(|p| p.web_url.clone()),
+                MenuSelection::Groups => self.groups_state.selected().and_then(|i| self.groups.get(i)).map(|g| format!("https://gitlab.com/groups/{}", g.full_path)),
             }
         } else { None };
 
@@ -1324,146 +1624,49 @@ impl App {
         }
     }
 
-    pub async fn refresh(&mut self) {
-        self.last_refresh = std::time::Instant::now();
-        if self.show_project_popup { let _ = self.fetch_projects().await; return; }
-
-        if self.selected_project.is_none() {
-            match self.active_selection {
-                MenuSelection::Todos => { let _ = self.fetch_todos().await; }
-                MenuSelection::MergeRequests => { let _ = self.fetch_global_merge_requests().await; }
-                MenuSelection::Issues => { let _ = self.fetch_global_issues().await; }
-                _ => {}
-            }
-            return;
-        }
-
-        match self.view_mode {
-            ViewMode::List => match self.active_selection {
-                MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
-                MenuSelection::Issues => { let _ = self.fetch_issues().await; }
-                MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
-                _ => {}
-            },
-            ViewMode::Detail => {
-                if let Some(mr) = &self.selected_mr { let _ = self.fetch_discussions(mr.project_id, mr.iid).await; }
-                else if let Some(issue) = &self.selected_issue { let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; }
-                else if let Some(pipeline) = &self.selected_pipeline { let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; }
-            },
-            ViewMode::JobLog => if let Some(project) = &self.selected_project { if let Some(job) = &self.selected_job { let _ = self.fetch_job_log(project.id, job.id).await; } },
-            ViewMode::Diff => if let Some(mr) = &self.selected_mr { let _ = self.fetch_mr_diffs(mr.project_id, mr.iid).await; }
-        }
-    }
-
-    pub fn get_input_buffer(&self) -> &String {
-        match self.input_target {
-            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &self.pipeline_ref_input,
-            InputTarget::PipelineVariableKey => &self.pipeline_variable_key_input,
-            InputTarget::PipelineVariableValue => &self.pipeline_variable_value_input,
-            InputTarget::Filter => &self.filter_input,
-            InputTarget::CreateIssueTitle => &self.create_issue_title,
-            InputTarget::CreateIssueDescription => &self.create_issue_description,
-            InputTarget::CreateMRTitle => &self.create_mr_title,
-            InputTarget::CreateMRDescription => &self.create_mr_description,
-            InputTarget::CreateMRSourceBranch => &self.create_mr_source_branch,
-            InputTarget::CreateMRTargetBranch => &self.create_mr_target_branch,
-            _ => &self.reply_input,
-        }
-    }
-
-    pub fn get_input_buffer_mut(&mut self) -> &mut String {
-        match self.input_target {
-            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &mut self.pipeline_ref_input,
-            InputTarget::PipelineVariableKey => &mut self.pipeline_variable_key_input,
-            InputTarget::PipelineVariableValue => &mut self.pipeline_variable_value_input,
-            InputTarget::Filter => &mut self.filter_input,
-            InputTarget::CreateIssueTitle => &mut self.create_issue_title,
-            InputTarget::CreateIssueDescription => &mut self.create_issue_description,
-            InputTarget::CreateMRTitle => &mut self.create_mr_title,
-            InputTarget::CreateMRDescription => &mut self.create_mr_description,
-            InputTarget::CreateMRSourceBranch => &mut self.create_mr_source_branch,
-            InputTarget::CreateMRTargetBranch => &mut self.create_mr_target_branch,
-            _ => &mut self.reply_input,
-        }
-    }
-
-    pub async fn create_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(project) = &self.selected_project {
-            let endpoint = CreateIssue {
-                project: project.id,
-                title: self.create_issue_title.clone(),
-                description: Some(self.create_issue_description.clone()),
-                assignee_ids: Vec::new(),
-                label_names: Vec::new(),
-            };
-            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-            self.show_create_issue_popup = false;
-            self.input_mode = false;
-            let _ = self.fetch_issues().await;
-        }
-        Ok(())
-    }
-
-    pub async fn create_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(project) = &self.selected_project {
-            let endpoint = CreateMergeRequest {
-                project: project.id,
-                source_branch: self.create_mr_source_branch.clone(),
-                target_branch: self.create_mr_target_branch.clone(),
-                title: self.create_mr_title.clone(),
-                description: Some(self.create_mr_description.clone()),
-            };
-            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-            self.show_create_mr_popup = false;
-            self.input_mode = false;
-            let _ = self.fetch_merge_requests().await;
-        }
-        Ok(())
-    }
-
     pub async fn check_pagination(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.view_mode != ViewMode::List || self.focus_on_menu { return Ok(()); }
+        if self.view_mode != ViewMode::List || self.active_panel == Panel::Sidebar { return Ok(()); }
         
         match self.active_selection {
             MenuSelection::MergeRequests => {
                 if let Some(i) = self.mrs_state.selected() {
-                    if i >= self.merge_requests.len().saturating_sub(5) && self.mrs_has_more {
-                        self.fetch_next_merge_requests().await?;
+                    if i >= self.filtered_mrs.len().saturating_sub(5) && self.mrs_has_more {
+                        let _ = self.fetch_next_merge_requests().await;
                     }
                 }
             }
             MenuSelection::Issues => {
                 if let Some(i) = self.issues_state.selected() {
-                    if i >= self.issues.len().saturating_sub(5) && self.issues_has_more {
-                        self.fetch_next_issues().await?;
+                    if i >= self.filtered_issues.len().saturating_sub(5) && self.issues_has_more {
+                        let _ = self.fetch_next_issues().await;
                     }
                 }
             }
             MenuSelection::Pipelines => {
                 if let Some(i) = self.pipelines_state.selected() {
                     if i >= self.pipelines.len().saturating_sub(5) && self.pipelines_has_more {
-                        self.fetch_next_pipelines().await?;
+                        let _ = self.fetch_next_pipelines().await;
                     }
                 }
             }
             MenuSelection::Todos => {
                 if let Some(i) = self.todos_state.selected() {
-                    if i >= self.todos.len().saturating_sub(5) && self.todos_has_more {
-                        self.fetch_next_todos().await?;
+                    if i >= self.filtered_todos.len().saturating_sub(5) && self.todos_has_more {
+                        let _ = self.fetch_next_todos().await;
                     }
                 }
             }
             MenuSelection::Projects => {
                 if let Some(i) = self.projects_state.selected() {
                     if i >= self.projects.len().saturating_sub(5) && self.projects_has_more {
-                        self.fetch_next_projects().await?;
+                        let _ = self.fetch_next_projects().await;
                     }
                 }
             }
             MenuSelection::Groups => {
                 if let Some(i) = self.groups_state.selected() {
                     if i >= self.groups.len().saturating_sub(5) && self.groups_has_more {
-                        self.fetch_next_groups().await?;
+                        let _ = self.fetch_next_groups().await;
                     }
                 }
             }
@@ -1475,19 +1678,12 @@ impl App {
         use crossterm::event::MouseEventKind;
         match mouse.kind {
             MouseEventKind::ScrollDown => {
-                if self.view_mode == ViewMode::JobLog {
-                    self.page_down();
-                } else {
-                    self.move_down();
-                    let _ = self.check_pagination().await;
-                }
+                if self.view_mode == ViewMode::JobLog { self.page_down(); }
+                else { self.move_down(); let _ = self.check_pagination().await; }
             }
             MouseEventKind::ScrollUp => {
-                if self.view_mode == ViewMode::JobLog {
-                    self.page_up();
-                } else {
-                    self.move_up();
-                }
+                if self.view_mode == ViewMode::JobLog { self.page_up(); }
+                else { self.move_up(); }
             }
             _ => {}
         }
@@ -1495,61 +1691,115 @@ impl App {
 
     pub fn filter_lists(&mut self) {
         let filter = self.filter_input.to_lowercase();
+        let selected_pid = self.selected_project.as_ref().map(|p| p.id);
+        let is_global = selected_pid.is_none();
         
-        self.filtered_todos = self.todos.iter()
-            .filter(|t| t.body.to_lowercase().contains(&filter) || t.project.name.to_lowercase().contains(&filter) || t.action_name.to_lowercase().contains(&filter))
-            .cloned()
-            .collect();
+        // Todos
+        let mut raw_todos: Vec<Todo> = self.todos.iter()
+            .filter(|t| {
+                let matches_filter = t.body.to_lowercase().contains(&filter) || t.project.path_with_namespace.as_deref().unwrap_or("").to_lowercase().contains(&filter) || t.action_name.to_lowercase().contains(&filter);
+                let matches_project = is_global || Some(t.project.id) == selected_pid;
+                matches_filter && matches_project
+            })
+            .cloned().collect();
+        raw_todos.sort_by(|a, b| a.project.path_with_namespace.as_deref().unwrap_or("").cmp(b.project.path_with_namespace.as_deref().unwrap_or("")));
+        
+        self.filtered_todos = Vec::new();
+        let mut last_todo_proj = String::new();
+        for t in raw_todos {
+            let path = t.project.path_with_namespace.as_deref().unwrap_or("");
+            if is_global && path != last_todo_proj {
+                last_todo_proj = path.to_string();
+                self.filtered_todos.push(GroupedItem::Header(last_todo_proj.clone()));
+            }
+            self.filtered_todos.push(GroupedItem::Item(t));
+        }
 
         self.filtered_projects = self.projects.iter()
-            .filter(|p| p.name.to_lowercase().contains(&filter) || p.path_with_namespace.to_lowercase().contains(&filter))
-            .cloned()
-            .collect();
+            .filter(|p| p.name.to_lowercase().contains(&filter) || p.path_with_namespace.as_deref().unwrap_or("").to_lowercase().contains(&filter))
+            .cloned().collect();
 
         self.filtered_groups = self.groups.iter()
             .filter(|g| g.name.to_lowercase().contains(&filter) || g.full_path.to_lowercase().contains(&filter))
-            .cloned()
-            .collect();
+            .cloned().collect();
 
-        self.filtered_mrs = self.merge_requests.iter()
-            .filter(|mr| mr.title.to_lowercase().contains(&filter) || mr.author.username.to_lowercase().contains(&filter) || mr.references.full.to_lowercase().contains(&filter))
-            .cloned()
-            .collect();
+        // MRs
+        let mut raw_mrs: Vec<MergeRequest> = self.merge_requests.iter()
+            .filter(|mr| {
+                let matches_filter = mr.title.to_lowercase().contains(&filter) || mr.author.username.to_lowercase().contains(&filter) || mr.references.full.to_lowercase().contains(&filter);
+                let matches_project = is_global || Some(mr.project_id) == selected_pid;
+                matches_filter && matches_project
+            })
+            .cloned().collect();
+        raw_mrs.sort_by(|a, b| a.references.full.cmp(&b.references.full));
+        
+        self.filtered_mrs = Vec::new();
+        let mut last_mr_proj = String::new();
+        for mr in raw_mrs {
+            let proj = mr.references.full.split('!').next().unwrap_or("").to_string();
+            if is_global && proj != last_mr_proj {
+                last_mr_proj = proj;
+                self.filtered_mrs.push(GroupedItem::Header(last_mr_proj.clone()));
+            }
+            self.filtered_mrs.push(GroupedItem::Item(mr));
+        }
             
-        self.filtered_issues = self.issues.iter()
-            .filter(|i| i.title.to_lowercase().contains(&filter) || i.author.username.to_lowercase().contains(&filter) || format!("#{}", i.iid).contains(&filter))
-            .cloned()
-            .collect();
+        // Issues
+        let mut raw_issues: Vec<Issue> = self.issues.iter()
+            .filter(|i| {
+                let matches_filter = i.title.to_lowercase().contains(&filter) || i.author.username.to_lowercase().contains(&filter) || i.references.full.to_lowercase().contains(&filter);
+                let matches_project = is_global || Some(i.project_id) == selected_pid;
+                matches_filter && matches_project
+            })
+            .cloned().collect();
+        raw_issues.sort_by(|a, b| a.references.full.cmp(&b.references.full));
+        
+        self.filtered_issues = Vec::new();
+        let mut last_issue_proj = String::new();
+        for i in raw_issues {
+            let proj = i.references.full.split('#').next().unwrap_or("").to_string();
+            if is_global && proj != last_issue_proj {
+                last_issue_proj = proj;
+                self.filtered_issues.push(GroupedItem::Header(last_issue_proj.clone()));
+            }
+            self.filtered_issues.push(GroupedItem::Item(i));
+        }
             
         self.filtered_pipelines = self.pipelines.iter()
-            .filter(|p| p.ref_name.to_lowercase().contains(&filter) || p.status.to_lowercase().contains(&filter) || format!("#{}", p.id).contains(&filter))
-            .cloned()
-            .collect();
+            .filter(|p| {
+                let matches_filter = p.ref_name.to_lowercase().contains(&filter) || p.status.to_lowercase().contains(&filter) || format!("#{}", p.id).contains(&filter);
+                let matches_project = is_global || Some(p.project_id) == selected_pid;
+                matches_filter && matches_project
+            })
+            .cloned().collect();
 
-        // Reset selections if they are out of bounds or None
-        if self.filtered_todos.is_empty() {
-            self.todos_state.select(None);
-        } else if self.todos_state.selected().map_or(true, |i| i >= self.filtered_todos.len()) {
-            self.todos_state.select(Some(0));
+        // Reset selections
+        if self.filtered_todos.is_empty() { self.todos_state.select(None); }
+        else {
+            let mut i = self.todos_state.selected().unwrap_or(0);
+            if i >= self.filtered_todos.len() { i = 0; }
+            while i < self.filtered_todos.len() && matches!(self.filtered_todos[i], GroupedItem::Header(_)) { i += 1; }
+            if i >= self.filtered_todos.len() { self.todos_state.select(None); } else { self.todos_state.select(Some(i)); }
         }
 
-        if self.filtered_mrs.is_empty() {
-            self.mrs_state.select(None);
-        } else if self.mrs_state.selected().map_or(true, |i| i >= self.filtered_mrs.len()) {
-            self.mrs_state.select(Some(0));
+        if self.filtered_mrs.is_empty() { self.mrs_state.select(None); }
+        else {
+            let mut i = self.mrs_state.selected().unwrap_or(0);
+            if i >= self.filtered_mrs.len() { i = 0; }
+            while i < self.filtered_mrs.len() && matches!(self.filtered_mrs[i], GroupedItem::Header(_)) { i += 1; }
+            if i >= self.filtered_mrs.len() { self.mrs_state.select(None); } else { self.mrs_state.select(Some(i)); }
         }
 
-        if self.filtered_issues.is_empty() {
-            self.issues_state.select(None);
-        } else if self.issues_state.selected().map_or(true, |i| i >= self.filtered_issues.len()) {
-            self.issues_state.select(Some(0));
+        if self.filtered_issues.is_empty() { self.issues_state.select(None); }
+        else {
+            let mut i = self.issues_state.selected().unwrap_or(0);
+            if i >= self.filtered_issues.len() { i = 0; }
+            while i < self.filtered_issues.len() && matches!(self.filtered_issues[i], GroupedItem::Header(_)) { i += 1; }
+            if i >= self.filtered_issues.len() { self.issues_state.select(None); } else { self.issues_state.select(Some(i)); }
         }
 
-        if self.filtered_pipelines.is_empty() {
-            self.pipelines_state.select(None);
-        } else if self.pipelines_state.selected().map_or(true, |i| i >= self.filtered_pipelines.len()) {
-            self.pipelines_state.select(Some(0));
-        }
+        if self.filtered_pipelines.is_empty() { self.pipelines_state.select(None); }
+        else if self.pipelines_state.selected().map_or(true, |i| i >= self.filtered_pipelines.len()) { self.pipelines_state.select(Some(0)); }
     }
 
     pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -1560,12 +1810,7 @@ impl App {
                 match key.code {
                     KeyCode::Enter => {
                         self.show_help_filter = false;
-                        if let Some(i) = self.help_state.selected() {
-                            if let Some(item) = self.filtered_help.get(i) {
-                                let action = item.action;
-                                self.execute_help_action(action).await;
-                            }
-                        }
+                        if let Some(i) = self.help_state.selected() { if let Some(item) = self.filtered_help.get(i) { let action = item.action; self.execute_help_action(action).await; } }
                     }
                     KeyCode::Esc => { self.show_help_filter = false; self.help_filter_input.clear(); self.filter_help(); }
                     KeyCode::Char(c) => { self.help_filter_input.push(c); self.filter_help(); }
@@ -1576,28 +1821,9 @@ impl App {
                 match key.code {
                     KeyCode::Char('?') | KeyCode::Esc | KeyCode::Backspace => self.show_help_popup = false,
                     KeyCode::Char('/') => self.show_help_filter = true,
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        let i = match self.help_state.selected() {
-                            Some(i) => if i >= self.filtered_help.len().saturating_sub(1) { 0 } else { i + 1 },
-                            None => 0,
-                        };
-                        self.help_state.select(Some(i));
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        let i = match self.help_state.selected() {
-                            Some(i) => if i == 0 { self.filtered_help.len().saturating_sub(1) } else { i - 1 },
-                            None => 0,
-                        };
-                        self.help_state.select(Some(i));
-                    }
-                    KeyCode::Enter => {
-                        if let Some(i) = self.help_state.selected() {
-                            if let Some(item) = self.filtered_help.get(i) {
-                                let action = item.action;
-                                self.execute_help_action(action).await;
-                            }
-                        }
-                    }
+                    KeyCode::Down | KeyCode::Char('j') => { let i = match self.help_state.selected() { Some(i) => if i >= self.filtered_help.len().saturating_sub(1) { 0 } else { i + 1 }, None => 0 }; self.help_state.select(Some(i)); }
+                    KeyCode::Up | KeyCode::Char('k') => { let i = match self.help_state.selected() { Some(i) => if i == 0 { self.filtered_help.len().saturating_sub(1) } else { i - 1 }, None => 0 }; self.help_state.select(Some(i)); }
+                    KeyCode::Enter => { if let Some(i) = self.help_state.selected() { if let Some(item) = self.filtered_help.get(i) { let action = item.action; self.execute_help_action(action).await; } } }
                     _ => {}
                 }
             }
@@ -1678,13 +1904,9 @@ impl App {
                 KeyCode::Char('q') => self.should_quit = true,
                 KeyCode::Char('?') => self.toggle_help(),
                 KeyCode::Char('d') if self.view_mode == ViewMode::List || self.view_mode == ViewMode::Detail => {
-                    if let Some(mr) = self.selected_mr.clone().or_else(|| {
-                        if self.active_selection == MenuSelection::MergeRequests {
-                            self.mrs_state.selected().and_then(|i| self.filtered_mrs.get(i).cloned())
-                        } else { None }
-                    }) {
+                    if self.selected_mr.is_some() || (self.active_selection == MenuSelection::MergeRequests && self.mrs_state.selected().is_some()) {
                         self.view_mode = ViewMode::Diff;
-                        let _ = self.fetch_mr_diffs(mr.project_id, mr.iid).await;
+                        let _ = self.refresh().await;
                     }
                 }
                 KeyCode::Char('a') if self.view_mode == ViewMode::Detail && self.selected_mr.is_some() => { let _ = self.approve_mr().await; }
@@ -1696,10 +1918,7 @@ impl App {
                     self.cursor_index = self.filter_input.chars().count();
                 }
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => self.switch_project(),
-                KeyCode::Down | KeyCode::Char('j') => {
-                    self.move_down();
-                    let _ = self.check_pagination().await;
-                }
+                KeyCode::Down | KeyCode::Char('j') => { self.move_down(); let _ = self.check_pagination().await; }
                 KeyCode::Up | KeyCode::Char('k') => self.move_up(),
                 KeyCode::PageDown => self.page_down(),
                 KeyCode::PageUp => self.page_up(),
@@ -1716,57 +1935,23 @@ impl App {
                 }
                 KeyCode::Char('C') if self.view_mode == ViewMode::List => {
                     match self.active_selection {
-                        MenuSelection::Issues => {
-                            self.show_create_issue_popup = true;
-                            self.input_mode = true;
-                            self.input_target = InputTarget::CreateIssueTitle;
-                            self.create_issue_title.clear();
-                            self.create_issue_description.clear();
-                            self.cursor_index = 0;
-                        }
-                        MenuSelection::MergeRequests => {
-                            self.show_create_mr_popup = true;
-                            self.input_mode = true;
-                            self.input_target = InputTarget::CreateMRTitle;
-                            self.create_mr_title.clear();
-                            self.create_mr_description.clear();
-                            self.create_mr_source_branch.clear();
-                            self.create_mr_target_branch.clear();
-                            self.cursor_index = 0;
-                        }
+                        MenuSelection::Issues => { self.show_create_issue_popup = true; self.input_mode = true; self.input_target = InputTarget::CreateIssueTitle; self.create_issue_title.clear(); self.create_issue_description.clear(); self.cursor_index = 0; }
+                        MenuSelection::MergeRequests => { self.show_create_mr_popup = true; self.input_mode = true; self.input_target = InputTarget::CreateMRTitle; self.create_mr_title.clear(); self.create_mr_description.clear(); self.create_mr_source_branch.clear(); self.create_mr_target_branch.clear(); self.cursor_index = 0; }
                         _ => {}
                     }
                 }
                 KeyCode::Char('p') if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines => { self.show_pipeline_launch_popup().await; }
                 KeyCode::Char('p') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
-                    if let Some(proj) = &self.selected_project {
-                        if let Some(i) = self.jobs_state.selected() {
-                            if let Some(job) = self.jobs.get(i) {
-                                if job.status == "manual" { let _ = self.play_job(proj.id, job.id).await; }
-                            }
-                        }
-                    }
+                    if let Some(proj) = &self.selected_project { if let Some(i) = self.jobs_state.selected() { if let Some(job) = self.jobs.get(i) { if job.status == "manual" { let _ = self.play_job(proj.id, job.id).await; } } } }
                 }
                 KeyCode::Char('r') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
-                    if let Some(proj) = &self.selected_project {
-                        if let Some(i) = self.jobs_state.selected() {
-                            if let Some(job) = self.jobs.get(i) { let _ = self.retry_job(proj.id, job.id).await; }
-                        } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.retry_pipeline(proj.id, pipeline.id).await; }
-                    }
+                    if let Some(proj) = &self.selected_project { if let Some(i) = self.jobs_state.selected() { if let Some(job) = self.jobs.get(i) { let _ = self.retry_job(proj.id, job.id).await; } } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.retry_pipeline(proj.id, pipeline.id).await; } }
                 }
                 KeyCode::Char('c') if self.view_mode == ViewMode::List && self.active_selection == MenuSelection::Pipelines => {
-                    if let Some(proj) = &self.selected_project {
-                        if let Some(i) = self.pipelines_state.selected() {
-                            if let Some(pipeline) = self.pipelines.get(i) { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; }
-                        }
-                    }
+                    if let Some(proj) = &self.selected_project { if let Some(i) = self.pipelines_state.selected() { if let Some(pipeline) = self.pipelines.get(i) { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; } } }
                 }
                 KeyCode::Char('c') if self.view_mode == ViewMode::Detail && self.selected_pipeline.is_some() => {
-                    if let Some(proj) = &self.selected_project {
-                        if let Some(i) = self.jobs_state.selected() {
-                            if let Some(job) = self.jobs.get(i) { let _ = self.cancel_job(proj.id, job.id).await; }
-                        } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; }
-                    }
+                    if let Some(proj) = &self.selected_project { if let Some(i) = self.jobs_state.selected() { if let Some(job) = self.jobs.get(i) { let _ = self.cancel_job(proj.id, job.id).await; } } else if let Some(pipeline) = &self.selected_pipeline { let _ = self.cancel_pipeline(proj.id, pipeline.id).await; } }
                 }
                 KeyCode::Char(' ') => self.toggle_discussion(),
                 KeyCode::Enter => self.enter().await,
@@ -1775,6 +1960,86 @@ impl App {
                 _ => {}
             }
         }
+    }
+
+    pub async fn create_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let endpoint = CreateIssue {
+                project: project.id,
+                title: self.create_issue_title.clone(),
+                description: Some(self.create_issue_description.clone()),
+                assignee_ids: Vec::new(),
+                label_names: Vec::new(),
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            self.show_create_issue_popup = false;
+            self.input_mode = false;
+            let _ = self.refresh().await;
+        }
+        Ok(())
+    }
+
+    pub async fn create_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let endpoint = CreateMergeRequest {
+                project: project.id,
+                source_branch: self.create_mr_source_branch.clone(),
+                target_branch: self.create_mr_target_branch.clone(),
+                title: self.create_mr_title.clone(),
+                description: Some(self.create_mr_description.clone()),
+            };
+            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+            self.show_create_mr_popup = false;
+            self.input_mode = false;
+            let _ = self.refresh().await;
+        }
+        Ok(())
+    }
+
+    pub fn get_input_buffer(&self) -> &String {
+        match self.input_target {
+            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &self.pipeline_ref_input,
+            InputTarget::PipelineVariableKey => &self.pipeline_variable_key_input,
+            InputTarget::PipelineVariableValue => &self.pipeline_variable_value_input,
+            InputTarget::Filter => &self.filter_input,
+            InputTarget::CreateIssueTitle => &self.create_issue_title,
+            InputTarget::CreateIssueDescription => &self.create_issue_description,
+            InputTarget::CreateMRTitle => &self.create_mr_title,
+            InputTarget::CreateMRDescription => &self.create_mr_description,
+            InputTarget::CreateMRSourceBranch => &self.create_mr_source_branch,
+            InputTarget::CreateMRTargetBranch => &self.create_mr_target_branch,
+            _ => &self.reply_input,
+        }
+    }
+
+    pub fn get_input_buffer_mut(&mut self) -> &mut String {
+        match self.input_target {
+            InputTarget::PipelineRef | InputTarget::PipelineRefSearch => &mut self.pipeline_ref_input,
+            InputTarget::PipelineVariableKey => &mut self.pipeline_variable_key_input,
+            InputTarget::PipelineVariableValue => &mut self.pipeline_variable_value_input,
+            InputTarget::Filter => &mut self.filter_input,
+            InputTarget::CreateIssueTitle => &mut self.create_issue_title,
+            InputTarget::CreateIssueDescription => &mut self.create_issue_description,
+            InputTarget::CreateMRTitle => &mut self.create_mr_title,
+            InputTarget::CreateMRDescription => &mut self.create_mr_description,
+            InputTarget::CreateMRSourceBranch => &mut self.create_mr_source_branch,
+            InputTarget::CreateMRTargetBranch => &mut self.create_mr_target_branch,
+            _ => &mut self.reply_input,
+        }
+    }
+
+    pub fn parse_job_log(&mut self) {
+        let mut lines = Vec::new();
+        for line in self.job_log.lines() {
+            lines.push(LogLine {
+                timestamp: "".into(),
+                content: line.to_string(),
+                section: None,
+                is_section_start: false,
+                is_section_end: false,
+            });
+        }
+        self.job_log_lines = lines;
     }
 }
 
@@ -1787,244 +2052,4 @@ pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoj
         if let Some(n) = name { reactions.push(AwardEmoji { name: n.to_string() }); }
     }
     reactions
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gitlab::GitlabBuilder;
-    use tokio_test::block_on;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{path, method, any};
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
-
-    async fn setup_test_app() -> (MockServer, App) {
-        let server = MockServer::start().await;
-        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
-    }
-
-    fn key(code: KeyCode) -> KeyEvent { KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE } }
-    fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent { KeyEvent { code, modifiers, kind: KeyEventKind::Press, state: KeyEventState::NONE } }
-
-    #[test]
-    fn test_help_actions_and_focus_logic() {
-        let (_server, mut app) = block_on(setup_test_app());
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() });
-
-        block_on(async {
-            // Test execute_help_action exhaustive
-            let actions = [
-                HelpAction::ToggleFocus, HelpAction::Filter, HelpAction::OpenBrowser,
-                HelpAction::LaunchPipeline, HelpAction::CancelPipeline, HelpAction::PlayJob,
-                HelpAction::RetryJob, HelpAction::CancelJob, HelpAction::NewComment,
-                HelpAction::ResolveDiscussion, HelpAction::ToggleIssueState, HelpAction::ToggleCollapse,
-                HelpAction::Quit, HelpAction::SwitchProject, HelpAction::Back, HelpAction::Select, HelpAction::ToggleHelp
-            ];
-            for action in actions {
-                app.execute_help_action(action).await;
-            }
-
-            // Test toggle_focus
-            app.show_project_popup = false;
-            app.view_mode = ViewMode::List;
-            app.focus_on_menu = true;
-            app.toggle_focus();
-            assert!(!app.focus_on_menu);
-            app.toggle_focus();
-            assert!(app.focus_on_menu);
-
-            app.view_mode = ViewMode::Detail;
-            app.detail_section = DetailSection::Metadata;
-            app.toggle_focus();
-            assert_eq!(app.detail_section, DetailSection::Discussions);
-            app.toggle_focus();
-            assert_eq!(app.detail_section, DetailSection::Metadata);
-        });
-    }
-
-    #[test]
-    fn test_back_navigation_exhaustive() {
-        let (_server, mut app) = block_on(setup_test_app());
-        block_on(async {
-            // Test back() from every popup
-            app.show_label_popup = true; app.back().await; assert!(!app.show_label_popup);
-            app.show_assignee_popup = true; app.back().await; assert!(!app.show_assignee_popup);
-            app.show_milestone_popup = true; app.back().await; assert!(!app.show_milestone_popup);
-            app.show_calendar_popup = true; app.back().await; assert!(!app.show_calendar_popup);
-            app.show_weight_popup = true; app.back().await; assert!(!app.show_weight_popup);
-            app.show_pipeline_popup = true; app.back().await; assert!(!app.show_pipeline_popup);
-            
-            // Test back() from input mode
-            app.input_mode = true; app.show_filter_input = true; app.back().await; 
-            assert!(!app.input_mode); assert!(!app.show_filter_input);
-
-            // Test back() from ViewModes
-            app.view_mode = ViewMode::JobLog; app.back().await; assert_eq!(app.view_mode, ViewMode::Detail);
-            app.view_mode = ViewMode::Detail; app.back().await; assert_eq!(app.view_mode, ViewMode::List);
-            app.view_mode = ViewMode::List; app.focus_on_menu = false; app.back().await; assert!(app.focus_on_menu);
-        });
-    }
-
-    #[test]
-    fn test_exhaustive_app_logic() {
-        let (server, mut app) = block_on(setup_test_app());
-        
-        block_on(async {
-            // Mock all endpoints to return 200 or empty lists by default
-            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
-            Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
-            Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
-
-            let keys = [
-                KeyCode::Down, KeyCode::Up, KeyCode::Left, KeyCode::Right, KeyCode::Enter, KeyCode::Esc, KeyCode::Tab, KeyCode::Backspace, 
-                KeyCode::Delete, KeyCode::Home, KeyCode::End, KeyCode::PageUp, KeyCode::PageDown,
-                KeyCode::Char('j'), KeyCode::Char('k'), KeyCode::Char('h'), KeyCode::Char('l'),
-                KeyCode::Char('p'), KeyCode::Char('r'), KeyCode::Char('c'), KeyCode::Char('s'),
-                KeyCode::Char('n'), KeyCode::Char(' '), KeyCode::Char('v'), KeyCode::Char('o'), KeyCode::Char('q'),
-                KeyCode::Char('?'), KeyCode::Char('/'), KeyCode::Char('d'), KeyCode::Char('a'), KeyCode::Char('m'), KeyCode::Char('C')
-            ];
-
-            // 1. Test every MenuSelection with empty data
-            app.selected_project = None;
-            for sel in [MenuSelection::Todos, MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups] {
-                app.active_selection = sel;
-                app.move_down(); app.move_up();
-                app.enter().await;
-            }
-
-            // 2. Test every MenuSelection with populated data (exercise saturating math)
-            app.todos = vec![serde_json::from_str(r#"{"id": 1, "project": {"id":1,"name":"p","path_with_namespace":"n/p","web_url":"u"}, "action_name": "assigned", "target_type": "Issue", "target_url": "u", "body": "b", "state": "pending", "created_at": "t"}"#).unwrap()];
-            app.merge_requests = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "t", "reactions": []}"#).unwrap()];
-            app.issues = vec![serde_json::from_str(r#"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "t", "upvotes": 0, "downvotes": 0, "references": {"full": "n/p#1"}}"#).unwrap()];
-            app.pipelines = vec![serde_json::from_str(r#"{"id": 1, "project_id": 1, "status": "success", "source": "push", "ref": "m", "web_url": "u", "created_at": "t"}"#).unwrap()];
-            app.projects = vec![Project { id: 1, name: "p".into(), path_with_namespace: "n/p".into(), web_url: "u".into() }];
-            app.groups = vec![Group { id: 1, name: "g".into(), path: "g".into(), full_path: "g".into() }];
-            app.filter_lists();
-
-            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
-                app.view_mode = mode;
-                for sel in [MenuSelection::Todos, MenuSelection::MergeRequests, MenuSelection::Issues, MenuSelection::Pipelines, MenuSelection::Projects, MenuSelection::Groups] {
-                    app.active_selection = sel;
-                    app.filter_help();
-                    app.open_in_browser();
-                    let _ = app.check_pagination().await;
-                    app.focus_on_menu = false;
-                    app.move_down(); app.move_up();
-                    app.enter().await;
-                    app.focus_on_menu = true;
-                    app.move_down(); app.move_up();
-                }
-            }
-
-            // 3. Test Detail View with every MetadataField
-            app.view_mode = ViewMode::Detail;
-            app.selected_mr = Some(app.merge_requests[0].clone());
-            app.detail_section = DetailSection::Metadata;
-            for _ in 0..10 { app.move_down(); } // Should eventually hit discussions and loop back
-            for _ in 0..10 { app.move_up(); }
-            
-            // 4. Input targets exhaustive with characters
-            app.input_mode = true;
-            let targets = [
-                InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
-                InputTarget::PipelineRef, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue,
-                InputTarget::CreateIssueTitle, InputTarget::CreateMRTitle
-            ];
-            for target in targets {
-                app.input_target = target;
-                app.handle_key(key(KeyCode::Char('x'))).await;
-                app.handle_key(key(KeyCode::Backspace)).await;
-                app.handle_key(key(KeyCode::Delete)).await;
-            }
-            app.input_mode = false;
-
-            // 5. Trigger all fetch/action methods
-            let _ = app.fetch_projects().await;
-            let _ = app.fetch_groups().await;
-            let _ = app.fetch_todos().await;
-            let _ = app.fetch_global_merge_requests().await;
-            let _ = app.fetch_global_issues().await;
-            let _ = app.fetch_mr_diffs(1, 1).await;
-            let _ = app.approve_mr().await;
-            let _ = app.unapprove_mr().await;
-            let _ = app.merge_mr().await;
-            let _ = app.toggle_mr_state().await;
-            let _ = app.toggle_issue_state().await;
-            let _ = app.refresh().await;
-            app.toggle_focus();
-            app.open_in_browser();
-            let _ = app.update_issue_weight().await;
-            let _ = app.update_issue_due_date().await;
-            let _ = app.clear_due_date().await;
-            let _ = app.cancel_pipeline(1, 1).await;
-            let _ = app.retry_pipeline(1, 1).await;
-            let _ = app.play_job(1, 1).await;
-            let _ = app.retry_job(1, 1).await;
-            let _ = app.cancel_job(1, 1).await;
-
-            // 6. Handle key exhaustive (direct key hits)
-            app.show_project_popup = false;
-            app.input_mode = false;
-            app.view_mode = ViewMode::List;
-            let direct_keys = [
-                KeyCode::Char('q'), KeyCode::Char('?'), KeyCode::Char('d'), 
-                KeyCode::Char('a'), KeyCode::Char('m'), KeyCode::Char('/'),
-                KeyCode::Char('p'), KeyCode::Char(' '), KeyCode::Enter, KeyCode::Esc,
-                KeyCode::Tab, KeyCode::Char('h'), KeyCode::Char('l'), KeyCode::Backspace,
-                KeyCode::Left, KeyCode::Right, KeyCode::Up, KeyCode::Down, KeyCode::PageUp, KeyCode::PageDown,
-                KeyCode::Home, KeyCode::End, KeyCode::Delete
-            ];
-            for k in direct_keys { 
-                app.handle_key(key(k)).await; 
-                app.handle_key(key_mod(k, KeyModifiers::CONTROL)).await;
-                app.handle_key(key_mod(k, KeyModifiers::SHIFT)).await;
-            }
-
-            // 7. Mouse wheel exhaustive
-            for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
-                app.view_mode = mode;
-                for kind in [crossterm::event::MouseEventKind::ScrollDown, crossterm::event::MouseEventKind::ScrollUp] {
-                    app.handle_mouse(crossterm::event::MouseEvent {
-                        kind, column: 0, row: 0, modifiers: KeyModifiers::NONE,
-                    }).await;
-                }
-            }
-
-            // 8. Error paths
-            server.reset().await;
-            Mock::given(any()).respond_with(ResponseTemplate::new(500)).mount(&server).await;
-            let _ = app.fetch_projects().await;
-            let _ = app.submit_pipeline_launch().await;
-            let _ = app.update_issue().await;
-            let _ = app.update_mr().await;
-            let _ = app.post_comment().await;
-            let _ = app.post_reply().await;
-            let _ = app.resolve_discussion().await;
-            let _ = app.approve_mr().await;
-            let _ = app.unapprove_mr().await;
-            let _ = app.merge_mr().await;
-            let _ = app.toggle_issue_state().await;
-            let _ = app.toggle_mr_state().await;
-            let _ = app.toggle_confidential().await;
-            let _ = app.update_issue_weight().await;
-            let _ = app.update_issue_due_date().await;
-            let _ = app.clear_due_date().await;
-            let _ = app.cancel_pipeline(1, 1).await;
-            let _ = app.retry_pipeline(1, 1).await;
-            let _ = app.play_job(1, 1).await;
-            let _ = app.retry_job(1, 1).await;
-            let _ = app.cancel_job(1, 1).await;
-        });
-    }
-
-    #[test]
-    fn test_parse_reactions_logic() {
-        use serde_json::json;
-        let vals = vec![json!({"name": "a"}), json!({"emoji": "b"}), json!({"emoji_name": "c"})];
-        let res = parse_reactions(vals);
-        assert_eq!(res.len(), 3);
-        assert_eq!(res[0].name, "a");
-    }
 }
