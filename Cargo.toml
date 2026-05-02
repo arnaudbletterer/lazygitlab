@@ -1,7 +1,10 @@
 [package]
 name = "lazygitlab"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tarpaulin_include)'] }
 
 [dependencies]
 crossterm = "0.29.0"
