@@ -3,19 +3,37 @@ use crate::models::{App, InputTarget, DetailSection, MetadataField};
 use crate::ui::markdown::render_markdown;
 use crate::ui::widgets::{render_shortcuts, get_status_style, hex_to_color, format_relative_time};
 
-pub fn render_detail_view(f: &mut Frame, app: &mut App) {
+pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(mr) = &app.selected_mr {
         let is_metadata_focused = app.detail_section == DetailSection::Metadata;
         let is_editing_title = app.input_mode && app.input_target == InputTarget::EditTitle;
         let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
-        let metadata_height = if is_editing_desc || (is_metadata_focused && app.selected_metadata_field == MetadataField::Description) { 15.min(f.area().height - 10) } else { 12 };
-        let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(metadata_height), Constraint::Min(0), Constraint::Length(if app.input_mode && !is_editing_title && !is_editing_desc { 5 } else { 0 }), Constraint::Length(1)]).split(f.area());
+        
+        // Dynamic height: if description is focused or being edited, take more space.
+        let base_height = if is_editing_desc || (is_metadata_focused && app.selected_metadata_field == MetadataField::Description) {
+            (area.height / 2).max(15)
+        } else {
+            12
+        };
+        let metadata_height = base_height.min(area.height.saturating_sub(5));
+        
+        let chunks = Layout::default().direction(Direction::Vertical).constraints([
+            Constraint::Length(metadata_height),
+            Constraint::Min(0),
+            Constraint::Length(if app.input_mode && !is_editing_title && !is_editing_desc { 3 } else { 0 }),
+            Constraint::Length(1)
+        ]).split(area);
 
-        let metadata_block = Block::default().borders(Borders::ALL).title(format!(" MR: {} ", mr.references.full)).border_style(if is_metadata_focused { Style::default().fg(app.theme.border) } else { Style::default() });
+        let mr_ref = mr.references.as_ref().map(|r| r.full.as_str()).unwrap_or("");
+        let metadata_block = Block::default().borders(Borders::ALL).title(format!(" MR: {} ", mr_ref)).border_style(if is_metadata_focused { Style::default().fg(app.theme.border) } else { Style::default() });
         let inner_area = metadata_block.inner(chunks[0]);
         f.render_widget(metadata_block, chunks[0]);
 
-        let metadata_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(metadata_height.saturating_sub(2)), Constraint::Length(1), Constraint::Min(0)]).split(inner_area);
+        let metadata_chunks = Layout::default().direction(Direction::Vertical).constraints([
+            Constraint::Length(7), // Headers (Title, Labels, Author, State, URL)
+            Constraint::Length(1), // Spacer/Label
+            Constraint::Min(0),    // Description area
+        ]).split(inner_area);
 
         let highlight = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
         let field = |f| if is_metadata_focused && app.selected_metadata_field == f { highlight } else { Style::default() };
@@ -44,13 +62,15 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         ];
 
         // Reactions line
-        if !mr.reactions.is_empty() || mr.upvotes > 0 || mr.downvotes > 0 {
+        let up = mr.upvotes.unwrap_or(0);
+        let down = mr.downvotes.unwrap_or(0);
+        if !mr.reactions.is_empty() || up > 0 || down > 0 {
             let mut reaction_spans = vec![Span::raw("Reactions: ")];
-            if mr.upvotes > 0 {
-                reaction_spans.push(Span::styled(format!("👍 {} ", mr.upvotes), Style::default().fg(Color::Green)));
+            if up > 0 {
+                reaction_spans.push(Span::styled(format!("👍 {} ", up), Style::default().fg(Color::Green)));
             }
-            if mr.downvotes > 0 {
-                reaction_spans.push(Span::styled(format!("👎 {} ", mr.downvotes), Style::default().fg(Color::Red)));
+            if down > 0 {
+                reaction_spans.push(Span::styled(format!("👎 {} ", down), Style::default().fg(Color::Red)));
             }
             
             // Other reactions
@@ -153,20 +173,37 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             }
             ListItem::new(lines)
         }).collect();
-        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
-        render_shortcuts(f, chunks[chunks.len() - 1], vec![("j/k", "nav"), ("space", "expand"), ("s", "resolve"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
+        let disc_title = if app.is_loading { " Discussions (Loading...) " } else { " Discussions " };
+        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
     } else if let Some(issue) = &app.selected_issue {
         let is_metadata_focused = app.detail_section == DetailSection::Metadata;
         let is_editing_title = app.input_mode && app.input_target == InputTarget::EditTitle;
         let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
-        let metadata_height = if is_editing_desc || (is_metadata_focused && app.selected_metadata_field == MetadataField::Description) { 15.min(f.area().height - 10) } else { 12 };
-        let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(metadata_height), Constraint::Min(0), Constraint::Length(1)]).split(f.area());
+
+        // Dynamic height
+        let base_height = if is_editing_desc || (is_metadata_focused && app.selected_metadata_field == MetadataField::Description) {
+            (f.area().height / 2).max(15)
+        } else {
+            12
+        };
+        let metadata_height = base_height.min(f.area().height.saturating_sub(5));
+
+        let chunks = Layout::default().direction(Direction::Vertical).constraints([
+            Constraint::Length(metadata_height),
+            Constraint::Min(0),
+            Constraint::Length(if app.input_mode && !is_editing_title && !is_editing_desc { 3 } else { 0 }),
+            Constraint::Length(1)
+        ]).split(f.area());
         
         let metadata_block = Block::default().borders(Borders::ALL).title(format!(" Issue: #{} ", issue.iid)).border_style(if is_metadata_focused { Style::default().fg(app.theme.border) } else { Style::default() });
         let inner_area = metadata_block.inner(chunks[0]);
         f.render_widget(metadata_block, chunks[0]);
 
-        let metadata_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(metadata_height.saturating_sub(2)), Constraint::Length(1), Constraint::Min(0)]).split(inner_area);
+        let metadata_chunks = Layout::default().direction(Direction::Vertical).constraints([
+            Constraint::Length(8), // Headers (Title, Labels, Author, State, URL, Weight)
+            Constraint::Length(1), // Spacer/Label
+            Constraint::Min(0),    // Description area
+        ]).split(inner_area);
         
         // --- Highlighting Logic ---
         let highlight = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
@@ -195,13 +232,15 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
         ];
 
         // Reactions line
-        if !issue.reactions.is_empty() || issue.upvotes > 0 || issue.downvotes > 0 {
+        let up = issue.upvotes.unwrap_or(0);
+        let down = issue.downvotes.unwrap_or(0);
+        if !issue.reactions.is_empty() || up > 0 || down > 0 {
             let mut reaction_spans = vec![Span::raw("Reactions: ")];
-            if issue.upvotes > 0 {
-                reaction_spans.push(Span::styled(format!("👍 {} ", issue.upvotes), Style::default().fg(Color::Green)));
+            if up > 0 {
+                reaction_spans.push(Span::styled(format!("👍 {} ", up), Style::default().fg(Color::Green)));
             }
-            if issue.downvotes > 0 {
-                reaction_spans.push(Span::styled(format!("👎 {} ", issue.downvotes), Style::default().fg(Color::Red)));
+            if down > 0 {
+                reaction_spans.push(Span::styled(format!("👎 {} ", down), Style::default().fg(Color::Red)));
             }
             
             // Other reactions
@@ -321,7 +360,8 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App) {
             }
             ListItem::new(lines)
         }).collect();
-        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(" Discussions ").border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
+        let disc_title = if app.is_loading { " Discussions (Loading...) " } else { " Discussions " };
+        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
         render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("space", "expand"), ("c", "close/reopen"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     } else if let Some(pipeline) = &app.selected_pipeline {
         let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)]).split(f.area());
@@ -468,7 +508,7 @@ mod tests {
         app.discussions.push(serde_json::from_str(disc_system_json).unwrap());
         if let Some(issue) = &mut app.selected_issue {
             issue.reactions.push(crate::models::AwardEmoji { name: "smile".into() });
-            issue.upvotes = 1;
+            issue.upvotes = Some(1);
         }
         terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
     }

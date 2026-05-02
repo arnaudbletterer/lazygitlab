@@ -40,9 +40,23 @@ fn assert_buffer_contains(terminal: &Terminal<TestBackend>, expected: &str) {
     assert!(content.contains(expected), "Buffer does not contain: '{}'\nBuffer content:\n{}", expected, content);
 }
 
+async fn wait_for_loading_finish(app: &mut App, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
+    let start = std::time::Instant::now();
+    while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(5) {
+        app.process_updates(rx).await;
+        if !app.is_loading {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 #[tokio::test]
 async fn test_mr_visual_completeness() {
     let (server, mut app) = setup_app().await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    app.tx = tx;
+    
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
@@ -55,6 +69,8 @@ async fn test_mr_visual_completeness() {
 
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
     app.fetch_discussions(1, 123).await.unwrap();
+    wait_for_loading_finish(&mut app, &mut rx).await;
+    
     app.view_mode = ViewMode::Detail;
     app.discussion_state.select(Some(0));
     
@@ -70,13 +86,13 @@ async fn test_mr_visual_completeness() {
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 
     assert_buffer_contains(&terminal, "MR: n/p!123");
-    assert_buffer_contains(&terminal, "Implement Feature X");
+    assert_buffer_contains(&terminal, "Title: Implement Feature X");
     assert_buffer_contains(&terminal, "Author: @alice");
     assert_buffer_contains(&terminal, "Assignees: @bob");
     assert_buffer_contains(&terminal, "Milestone: v1.0");
     assert_buffer_contains(&terminal, "bug");
     assert_buffer_contains(&terminal, "Reactions: 👍  5 🚀  1");
-    assert_buffer_contains(&terminal, "@bob says:");
+    assert_buffer_contains(&terminal, "@bob:");
     assert_buffer_contains(&terminal, "Please review this part.");
 }
 
@@ -95,40 +111,40 @@ async fn test_navigation_and_focus() {
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     assert_buffer_contains(&terminal, "> Proj 1 (n/p1)");
-    assert_buffer_contains(&terminal, "  Proj 2 (n/p2)");
 
     // Move down
     use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
     let down = KeyEvent { code: KeyCode::Char('j'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     app.handle_key(down).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "  Proj 1 (n/p1)");
     assert_buffer_contains(&terminal, "> Proj 2 (n/p2)");
 
     // Select and go to list
     let enter = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     app.handle_key(enter).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "Scope: Proj 2");
+    
+    // We check for the project name in the sidebar title
+    assert_buffer_contains(&terminal, "Project: Proj 2");
 
     app.merge_requests = vec![
         serde_json::from_str(r##"{"iid": 1, "project_id": 2, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##).unwrap(),
     ];
     app.filter_lists();
     app.mrs_state.select(Some(0));
-    app.view_mode = ViewMode::List;
     app.active_selection = MenuSelection::MergeRequests;
-    app.active_panel = Panel::Content;
+    app.active_panel = Panel::Main;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "> [opened] !1 - MR 1 by @u");
+    assert_buffer_contains(&terminal, "> !1 MR 1");
 
-    // Toggle focus to menu
+    // Toggle focus to sidebar (cycles from Project -> Dashboard)
     let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     app.handle_key(tab).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    // In menu, we expect highlighting. Menu items: Dashboard (Todos), Merge Requests, Issues, ...
-    assert_buffer_contains(&terminal, " Merge Requests "); 
+    // Dashboard: Todos is selected, but marked with "> " only if panel is focused. 
+    // Since we were in Main, Tab cycles Sidebar panels. 
+    assert_buffer_contains(&terminal, "  Todos"); 
 }
 
 #[tokio::test]

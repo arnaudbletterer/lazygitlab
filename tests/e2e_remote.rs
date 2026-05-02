@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 async fn wait_for_loading_finish(app: &mut App, rx: &mut mpsc::UnboundedReceiver<DataUpdate>) {
     let start = std::time::Instant::now();
     while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(10) {
-        app.process_updates(rx);
+        app.process_updates(rx).await;
         if !app.is_loading {
             return;
         }

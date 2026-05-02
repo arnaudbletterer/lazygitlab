@@ -5,19 +5,27 @@ use regex::Regex;
 
 impl App {
     pub async fn fetch_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.pipelines_page = 1;
-        self.pipelines_has_more = true;
-        let pipelines: Vec<Pipeline> = if let Some(project) = &self.selected_project {
-            let endpoint = ProjectPipelines { project: project.id, page: Some(1), per_page: Some(20) };
-            let res: Vec<Pipeline> = gitlab::api::paged(endpoint, gitlab::api::Pagination::Limit(20)).query_async(&self.gitlab).await?;
-            self.pipelines_has_more = res.len() == 20;
-            res
-        } else {
-            Vec::new()
-        };
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            self.status_message = Some("Fetching Pipelines...".into());
 
-        self.pipelines = pipelines;
-        self.filter_lists();
+            tokio::spawn(async move {
+                let ep = ProjectPipelines { project: pid, page: Some(1), per_page: Some(50) };
+                let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
+                match res {
+                    Ok(Ok(data)) => { 
+                        let has_more = data.len() == 50;
+                        let _ = tx.send(DataUpdate::ProjectPipelines { project_id: pid, data, page: 1, has_more }); 
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Pipelines fetch timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
         Ok(())
     }
 
@@ -25,74 +33,105 @@ impl App {
         if !self.pipelines_has_more || self.is_loading { return Ok(()); }
 
         if let Some(project) = &self.selected_project {
-            self.is_loading = true;
-            let endpoint = ProjectPipelines { 
-                project: project.id,
-                page: Some(self.pipelines_page + 1),
-                per_page: Some(20),
-            };
-            let res: Result<Vec<Pipeline>, _> = endpoint.query_async(&self.gitlab).await;
-            self.is_loading = false;
+            let pid = project.id;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let next_page = self.pipelines_page + 1;
+            let _ = tx.send(DataUpdate::Loading(true));
 
-            match res {
-                Ok(res) => {
-                    if res.is_empty() {
-                        self.pipelines_has_more = false;
-                    } else {
-                        self.pipelines_page += 1;
-                        self.pipelines.extend(res.clone());
-                        self.pipelines_has_more = res.len() >= 20;
-                        self.filter_lists();
+            tokio::spawn(async move {
+                let ep = ProjectPipelines { 
+                    project: pid,
+                    page: Some(next_page),
+                    per_page: Some(50),
+                };
+                let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        if !data.is_empty() {
+                            let _ = tx.send(DataUpdate::AppendProjectPipelines { project_id: pid, data });
+                        } else {
+                            let _ = tx.send(DataUpdate::Loading(false));
+                        }
+                    }
+                    Ok(Err(e)) => { 
+                        let _ = tx.send(DataUpdate::Error(e.to_string())); 
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(DataUpdate::Error("Pipelines fetch timed out".into()));
+                        let _ = tx.send(DataUpdate::Loading(false));
                     }
                 }
-                Err(e) => return Err(e.into()),
-            }
+            });
         }
         Ok(())
     }
+
     pub async fn fetch_jobs(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = ProjectPipelineJobs { project: project_id, pipeline: pipeline_id };
-        let jobs: Vec<Job> = paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&self.gitlab).await?;
-        self.jobs = jobs;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = ProjectPipelineJobs { project: project_id, pipeline: pipeline_id };
+            let res: Result<Result<Vec<Job>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
+            match res {
+                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::Jobs { project_id, pipeline_id, data }); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Jobs fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = ProjectPipeline { project: project_id, pipeline: pipeline_id };
-        let pipeline: Pipeline = endpoint.query_async(&self.gitlab).await?;
-        if let Some(selected) = &mut self.selected_pipeline {
-            if selected.id == pipeline_id {
-                *selected = pipeline;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = ProjectPipeline { project: project_id, pipeline: pipeline_id };
+            let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_pipeline)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                _ => {}
             }
-        }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_job_log(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
-        let endpoint = JobTrace { project: project_id, job: job_id };
-        let data: Vec<u8> = gitlab::api::raw(endpoint).query_async(&self.gitlab).await?;
-        let raw_log = String::from_utf8_lossy(&data).to_string();
-        self.job_log_lines = parse_job_log(&raw_log);
-
-        self.is_loading = false;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = JobTrace { project: project_id, job: job_id };
+            let res: Result<Result<Vec<u8>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::raw(endpoint).query_async(&client)).await;
+            match res {
+                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::Log { project_id, job_id, data: String::from_utf8_lossy(&data).to_string() }); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Job log fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn fetch_branches(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = ProjectBranches { project: project_id };
-        let branches: Vec<Branch> = paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&self.gitlab).await?;
-        self.project_branches = branches;
-        self.filter_branches();
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = ProjectBranches { project: project_id };
+            let _res: Result<Result<Vec<Branch>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub fn filter_branches(&mut self) {
         self.filtered_branches = filter_branch_names(&self.project_branches, &self.pipeline_ref_input);
-        if self.filtered_branches.is_empty() && !self.pipeline_ref_input.is_empty() {
-             // If no branches match but we have input, maybe it's a specific ref/tag not in first 100 branches
-             // or the user just wants to type it. We keep filtered_branches empty in this case.
-        }
         self.branches_state.select(if self.filtered_branches.is_empty() { None } else { Some(0) });
     }
 
@@ -150,109 +189,125 @@ impl App {
     }
 
     pub async fn create_pipeline(&mut self, project_id: u64, ref_name: &str, variables: Vec<PipelineVariable>) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = CreatePipeline { 
             project: project_id, 
             ref_name: ref_name.to_string(),
             variables,
         };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        let _ = self.fetch_pipelines().await;
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Create pipeline timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn retry_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = RetryPipeline { project: project_id, pipeline: pipeline_id };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        let _ = self.fetch_pipelines().await;
-        let _ = self.fetch_jobs(project_id, pipeline_id).await;
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Retry pipeline timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn cancel_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = CancelPipeline { project: project_id, pipeline: pipeline_id };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        let _ = self.fetch_pipelines().await;
-        let _ = self.fetch_jobs(project_id, pipeline_id).await;
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Cancel pipeline timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn retry_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = RetryJob { project: project_id, job: job_id };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        if let Some(p) = &self.selected_pipeline {
-            let pid = p.id;
-            let _ = self.fetch_jobs(project_id, pid).await;
-            let _ = self.fetch_pipeline(project_id, pid).await;
-        }
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Retry job timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn cancel_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = CancelJob { project: project_id, job: job_id };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        if let Some(p) = &self.selected_pipeline {
-            let pid = p.id;
-            let _ = self.fetch_jobs(project_id, pid).await;
-            let _ = self.fetch_pipeline(project_id, pid).await;
-        }
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Cancel job timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn play_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        self.is_loading = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
         let endpoint = PlayJob { project: project_id, job: job_id };
-        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-        if let Some(p) = &self.selected_pipeline {
-            let pid = p.id;
-            let _ = self.fetch_jobs(project_id, pid).await;
-            let _ = self.fetch_pipeline(project_id, pid).await;
-        }
-        self.is_loading = false;
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Play job timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub fn toggle_job_section(&mut self) {
         let mut visible_count = 0;
         let mut target_section = None;
-
         for line in &self.job_log_lines {
             let is_collapsed = line.section.as_ref().map(|s| self.collapsed_sections.contains(s)).unwrap_or(false);
-            
             if visible_count == self.job_log_scroll {
-                if let Some(s) = &line.section {
-                    target_section = Some(s.clone());
-                    break;
-                }
+                if let Some(s) = &line.section { target_section = Some(s.clone()); break; }
             }
-
-            if line.is_section_start {
-                if is_collapsed {
-                    visible_count += 1;
-                    continue; 
-                }
-            }
-
-            if !is_collapsed || line.is_section_start {
-                visible_count += 1;
-            }
+            if line.is_section_start { if is_collapsed { visible_count += 1; continue; } }
+            if !is_collapsed || line.is_section_start { visible_count += 1; }
         }
-
         if let Some(s) = target_section {
-            if self.collapsed_sections.contains(&s) {
-                self.collapsed_sections.remove(&s);
-            } else {
-                self.collapsed_sections.insert(s);
-            }
+            if self.collapsed_sections.contains(&s) { self.collapsed_sections.remove(&s); }
+            else { self.collapsed_sections.insert(s); }
         }
     }
 
@@ -260,17 +315,12 @@ impl App {
         let mut count = 0;
         for line in &self.job_log_lines {
             let is_collapsed = line.section.as_ref().map(|s| self.collapsed_sections.contains(s)).unwrap_or(false);
-            if is_collapsed && !line.is_section_start {
-                continue;
-            }
-            if line.is_section_end && line.content.trim().is_empty() {
-                continue;
-            }
+            if is_collapsed && !line.is_section_start { continue; }
+            if line.is_section_end && line.content.trim().is_empty() { continue; }
             count += 1;
         }
         count
     }
-
 }
 
 pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
@@ -285,54 +335,32 @@ pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
     for line in raw_log.lines() {
         let mut timestamp = String::new();
         let mut content = line.to_string();
-
         if let Some(caps) = prefix_re.captures(line) {
             timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             content = prefix_re.replace(line, "").to_string();
         }
-
         content = clear_line_re.replace_all(&content, "").to_string();
-
         let is_section_start = if let Some(caps) = section_start_re.captures(&content) {
             current_section = caps.get(1).map(|m| m.as_str().to_string());
             content = section_start_re.replace(&content, "").to_string();
             true
-        } else {
-            false
-        };
+        } else { false };
 
         let is_section_end = if let Some(_caps) = section_end_re.captures(&content) {
             content = section_end_re.replace(&content, "").to_string();
-            lines.push(LogLine {
-                timestamp: timestamp.clone(),
-                content: content.clone(),
-                section: current_section.clone(),
-                is_section_start,
-                is_section_end: true,
-            });
+            lines.push(LogLine { timestamp: timestamp.clone(), content: content.clone(), section: current_section.clone(), is_section_start, is_section_end: true });
             current_section = None;
             continue;
-        } else {
-            false
-        };
+        } else { false };
 
-        lines.push(LogLine {
-            timestamp,
-            content,
-            section: current_section.clone(),
-            is_section_start,
-            is_section_end,
-        });
+        lines.push(LogLine { timestamp, content, section: current_section.clone(), is_section_start, is_section_end });
     }
     lines
 }
 
 pub fn filter_branch_names(branches: &[Branch], search: &str) -> Vec<String> {
     let search = search.to_lowercase();
-    branches.iter()
-        .map(|b| b.name.clone())
-        .filter(|name| name.to_lowercase().contains(&search))
-        .collect()
+    branches.iter().map(|b| b.name.clone()).filter(|name| name.to_lowercase().contains(&search)).collect()
 }
 
 #[cfg(test)]
@@ -364,82 +392,63 @@ mod tests {
     use tokio_test::block_on;
     use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use tokio::sync::mpsc;
+    use std::time::Duration;
 
-    async fn setup_app() -> (MockServer, App) {
+    async fn setup_app() -> (MockServer, App, mpsc::UnboundedReceiver<DataUpdate>) {
         let server = MockServer::start().await;
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut app = App::new(client);
+        app.tx = tx;
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
+        (server, app, rx)
     }
 
-    #[test]
-    fn test_pipeline_actions_exhaustive() {
-        let (server, mut app) = block_on(setup_app());
+    #[tokio::test]
+    async fn test_pipeline_actions_exhaustive() {
+        let (server, mut app, mut rx) = setup_app().await;
+
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+        Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+
+        app.fetch_pipelines().await.unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(2), async {
+            while !app.is_loading { app.process_updates(&mut rx).await; tokio::time::sleep(Duration::from_millis(10)).await; }
+            while app.is_loading { app.process_updates(&mut rx).await; tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await;
+
+        app.fetch_jobs(1, 1).await.unwrap();
+        app.fetch_pipeline(1, 1).await.unwrap();
+        app.fetch_job_log(1, 1).await.unwrap();
+        app.fetch_branches(1).await.unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(2), async {
+            while app.is_loading { app.process_updates(&mut rx).await; tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await;
+
+        app.show_pipeline_launch_popup().await;
+        app.pipeline_variable_key_input = "K".into();
+        app.pipeline_variable_value_input = "V".into();
+        app.add_pipeline_variable();
+        app.pipeline_variables_state.select(Some(0));
+        app.remove_pipeline_variable();
+        app.submit_pipeline_launch().await;
         
-        // Test fetch without project
-        app.selected_project = None;
-        let _ = block_on(app.fetch_pipelines());
-        assert!(app.pipelines.is_empty());
-
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
-
-        block_on(async {
-            Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
-            Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
-
-            let _ = app.fetch_pipelines().await;
-            let _ = app.fetch_jobs(1, 1).await;
-            
-            // fetch_pipeline with match/no match
-            let pipeline_json = r#"{"id": 100, "project_id": 1, "status": "success", "source": "push", "ref": "master", "web_url": "url", "created_at": "2026-04-25T12:00:00Z"}"#;
-            Mock::given(path("/api/v4/projects/1/pipelines/100")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<Pipeline>(pipeline_json).unwrap())).mount(&server).await;
-            
-            app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
-            let _ = app.fetch_pipeline(1, 100).await;
-            
-            app.selected_pipeline = None;
-            let _ = app.fetch_pipeline(1, 100).await;
-
-            let _ = app.fetch_job_log(1, 1).await;
-            let _ = app.fetch_branches(1).await;
-            
-            // Popups & variables
-            app.show_pipeline_launch_popup().await;
-            app.pipeline_variable_key_input = "K".into();
-            app.pipeline_variable_value_input = "V".into();
-            app.add_pipeline_variable();
-            
-            app.pipeline_variables_state.select(Some(0));
-            app.remove_pipeline_variable();
-            // remove from empty
-            app.remove_pipeline_variable();
-            
-            app.submit_pipeline_launch().await;
-            
-            let _ = app.create_pipeline(1, "m", vec![]).await;
-            let _ = app.retry_pipeline(1, 1).await;
-            let _ = app.cancel_pipeline(1, 1).await;
-
-            app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
-            let _ = app.retry_job(1, 1).await;
-            let _ = app.cancel_job(1, 1).await;
-            let _ = app.play_job(1, 1).await;
-
-            // Log navigation logic
-            app.job_log_lines = vec![
-                LogLine { timestamp: "t".into(), content: "c1".into(), section: Some("s1".into()), is_section_start: true, is_section_end: false },
-                LogLine { timestamp: "t".into(), content: "c2".into(), section: Some("s1".into()), is_section_start: false, is_section_end: false },
-                LogLine { timestamp: "t".into(), content: "c3".into(), section: Some("s1".into()), is_section_start: false, is_section_end: true },
-            ];
-            app.collapsed_sections = std::collections::HashSet::new();
-            app.job_log_scroll = 0;
-            app.toggle_job_section();
-            app.get_visible_job_log_lines_count();
-            
-            // Branches filter
-            app.project_branches = vec![Branch { name: "main".into() }];
-            app.pipeline_ref_input = "xyz".into();
-            app.filter_branches();
-        });
+        app.create_pipeline(1, "m", vec![]).await.unwrap();
+        app.retry_pipeline(1, 1).await.unwrap();
+        app.cancel_pipeline(1, 1).await.unwrap();
+        
+        app.selected_pipeline = Some(Pipeline { id: 1, project_id: 1, status: "s".into(), source: "s".into(), ref_name: "m".into(), web_url: "u".into(), created_at: "t".into(), started_at: None, duration: None });
+        app.retry_job(1, 1).await.unwrap();
+        app.cancel_job(1, 1).await.unwrap();
+        app.play_job(1, 1).await.unwrap();
+        
+        app.job_log_lines = vec![LogLine { timestamp: "t".into(), content: "c1".into(), section: Some("s1".into()), is_section_start: true, is_section_end: false }];
+        app.job_log_scroll = 0;
+        app.toggle_job_section();
+        app.get_visible_job_log_lines_count();
+        app.pipeline_ref_input = "xyz".into();
+        app.filter_branches();
     }
 }

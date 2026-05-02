@@ -8,7 +8,7 @@ pub mod diff;
 pub use widgets::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use crate::models::{App, ViewMode};
+use crate::models::{App, ViewMode, MenuSelection};
 use list::render_list_view;
 use detail::render_detail_view;
 use diff::render_diff_view;
@@ -23,32 +23,47 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     match app.view_mode {
-        ViewMode::List => render_list_view(f, app),
-        ViewMode::Detail => render_detail_view(f, app),
-        ViewMode::JobLog => render_job_log_view(f, app),
-        ViewMode::Diff => render_diff_view(f, app),
+        ViewMode::List => render_list_view(f, app, main_chunks[0]),
+        ViewMode::Detail => render_detail_view(f, app, main_chunks[0]),
+        ViewMode::JobLog => render_job_log_view(f, app, main_chunks[0]),
+        ViewMode::Diff => render_diff_view(f, app, main_chunks[0]),
     }
 
-    // Status Bar (Bottom Right)
+    // Help / Status Bar (Bottom)
+    let mut help_spans = vec![
+        Span::styled(" j/k ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Move "),
+        Span::styled(" h/l ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Sidebar/Main "),
+        Span::styled(" Tab ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Next Panel "),
+        Span::styled(" Enter ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Select "),
+        Span::styled(" / ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Filter "),
+        Span::styled(" ? ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Help "),
+        Span::styled(" q ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Quit "),
+    ];
+
+    if app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines {
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(" p ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Launch Pipeline "));
+    }
+
     let mut status_spans = Vec::new();
     if let Some(err) = &app.last_error {
         status_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
     }
     if app.is_loading {
         let dots = match (chrono::Utc::now().timestamp_millis() / 500) % 4 {
-            1 => ".",
-            2 => "..",
-            3 => "...",
-            _ => "",
+            1 => ".", 2 => "..", 3 => "...", _ => "",
         };
         let msg = app.status_message.as_deref().unwrap_or("Loading");
         status_spans.push(Span::styled(format!(" {}{} ", msg, dots), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
     }
 
-    if !status_spans.is_empty() {
-        let status_para = Paragraph::new(Line::from(status_spans)).alignment(Alignment::Right);
-        f.render_widget(status_para, main_chunks[1]);
-    }
+    let footer_line = Line::from(vec![
+        Line::from(help_spans).into_iter().collect::<Vec<_>>(),
+        vec![Span::raw("   ")],
+        status_spans,
+    ].into_iter().flatten().collect::<Vec<_>>());
+
+    f.render_widget(Paragraph::new(footer_line), main_chunks[1]);
 
     if app.show_project_popup {
         render_project_popup(f, app);
@@ -85,11 +100,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
 }
 
-pub fn render_job_log_view(f: &mut Frame, app: &mut App) {
+pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)])
-        .split(f.area());
+        .split(area);
 
     if let Some(job) = &app.selected_job {
         let status_style = widgets::get_status_style(&job.status, &app.theme);

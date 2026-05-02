@@ -84,10 +84,11 @@ where
     <B as Backend>::Error: 'static 
 {
     // Initial data load
+    let _ = app.initial_setup().await;
     let _ = app.refresh().await;
 
     while !app.should_quit {
-        app.process_updates(rx);
+        app.process_updates(rx).await;
         terminal.draw(|f| ui(f, app))?;
 
         let is_live_view = (app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines) 
@@ -96,7 +97,7 @@ where
 
         let refresh_interval = if is_live_view { Duration::from_secs(2) } else { Duration::from_secs(10) };
 
-        if app.last_refresh.elapsed() >= refresh_interval && !app.is_loading {
+        if app.last_refresh.elapsed() >= refresh_interval {
             app.refresh().await;
         }
 

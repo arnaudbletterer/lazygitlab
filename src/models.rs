@@ -26,9 +26,9 @@ pub struct MergeRequest {
     pub author: Author,
     pub web_url: String,
     pub state: String,
-    pub references: References,
-    pub upvotes: u64,
-    pub downvotes: u64,
+    pub references: Option<References>,
+    pub upvotes: Option<u64>,
+    pub downvotes: Option<u64>,
     pub labels: Vec<Label>,
     pub milestone: Option<Milestone>,
     pub assignees: Vec<Author>,
@@ -199,7 +199,7 @@ pub struct Issue {
     pub assignees: Vec<Author>,
     pub state: String,
     pub web_url: String,
-    pub references: References,
+    pub references: Option<References>,
     pub issue_type: Option<String>,
     pub labels: Vec<Label>,
     pub milestone: Option<Milestone>,
@@ -208,8 +208,8 @@ pub struct Issue {
     pub task_completion_status: Option<TaskCompletionStatus>,
     pub confidential: bool,
     pub created_at: String,
-    pub upvotes: u64,
-    pub downvotes: u64,
+    pub upvotes: Option<u64>,
+    pub downvotes: Option<u64>,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
 }
@@ -218,7 +218,6 @@ pub struct Issue {
 pub struct Branch {
     pub name: String,
 }
-
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputTarget {
@@ -238,6 +237,13 @@ pub enum InputTarget {
     CreateMRDescription,
     CreateMRSourceBranch,
     CreateMRTargetBranch,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Context {
+    Dashboard,
+    Explore,
+    Project,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -297,10 +303,13 @@ pub struct HelpItem {
     pub action: HelpAction,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Panel {
-    Sidebar,
-    Content,
+    Dashboard,
+    Explore,
+    Project,
+    Main,
+    MainDetail,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,23 +332,31 @@ pub enum DataUpdate {
     GlobalIssues { data: Vec<Issue>, page: u64, has_more: bool },
     ClearGlobalIssues,
     AppendGlobalIssues(Vec<Issue>),
-    ProjectMRs { data: Vec<MergeRequest>, page: u64, has_more: bool },
-    ProjectIssues { data: Vec<Issue>, page: u64, has_more: bool },
-    ProjectPipelines { data: Vec<Pipeline>, page: u64, has_more: bool },
-    Discussions(Vec<Discussion>),
-    IssueDiscussions(Vec<Discussion>),
-    Jobs(Vec<Job>),
-    Log(String),
-    Diffs(Vec<MRDiff>),
+    ProjectMRs { project_id: u64, data: Vec<MergeRequest>, page: u64, has_more: bool },
+    AppendProjectMRs { project_id: u64, data: Vec<MergeRequest> },
+    ProjectIssues { project_id: u64, data: Vec<Issue>, page: u64, has_more: bool },
+    AppendProjectIssues { project_id: u64, data: Vec<Issue> },
+    ProjectPipelines { project_id: u64, data: Vec<Pipeline>, page: u64, has_more: bool },
+    AppendProjectPipelines { project_id: u64, data: Vec<Pipeline> },
+    Discussions { project_id: u64, iid: u64, data: Vec<Discussion> },
+    IssueDiscussions { project_id: u64, iid: u64, data: Vec<Discussion> },
+    Jobs { project_id: u64, pipeline_id: u64, data: Vec<Job> },
+    Log { project_id: u64, job_id: u64, data: String },
+    Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
     Metadata { labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
+    MRDetail(MergeRequest),
+    IssueDetail(Issue),
     Loading(bool),
     Error(String),
+    TriggerRefresh,
 }
 
 pub struct App {
     pub should_quit: bool,
-    pub menu_state: ListState,
-    pub menu_items: Vec<(String, MenuSelection)>,
+    pub active_context: Context,
+    pub dashboard_menu_state: ListState,
+    pub explore_menu_state: ListState,
+    pub project_menu_state: ListState,
     pub active_selection: MenuSelection,
     pub gitlab: AsyncGitlab,
     pub projects: Vec<Project>,
@@ -465,6 +482,7 @@ pub struct App {
     pub filtered_pipelines: Vec<Pipeline>,
     pub last_error: Option<String>,
     pub status_message: Option<String>,
+    pub loading_tasks: usize,
 
     // Cache timestamps
     pub last_fetch_todos: Option<std::time::Instant>,

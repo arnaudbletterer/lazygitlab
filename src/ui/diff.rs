@@ -2,7 +2,7 @@ use ratatui::{prelude::*, widgets::*};
 use crate::models::App;
 use crate::ui::widgets::render_shortcuts;
 
-pub fn render_diff_view(f: &mut Frame, app: &mut App) {
+pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -10,7 +10,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App) {
             Constraint::Min(0),    // Diff content
             Constraint::Length(1), // Shortcuts
         ])
-        .split(f.area());
+        .split(area);
 
     let mr_title = app.selected_mr.as_ref().map(|mr| format!("!{} - {}", mr.iid, mr.title)).unwrap_or_else(|| "Merge Request Diff".to_string());
     let title_block = Block::default()
@@ -87,12 +87,12 @@ mod tests {
             assignees: vec![],
             state: "opened".into(),
             web_url: "u".into(),
-            references: References { full: "r".into() },
+            references: Some(References { full: "r".into() }),
             labels: vec![],
             milestone: None,
             created_at: "t".into(),
-            upvotes: 0,
-            downvotes: 0,
+            upvotes: Some(0),
+            downvotes: Some(0),
             reactions: vec![],
         });
         terminal.draw(|f| render_diff_view(f, &mut app)).unwrap();
