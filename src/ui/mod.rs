@@ -35,14 +35,22 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         Span::styled(" h/l ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Sidebar/Main "),
         Span::styled(" Tab ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Next Panel "),
         Span::styled(" Enter ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Select "),
+        Span::styled(" [ / ] ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Tabs "),
         Span::styled(" / ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Filter "),
+        Span::styled(" o ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Open "),
         Span::styled(" ? ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Help "),
         Span::styled(" q ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Quit "),
     ];
 
-    if app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines {
-        help_spans.push(Span::raw(" | "));
-        help_spans.push(Span::styled(" p ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Launch Pipeline "));
+    if app.view_mode == ViewMode::List {
+        if app.active_selection == MenuSelection::Todos {
+            help_spans.push(Span::raw(" | "));
+            help_spans.push(Span::styled(" d ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Done "));
+            help_spans.push(Span::styled(" s ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Snooze "));
+        } else if app.active_selection == MenuSelection::Pipelines {
+            help_spans.push(Span::raw(" | "));
+            help_spans.push(Span::styled(" p ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Launch "));
+        }
     }
 
     let mut status_spans = Vec::new();
@@ -97,6 +105,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     if app.show_create_mr_popup {
         render_create_mr_popup(f, app);
+    }
+
+    if app.show_snooze_popup {
+        render_snooze_popup(f, app);
     }
 }
 

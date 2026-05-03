@@ -1,11 +1,12 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, InputTarget, DetailSection, MetadataField};
+use crate::models::{App, InputTarget, DetailSection, MetadataField, Panel};
 use crate::ui::markdown::render_markdown;
 use crate::ui::widgets::{render_shortcuts, get_status_style, hex_to_color, format_relative_time};
 
 pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(mr) = &app.selected_mr {
-        let is_metadata_focused = app.detail_section == DetailSection::Metadata;
+        let is_panel_focused = app.active_panel == Panel::MainDetail;
+        let is_metadata_focused = is_panel_focused && app.detail_section == DetailSection::Metadata;
         let is_editing_title = app.input_mode && app.input_target == InputTarget::EditTitle;
         let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
         
@@ -43,7 +44,9 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
         let mut labels_line = vec![Span::styled("Labels: ", field(MetadataField::Labels))];
         for label in &mr.labels {
             labels_line.push(Span::raw(" "));
-            labels_line.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
+            let color = hex_to_color(label.color());
+            let text_color = hex_to_color(label.text_color());
+            labels_line.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(color).fg(text_color).add_modifier(Modifier::BOLD)));
         }
 
         let mut header_lines = vec![
@@ -173,27 +176,29 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             }
             ListItem::new(lines)
         }).collect();
+        let is_discussions_focused = is_panel_focused && app.detail_section == DetailSection::Discussions;
         let disc_title = if app.is_loading { " Discussions (Loading...) " } else { " Discussions " };
-        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
+        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if is_discussions_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
     } else if let Some(issue) = &app.selected_issue {
-        let is_metadata_focused = app.detail_section == DetailSection::Metadata;
+        let is_panel_focused = app.active_panel == Panel::MainDetail;
+        let is_metadata_focused = is_panel_focused && app.detail_section == DetailSection::Metadata;
         let is_editing_title = app.input_mode && app.input_target == InputTarget::EditTitle;
         let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
 
         // Dynamic height
         let base_height = if is_editing_desc || (is_metadata_focused && app.selected_metadata_field == MetadataField::Description) {
-            (f.area().height / 2).max(15)
+            (area.height / 2).max(15)
         } else {
             12
         };
-        let metadata_height = base_height.min(f.area().height.saturating_sub(5));
+        let metadata_height = base_height.min(area.height.saturating_sub(5));
 
         let chunks = Layout::default().direction(Direction::Vertical).constraints([
             Constraint::Length(metadata_height),
             Constraint::Min(0),
             Constraint::Length(if app.input_mode && !is_editing_title && !is_editing_desc { 3 } else { 0 }),
             Constraint::Length(1)
-        ]).split(f.area());
+        ]).split(area);
         
         let metadata_block = Block::default().borders(Borders::ALL).title(format!(" Issue: #{} ", issue.iid)).border_style(if is_metadata_focused { Style::default().fg(app.theme.border) } else { Style::default() });
         let inner_area = metadata_block.inner(chunks[0]);
@@ -214,7 +219,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
         let mut labels_line = vec![Span::styled("Labels: ", field(MetadataField::Labels))];
         for label in &issue.labels {
             labels_line.push(Span::raw(" "));
-            labels_line.push(Span::styled(format!(" {} ", label.name), Style::default().bg(hex_to_color(&label.color)).fg(hex_to_color(&label.text_color)).add_modifier(Modifier::BOLD)));
+            labels_line.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(hex_to_color(label.color())).fg(hex_to_color(label.text_color())).add_modifier(Modifier::BOLD)));
         }
 
         let mut header_lines = vec![
@@ -360,11 +365,12 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             }
             ListItem::new(lines)
         }).collect();
+        let is_discussions_focused = is_panel_focused && app.detail_section == DetailSection::Discussions;
         let disc_title = if app.is_loading { " Discussions (Loading...) " } else { " Discussions " };
-        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if !is_metadata_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
+        f.render_stateful_widget(List::new(comments).block(Block::default().borders(Borders::ALL).title(disc_title).border_style(if is_discussions_focused && !app.input_mode { Style::default().fg(app.theme.border) } else { Style::default() })), chunks[1], &mut app.discussion_state);
         render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("space", "expand"), ("c", "close/reopen"), ("n", "comment"), ("enter", "edit/save"), ("shift+enter", "newline"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
     } else if let Some(pipeline) = &app.selected_pipeline {
-        let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)]).split(f.area());
+        let chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)]).split(area);
         
         let header_title = if app.is_loading { format!(" Pipeline: #{} (Refreshing...) ", pipeline.id) } else { format!(" Pipeline: #{} [LIVE] ", pipeline.id) };
         let header_style = if app.is_loading { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Green) };
@@ -462,7 +468,7 @@ mod tests {
             app.detail_section = sec;
             for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone] {
                 app.selected_metadata_field = field;
-                terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+                terminal.draw(|f| render_detail_view(f, &mut app, f.area())).unwrap();
             }
         }
 
@@ -478,7 +484,7 @@ mod tests {
             app.detail_section = sec;
             for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential] {
                 app.selected_metadata_field = field;
-                terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+                terminal.draw(|f| render_detail_view(f, &mut app, f.area())).unwrap();
             }
         }
 
@@ -495,13 +501,13 @@ mod tests {
         let issue_json = r##"{"iid": 1, "project_id": 1, "title": "I", "description": "d", "author": {"id": 1, "username": "u"}, "assignees": [], "state": "opened", "web_url": "u", "labels": [], "milestone": null, "due_date": null, "weight": 5, "confidential": false, "created_at": "2026-04-25T12:00:00Z", "upvotes": 1, "downvotes": 1, "issue_type": "issue", "references": {"full": "n/p#1"}, "reactions": []}"##;
 
         app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
-        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+        terminal.draw(|f| render_detail_view(f, &mut app, f.area())).unwrap();
 
         // 3. MR All None
         app.selected_issue = None;
         let mr_none_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": null, "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z"}"##;
         app.selected_mr = Some(serde_json::from_str(mr_none_json).unwrap());
-        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+        terminal.draw(|f| render_detail_view(f, &mut app, f.area())).unwrap();
 
         // 4. System notes and reactions
         let disc_system_json = r##"{"id": "2", "notes": [{"id":2,"type":null,"body":"system note","author":{"id":1,"username":"u"},"created_at":"2026-04-25T12:00:00Z","system":true,"resolvable":false,"resolved":false}], "collapsed": true}"##;
@@ -510,6 +516,6 @@ mod tests {
             issue.reactions.push(crate::models::AwardEmoji { name: "smile".into() });
             issue.upvotes = Some(1);
         }
-        terminal.draw(|f| render_detail_view(f, &mut app)).unwrap();
+        terminal.draw(|f| render_detail_view(f, &mut app, f.area())).unwrap();
     }
 }

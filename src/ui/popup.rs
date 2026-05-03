@@ -25,11 +25,25 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
-    let labels: Vec<ListItem> = app.project_labels
+    use crate::ui::widgets::hex_to_color;
+
+    let project_id = app.selected_mr.as_ref().map(|m| m.project_id)
+        .or_else(|| app.selected_issue.as_ref().map(|i| i.project_id))
+        .unwrap_or(0);
+
+    let labels_source = app.project_label_cache.get(&project_id).unwrap_or(&app.project_labels);
+
+    let labels: Vec<ListItem> = labels_source
         .iter()
         .map(|l| {
-            let prefix = if app.selected_label_ids.contains(&l.id) { "[x] " } else { "[ ] " };
-            ListItem::new(format!("{}{}", prefix, l.name))
+            let prefix = if app.selected_label_ids.contains(&l.id()) { "[x] " } else { "[ ] " };
+            let color = hex_to_color(l.color());
+            let text_color = hex_to_color(l.text_color());
+
+            ListItem::new(Line::from(vec![
+                Span::raw(prefix),
+                Span::styled(format!(" {} ", l.name()), Style::default().bg(color).fg(text_color)),
+            ]))
         })
         .collect();
 
@@ -45,7 +59,13 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
-    let members: Vec<ListItem> = app.project_members
+    let project_id = app.selected_mr.as_ref().map(|m| m.project_id)
+        .or_else(|| app.selected_issue.as_ref().map(|i| i.project_id))
+        .unwrap_or(0);
+
+    let members_source = app.project_member_cache.get(&project_id).unwrap_or(&app.project_members);
+
+    let members: Vec<ListItem> = members_source
         .iter()
         .map(|m| {
             let prefix = if app.selected_assignee_ids.contains(&m.id) { "[x] " } else { "[ ] " };
@@ -65,11 +85,17 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
-    let mut milestones: Vec<ListItem> = app.project_milestones
+    let project_id = app.selected_mr.as_ref().map(|m| m.project_id)
+        .or_else(|| app.selected_issue.as_ref().map(|i| i.project_id))
+        .unwrap_or(0);
+
+    let milestones_source = app.project_milestone_cache.get(&project_id).unwrap_or(&app.project_milestones);
+
+    let mut milestones: Vec<ListItem> = milestones_source
         .iter()
         .map(|m| ListItem::new(m.title.clone()))
         .collect();
-    
+
     milestones.insert(0, ListItem::new("None (Clear Milestone)"));
 
     let list = List::new(milestones)
@@ -78,7 +104,6 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
 
     f.render_stateful_widget(list, area, &mut app.milestone_state);
 }
-
 pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(30, 40, f.area());
     f.render_widget(Clear, area);
@@ -306,7 +331,10 @@ pub fn render_create_issue_popup(f: &mut Frame, app: &mut App) {
         f.set_cursor_position(Position::new(chunks[0].x + app.cursor_index as u16 + 1, chunks[0].y + 1));
     } else if app.input_target == InputTarget::CreateIssueDescription {
         // Simple cursor placement for description (doesn't handle wraps perfectly)
-        f.set_cursor_position(Position::new(chunks[1].x + (app.cursor_index % chunks[1].width as usize) as u16 + 1, chunks[1].y + (app.cursor_index / chunks[1].width as usize) as u16 + 1));
+        let width = chunks[1].width as usize;
+        if width > 0 {
+            f.set_cursor_position(Position::new(chunks[1].x + (app.cursor_index % width) as u16 + 1, chunks[1].y + (app.cursor_index / width) as u16 + 1));
+        }
     }
 
     render_shortcuts(f, chunks[2], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
@@ -349,6 +377,28 @@ pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
     render_shortcuts(f, chunks[4], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
 }
 
+pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(40, 30, f.area());
+    f.render_widget(Clear, area);
+    f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(" Snooze Todo ").border_style(Style::default().fg(app.theme.border)), area);
+
+    let suggestions = vec![
+        "In 1 hour",
+        "Tomorrow",
+        "In 3 days",
+        "Next week",
+        "Custom date/time...",
+    ];
+
+    let items: Vec<ListItem> = suggestions.iter().map(|s| ListItem::new(*s)).collect();
+
+    let list = List::new(items)
+        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
+
+    f.render_stateful_widget(list, area.inner(Margin { horizontal: 2, vertical: 2 }), &mut app.snooze_state);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,7 +427,7 @@ mod tests {
         terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
 
         // 2. Label Popup
-        app.project_labels = vec![Label { id: 1, name: "L1".into(), color: "#f00".into(), text_color: "#fff".into() }];
+        app.project_labels = vec![Label { id: 1, name: "L1".into(), color: "#f00".into(), text_color: Some("#fff".into()) }];
         terminal.draw(|f| render_label_popup(f, &mut app)).unwrap();
         app.selected_label_ids.push(1);
         terminal.draw(|f| render_label_popup(f, &mut app)).unwrap();
@@ -446,5 +496,9 @@ mod tests {
             app.input_target = target;
             terminal.draw(|f| render_create_mr_popup(f, &mut app)).unwrap();
         }
+
+        // 11. Snooze Popup
+        app.show_snooze_popup = true;
+        terminal.draw(|f| render_snooze_popup(f, &mut app)).unwrap();
     }
 }
