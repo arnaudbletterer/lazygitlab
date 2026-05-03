@@ -41,16 +41,18 @@ async fn test_boundary_looping_and_context() {
     let (tx, _) = mpsc::unbounded_channel();
     app.tx = tx;
 
-    // 1. Test Sidebar Dashboard Looping (3 items)
+    // 1. Test Sidebar Dashboard -> Explore transition (Down at bottom)
     app.active_panel = Panel::Dashboard;
     app.dashboard_menu_state.select(Some(2)); // Last item (Issues)
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
-    assert_eq!(app.dashboard_menu_state.selected(), Some(0)); // Loop to Todos
+    assert_eq!(app.active_panel, Panel::Explore); // Moves to Explore
+    assert_eq!(app.explore_menu_state.selected(), Some(0));
 
     app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
-    assert_eq!(app.dashboard_menu_state.selected(), Some(2)); // Loop back to Issues
+    assert_eq!(app.active_panel, Panel::Dashboard); // Moves back to Dashboard
+    assert_eq!(app.dashboard_menu_state.selected(), Some(2));
 
-    // 2. Test Main List Looping
+    // 2. Test Main List Looping (Main list STILL loops)
     app.active_panel = Panel::Main;
     app.active_selection = MenuSelection::Issues;
     app.filtered_issues = vec![
@@ -106,16 +108,16 @@ async fn test_keyboard_exhaustive() {
     let (tx, _) = mpsc::unbounded_channel();
     app.tx = tx;
 
-    // Test Tab cycling
+    // Test Tab cycling (Sidebar -> Main -> Detail -> Sidebar)
     app.active_panel = Panel::Dashboard;
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
-    assert_eq!(app.active_panel, Panel::Explore);
+    assert_eq!(app.active_panel, Panel::Main);
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
-    assert_eq!(app.active_panel, Panel::Project);
+    assert_eq!(app.active_panel, Panel::MainDetail);
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
     assert_eq!(app.active_panel, Panel::Dashboard);
 
-    // Test Enter zoom
+    // Test Enter zoom (Sidebar -> Main -> Detail)
     app.active_panel = Panel::Dashboard;
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
     assert_eq!(app.active_panel, Panel::Main);
@@ -136,4 +138,41 @@ async fn test_help_actions_exhaustive() {
 
     app.execute_help_action(HelpAction::Quit).await;
     assert!(app.should_quit);
+}
+
+#[tokio::test]
+async fn test_empty_popup_navigation_safety() {
+    let (_server, mut app) = setup_app().await;
+    let (tx, _) = mpsc::unbounded_channel();
+    app.tx = tx;
+
+    // 1. Label Popup (Empty)
+    app.project_labels = Vec::new();
+    app.show_label_popup = true;
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)).await;
+    assert!(app.show_label_popup);
+
+    // 2. Assignee Popup (Empty)
+    app.project_members = Vec::new();
+    app.show_assignee_popup = true;
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)).await;
+    assert!(app.show_assignee_popup);
+
+    // 3. Milestone Popup (Empty)
+    app.project_milestones = Vec::new();
+    app.show_milestone_popup = true;
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
+    assert!(app.show_milestone_popup);
+
+    // 4. Project Popup (Empty)
+    app.projects = Vec::new();
+    app.show_project_popup = true;
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
+    assert!(app.show_project_popup);
 }

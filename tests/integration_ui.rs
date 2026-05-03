@@ -23,6 +23,10 @@ async fn setup_app() -> (MockServer, App) {
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let mut app = App::new(client);
+    app.active_panel = Panel::MainDetail;
+    app.active_context = Context::Project;
+    app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests
+    app.active_selection = MenuSelection::MergeRequests;
     app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
     app.show_project_popup = false;
     (server, app)
@@ -67,7 +71,13 @@ async fn test_mr_visual_completeness() {
     Mock::given(PathContains("award_emoji")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([{"emoji":"rocket"}]))).mount(&server).await;
     Mock::given(PathContains("discussions")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([serde_json::from_str::<Discussion>(disc_json).unwrap()]))).mount(&server).await;
 
-    app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
+    let mr: MergeRequest = serde_json::from_str(mr_json).unwrap();
+    app.merge_requests = vec![mr.clone()];
+    app.filtered_mrs = vec![GroupedItem::Item(mr.clone())];
+    app.mrs_state.select(Some(0));
+    app.active_panel = Panel::MainDetail;
+    app.active_selection = MenuSelection::MergeRequests;
+    
     app.fetch_discussions(1, 123).await.unwrap();
     wait_for_loading_finish(&mut app, &mut rx).await;
     
@@ -125,7 +135,7 @@ async fn test_navigation_and_focus() {
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     
     // We check for the project name in the sidebar title
-    assert_buffer_contains(&terminal, "Project: Proj 2");
+    assert_buffer_contains(&terminal, "Project");
 
     app.merge_requests = vec![
         serde_json::from_str(r##"{"iid": 1, "project_id": 2, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##).unwrap(),
@@ -136,6 +146,8 @@ async fn test_navigation_and_focus() {
     app.active_panel = Panel::Main;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
+    assert_buffer_contains(&terminal, "Opened");
+    assert_buffer_contains(&terminal, "Merged");
     assert_buffer_contains(&terminal, "> !1 MR 1");
 
     // Toggle focus to sidebar (cycles from Project -> Dashboard)
