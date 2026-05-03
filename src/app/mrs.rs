@@ -1,5 +1,4 @@
 use gitlab::api::AsyncQuery;
-use gitlab::api::projects::merge_requests::MergeRequest as MergeRequestEndpoint;
 use crate::models::*;
 use crate::api::*;
 use crate::app::parse_reactions;
@@ -10,12 +9,18 @@ impl App {
             let pid = project.id;
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
-            self.merge_requests.clear(); self.filter_lists(); // Synchronous clear to prevent jumps
             let _ = tx.send(DataUpdate::Loading(true));
             self.status_message = Some("Fetching Merge Requests...".into());
 
+            let state_str = match self.mr_filter {
+                MergeRequestFilter::Opened => Some("opened".to_string()),
+                MergeRequestFilter::Merged => Some("merged".to_string()),
+                MergeRequestFilter::Closed => Some("closed".to_string()),
+                MergeRequestFilter::All => None,
+            };
+
             tokio::spawn(async move {
-                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50 };
+                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50, state: state_str };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { 
@@ -41,11 +46,19 @@ impl App {
             let next_page = self.mrs_page + 1;
             let _ = tx.send(DataUpdate::Loading(true));
 
+            let state_str = match self.mr_filter {
+                MergeRequestFilter::Opened => Some("opened".to_string()),
+                MergeRequestFilter::Merged => Some("merged".to_string()),
+                MergeRequestFilter::Closed => Some("closed".to_string()),
+                MergeRequestFilter::All => None,
+            };
+
             tokio::spawn(async move {
                 let ep = PagedMergeRequests {
                     project: pid,
                     page: next_page,
                     per_page: 50,
+                    state: state_str,
                 };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
                 match res {
@@ -141,7 +154,7 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
             // 1. Fetch single MR to get latest upvotes/downvotes
-            let mr_endpoint = MergeRequestEndpoint::builder().project(project_id).merge_request(mr_iid).build().unwrap();
+            let mr_endpoint = SingleMergeRequest { project: project_id, merge_request: mr_iid };
             let mr_res: Result<crate::models::MergeRequest, _> = mr_endpoint.query_async(&client).await;
             
             if let Ok(mut mr) = mr_res {
@@ -190,60 +203,77 @@ impl App {
     }
 
     pub async fn toggle_mr_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(mr) = &self.selected_mr {
-            let pid = mr.project_id;
-            let iid = mr.iid;
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            let event = if mr.state == "opened" { "close" } else { "reopen" };
-            let _ = tx.send(DataUpdate::Loading(true));
-            tokio::spawn(async move {
-                let edit = EditMergeRequest {
-                    project: pid, merge_request: iid, title: None, description: None, state_event: Some(event.to_string()),
-                    labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None,
-                };
-                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
-                match res {
-                    Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
-                    Err(_) => { let _ = tx.send(DataUpdate::Error("Toggle MR state timed out".into())); }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+        let (pid, iid, current_state) = if let Some(mr) = &self.selected_mr {
+            (mr.project_id, mr.iid, mr.state.clone())
+        } else {
+            return Ok(());
+        };
+
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let event = if current_state == "opened" { "close" } else { "reopen" };
+
+        // Optimistic update
+        if let Some(m) = &mut self.selected_mr {
+            m.state = if current_state == "opened" { "closed".to_string() } else { "opened".to_string() };
         }
+
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let edit = EditMergeRequest {
+                project: pid, merge_request: iid, title: None, description: None, state_event: Some(event.to_string()),
+                labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None,
+            };
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Toggle MR state timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn update_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(mr) = &self.selected_mr {
-            let pid = mr.project_id;
-            let iid = mr.iid;
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            let mut edit = EditMergeRequest {
-                project: pid, merge_request: iid, title: None, description: None, state_event: None,
-                labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None,
-            };
+        let (pid, iid) = if let Some(mr) = &self.selected_mr {
+            (mr.project_id, mr.iid)
+        } else {
+            return Ok(());
+        };
 
-            match self.input_target {
-                InputTarget::EditTitle => edit.title = Some(self.reply_input.clone()),
-                InputTarget::EditDescription => edit.description = Some(self.reply_input.clone()),
-                _ => return Ok(()),
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let mut edit = EditMergeRequest {
+            project: pid, merge_request: iid, title: None, description: None, state_event: None,
+            labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None,
+        };
+
+        match self.input_target {
+            InputTarget::EditTitle => {
+                edit.title = Some(self.reply_input.clone());
+                if let Some(m) = &mut self.selected_mr { m.title = self.reply_input.clone(); }
             }
-
-            self.input_mode = false;
-            self.reply_input.clear();
-            let _ = tx.send(DataUpdate::Loading(true));
-            tokio::spawn(async move {
-                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
-                match res {
-                    Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
-                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR timed out".into())); }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+            InputTarget::EditDescription => {
+                edit.description = Some(self.reply_input.clone());
+                if let Some(m) = &mut self.selected_mr { m.description = Some(self.reply_input.clone()); }
+            }
+            _ => return Ok(()),
         }
+
+        self.input_mode = false;
+        self.reply_input.clear();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+
         Ok(())
     }
 
@@ -254,8 +284,8 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let labels = self.project_labels.iter()
-                .filter(|l| self.selected_label_ids.contains(&l.id))
-                .map(|l| l.name.clone())
+                .filter(|l| self.selected_label_ids.contains(&l.id()))
+                .map(|l| l.name().to_string())
                 .collect::<Vec<_>>()
                 .join(",");
 
@@ -413,6 +443,10 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut app = App::new(client);
         app.tx = tx;
+        app.active_panel = Panel::Project;
+        app.project_menu_state.select(Some(1)); // Merge Requests
+        app.active_context = Context::Project;
+        app.active_selection = MenuSelection::MergeRequests;
         app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
         (server, app, rx)
     }
@@ -452,7 +486,7 @@ mod tests {
         app.reply_input = "new".into();
         app.update_mr().await.unwrap();
         
-        app.project_labels = vec![Label { id: 1, name: "l".into(), color: "c".into(), text_color: "t".into() }];
+        app.project_labels = vec![Label { id: 1, name: "l".into(), color: "c".into(), text_color: Some("t".into()) }];
         app.selected_label_ids.push(1);
         app.update_mr_labels().await.unwrap();
         

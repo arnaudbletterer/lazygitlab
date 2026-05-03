@@ -8,18 +8,65 @@ impl App {
             let pid = project.id;
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
-            self.issues.clear(); self.filter_lists(); // Synchronous clear to prevent jumps
             let _ = tx.send(DataUpdate::Loading(true));
             self.status_message = Some("Fetching Issues...".into());
 
+            let state_str = match self.issue_filter {
+                IssueFilter::Opened => Some("opened".to_string()),
+                IssueFilter::Closed => Some("closed".to_string()),
+                IssueFilter::All => None,
+            };
+
             tokio::spawn(async move {
-                let ep = PagedIssues { project: pid, page: 1, per_page: 50 };
+                let ep = PagedIssues { project: pid, page: 1, per_page: 50, state: state_str };
                 let res: Result<Vec<Issue>, _> = ep.query_async(&client).await;
                 if let Ok(data) = res { 
                     let has_more = data.len() == 50;
                     let _ = tx.send(DataUpdate::ProjectIssues { project_id: pid, data, page: 1, has_more }); 
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_next_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.issues_has_more || self.is_loading { return Ok(()); }
+        
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let next_page = self.issues_page + 1;
+            let _ = tx.send(DataUpdate::Loading(true));
+
+            let state_str = match self.issue_filter {
+                IssueFilter::Opened => Some("opened".to_string()),
+                IssueFilter::Closed => Some("closed".to_string()),
+                IssueFilter::All => None,
+            };
+
+            tokio::spawn(async move {
+                let ep = PagedIssues {
+                    project: pid,
+                    page: next_page,
+                    per_page: 50,
+                    state: state_str,
+                };
+                let res: Result<Vec<Issue>, _> = ep.query_async(&client).await;
+                match res {
+                    Ok(data) => {
+                        if !data.is_empty() {
+                            let _ = tx.send(DataUpdate::AppendProjectIssues { project_id: pid, data });
+                        } else {
+                            let _ = tx.send(DataUpdate::Loading(false));
+                        }
+                    }
+                    Err(e) => { 
+                        let _ = tx.send(DataUpdate::Error(e.to_string())); 
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    }
+                }
             });
         }
         Ok(())
@@ -51,30 +98,39 @@ impl App {
     }
 
     pub async fn update_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &self.selected_issue {
-            let pid = issue.project_id;
-            let iid = issue.iid;
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            let mut edit = EditIssue {
-                project: pid, issue: iid, title: None, description: None, state_event: None,
-                labels: None, assignee_ids: None, milestone_id: None, due_date: None, weight: None, confidential: None,
-            };
+        let (pid, iid) = if let Some(issue) = &self.selected_issue {
+            (issue.project_id, issue.iid)
+        } else {
+            return Ok(());
+        };
 
-            match self.input_target {
-                InputTarget::EditTitle => edit.title = Some(self.reply_input.clone()),
-                InputTarget::EditDescription => edit.description = Some(self.reply_input.clone()),
-                _ => return Ok(()),
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let mut edit = EditIssue {
+            project: pid, issue: iid, title: None, description: None, state_event: None,
+            labels: None, assignee_ids: None, milestone_id: None, due_date: None, weight: None, confidential: None,
+        };
+
+        match self.input_target {
+            InputTarget::EditTitle => {
+                edit.title = Some(self.reply_input.clone());
+                if let Some(i) = &mut self.selected_issue { i.title = self.reply_input.clone(); }
             }
-
-            self.input_mode = false;
-            let _ = tx.send(DataUpdate::Loading(true));
-            tokio::spawn(async move {
-                let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
-                let _ = tx.send(DataUpdate::TriggerRefresh);
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+            InputTarget::EditDescription => {
+                edit.description = Some(self.reply_input.clone());
+                if let Some(i) = &mut self.selected_issue { i.description = Some(self.reply_input.clone()); }
+            }
+            _ => return Ok(()),
         }
+
+        self.input_mode = false;
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
+            let _ = tx.send(DataUpdate::TriggerRefresh);
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+
         Ok(())
     }
 
@@ -125,17 +181,51 @@ impl App {
     }
 
     pub async fn toggle_issue_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (pid, iid, current_state) = if let Some(issue) = &self.selected_issue {
+            (issue.project_id, issue.iid, issue.state.clone())
+        } else {
+            return Ok(());
+        };
+
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let event = if current_state == "opened" { "close" } else { "reopen" };
+        
+        // Optimistic update
+        if let Some(i) = &mut self.selected_issue {
+            i.state = if current_state == "opened" { "closed".to_string() } else { "opened".to_string() };
+        }
+
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let edit = EditIssue {
+                project: pid, issue: iid, title: None, description: None, state_event: Some(event.to_string()),
+                labels: None, assignee_ids: None, milestone_id: None, due_date: None, weight: None, confidential: None,
+            };
+            let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
+            let _ = tx.send(DataUpdate::TriggerRefresh);
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
+    pub async fn update_issue_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(issue) = &self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
-            let event = if issue.state == "opened" { "close" } else { "reopen" };
+            let labels = self.project_labels.iter()
+                .filter(|l| self.selected_label_ids.contains(&l.id()))
+                .map(|l| l.name().to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            self.show_label_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let edit = EditIssue {
-                    project: pid, issue: iid, title: None, description: None, state_event: Some(event.to_string()),
-                    labels: None, assignee_ids: None, milestone_id: None, due_date: None, weight: None, confidential: None,
+                    project: pid, issue: iid, title: None, description: None, state_event: None,
+                    labels: Some(labels), assignee_ids: None, milestone_id: None, due_date: None, weight: None, confidential: None,
                 };
                 let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
                 let _ = tx.send(DataUpdate::TriggerRefresh);
@@ -144,10 +234,50 @@ impl App {
         }
         Ok(())
     }
-    pub async fn fetch_next_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
-    pub async fn toggle_confidential(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
-    pub async fn clear_due_date(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
-    pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
-    pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
-    pub async fn update_issue_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> { Ok(()) }
+
+    pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let assignee_ids = self.selected_assignee_ids.clone();
+
+            self.show_assignee_popup = false;
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let edit = EditIssue {
+                    project: pid, issue: iid, title: None, description: None, state_event: None,
+                    labels: None, assignee_ids: Some(assignee_ids), milestone_id: None, due_date: None, weight: None, confidential: None,
+                };
+                let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
+                let _ = tx.send(DataUpdate::TriggerRefresh);
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let milestone_id = self.selected_milestone_id;
+
+            self.show_milestone_popup = false;
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let edit = EditIssue {
+                    project: pid, issue: iid, title: None, description: None, state_event: None,
+                    labels: None, assignee_ids: None, milestone_id: milestone_id.map(|id| Some(id)), due_date: None, weight: None, confidential: None,
+                };
+                let _: Result<serde_json::Value, _> = edit.query_async(&client).await;
+                let _ = tx.send(DataUpdate::TriggerRefresh);
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
 }
