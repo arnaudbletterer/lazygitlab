@@ -389,7 +389,6 @@ mod tests {
     }
 
     use gitlab::GitlabBuilder;
-    use tokio_test::block_on;
     use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
     use tokio::sync::mpsc;

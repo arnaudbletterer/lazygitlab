@@ -95,7 +95,7 @@ mod tests {
             downvotes: Some(0),
             reactions: vec![],
         });
-        terminal.draw(|f| render_diff_view(f, &mut app)).unwrap();
+        terminal.draw(|f| render_diff_view(f, &mut app, f.area())).unwrap();
 
         // With diffs
         app.mr_diffs = vec![
@@ -107,7 +107,7 @@ mod tests {
         ];
         app.mr_diff_state.select(Some(0));
 
-        terminal.draw(|f| render_diff_view(f, &mut app)).unwrap();
+        terminal.draw(|f| render_diff_view(f, &mut app, f.area())).unwrap();
         let buffer = terminal.backend().buffer();
         let mut content = String::new();
         for y in 0..buffer.area().height {

@@ -44,10 +44,9 @@ async fn run_monolithic_tests() {
     for mode in [ViewMode::List, ViewMode::Detail, ViewMode::JobLog, ViewMode::Diff] {
         app.view_mode = mode;
         for focus in [true, false] {
-            app.active_panel = if focus { Panel::Sidebar } else { Panel::Content };
+            app.active_panel = if focus { Panel::Dashboard } else { Panel::Main };
             for _ in 0..5 { app.move_down(); app.move_up(); }
         }
-        app.page_down(); app.page_up();
         app.enter().await;
         app.back().await;
     }
@@ -70,7 +69,7 @@ async fn run_monolithic_tests() {
     // 4. Input target exhaustive
     app.input_mode = true;
     for target in [
-        InputTarget::Reply, InputTarget::NewComment, InputTarget::EditTitle, InputTarget::EditDescription,
+        InputTarget::Reply, InputTarget::EditTitle, InputTarget::EditDescription,
         InputTarget::Filter, InputTarget::PipelineRef, InputTarget::PipelineVariableKey, InputTarget::PipelineVariableValue,
         InputTarget::CreateIssueTitle, InputTarget::CreateMRTitle,
     ] {
@@ -86,7 +85,7 @@ async fn run_monolithic_tests() {
     wait_for_async(&mut app, &mut rx).await;
 
     // 6. Action methods
-    let _ = app.post_comment().await;
+    let _ = app.post_reply().await;
     let _ = app.toggle_mr_state().await;
     wait_for_async(&mut app, &mut rx).await;
 

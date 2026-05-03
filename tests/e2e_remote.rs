@@ -54,9 +54,12 @@ async fn test_remote_validation_and_isolation() {
     if let Some(project) = target_proj {
         println!("Found project: {}", project.path_with_namespace.as_deref().unwrap_or(""));
         app.selected_project = Some(project.clone());
+        app.active_context = lazygitlab::models::Context::Project;
+        app.active_panel = lazygitlab::models::Panel::Project; // IMPORTANT: Set panel to prevent context reset
         
         // 3. Validate MRs Isolation
         app.active_selection = lazygitlab::models::MenuSelection::MergeRequests;
+        app.merge_requests.clear();
         app.refresh().await;
         wait_for_loading_finish(&mut app, &mut rx).await;
         
@@ -70,6 +73,7 @@ async fn test_remote_validation_and_isolation() {
 
         // 4. Validate Issues Isolation
         app.active_selection = lazygitlab::models::MenuSelection::Issues;
+        app.issues.clear();
         app.refresh().await;
         wait_for_loading_finish(&mut app, &mut rx).await;
 

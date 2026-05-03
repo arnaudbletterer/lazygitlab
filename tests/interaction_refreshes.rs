@@ -16,10 +16,18 @@ impl wiremock::Match for PathContains {
 async fn setup_app() -> (MockServer, App, tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
+    
+    // Default Metadata & Detail Mocks (Catch-all for GETs to avoid 404s during refreshes)
+    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([]))).mount(&server).await;
+
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client);
     app.tx = tx;
+    app.active_panel = Panel::MainDetail;
+    app.active_context = Context::Project;
+    app.project_menu_state.select(Some(1)); // Default to MRs
+    app.active_selection = MenuSelection::MergeRequests;
     app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
     app.show_project_popup = false;
     (server, app, rx)
@@ -126,7 +134,7 @@ async fn test_mr_label_update_refresh() {
     let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [{"id":1,"name":"feature","color":"#00ff00","text_color":"#000000"}], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
 
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
-    app.project_labels = vec![Label { id: 1, name: "feature".into(), color: "#00ff00".into(), text_color: "#000000".into() }];
+    app.project_labels = vec![Label { id: 1, name: "feature".into(), color: "#00ff00".into(), text_color: Some("#000000".into()) }];
     app.view_mode = ViewMode::Detail;
     app.show_label_popup = true;
     app.selected_label_ids.push(1);
