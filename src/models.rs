@@ -3,6 +3,28 @@ use ratatui::widgets::ListState;
 use crate::ui::Theme;
 use gitlab::AsyncGitlab;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+pub enum TodoFilter {
+    Pending,
+    Snoozed,
+    Done,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+pub enum IssueFilter {
+    Opened,
+    Closed,
+    All,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+pub enum MergeRequestFilter {
+    Opened,
+    Merged,
+    Closed,
+    All,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Project {
     pub id: u64,
@@ -95,6 +117,7 @@ pub struct Group {
     pub name: String,
     pub path: String,
     pub full_path: String,
+    pub web_url: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
@@ -127,13 +150,67 @@ pub enum ViewMode {
     Diff,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Label {
     pub id: u64,
     pub name: String,
     pub color: String,
-    pub text_color: String,
+    pub text_color: Option<String>,
 }
+
+impl<'de> serde::Deserialize<'de> for Label {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct LabelVisitor;
+        impl<'de> serde::de::Visitor<'de> for LabelVisitor {
+            type Value = Label;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or a label object")
+            }
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: serde::de::Error {
+                Ok(Label { id: 0, name: v.to_string(), color: "#808080".to_string(), text_color: None })
+            }
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error> where M: serde::de::MapAccess<'de> {
+                let mut id = 0;
+                let mut name = String::new();
+                let mut color = "#808080".to_string();
+                let mut text_color = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "id" => id = map.next_value()?,
+                        "name" => name = map.next_value()?,
+                        "color" => color = map.next_value()?,
+                        "text_color" => text_color = Some(map.next_value()?),
+                        _ => { let _: serde::de::IgnoredAny = map.next_value()?; }
+                    }
+                }
+                Ok(Label { id, name, color, text_color })
+            }
+        }
+        deserializer.deserialize_any(LabelVisitor)
+    }
+}
+
+impl Label {
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn color(&self) -> &str {
+        &self.color
+    }
+
+    pub fn text_color(&self) -> &str {
+        self.text_color.as_deref().unwrap_or("#ffffff")
+    }
+}
+
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Milestone {
@@ -237,6 +314,7 @@ pub enum InputTarget {
     CreateMRDescription,
     CreateMRSourceBranch,
     CreateMRTargetBranch,
+    SnoozeUntil,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -343,12 +421,13 @@ pub enum DataUpdate {
     Jobs { project_id: u64, pipeline_id: u64, data: Vec<Job> },
     Log { project_id: u64, job_id: u64, data: String },
     Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
-    Metadata { labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
+    Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
     MRDetail(MergeRequest),
     IssueDetail(Issue),
     Loading(bool),
     Error(String),
     TriggerRefresh,
+    CheckPagination,
 }
 
 pub struct App {
@@ -400,6 +479,9 @@ pub struct App {
 
     // Project Metadata
     pub project_labels: Vec<Label>,
+    pub project_label_cache: std::collections::HashMap<u64, Vec<Label>>,
+    pub project_milestone_cache: std::collections::HashMap<u64, Vec<Milestone>>,
+    pub project_member_cache: std::collections::HashMap<u64, Vec<Author>>,
     pub project_milestones: Vec<Milestone>,
     pub project_members: Vec<Author>,
 
@@ -480,6 +562,11 @@ pub struct App {
     pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
     pub filtered_issues: Vec<GroupedItem<Issue>>,
     pub filtered_pipelines: Vec<Pipeline>,
+    
+    pub todo_filter: TodoFilter,
+    pub issue_filter: IssueFilter,
+    pub mr_filter: MergeRequestFilter,
+
     pub last_error: Option<String>,
     pub status_message: Option<String>,
     pub loading_tasks: usize,
@@ -491,4 +578,6 @@ pub struct App {
     pub last_fetch_projects: Option<std::time::Instant>,
     pub last_fetch_groups: Option<std::time::Instant>,
     pub last_fetch_pipelines: Option<std::time::Instant>,
+    pub show_snooze_popup: bool,
+    pub snooze_state: ListState,
 }

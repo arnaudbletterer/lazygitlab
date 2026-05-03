@@ -84,20 +84,28 @@ pub struct EditIssue {
 impl Endpoint for EditIssue {
     fn method(&self) -> Method { Method::PUT }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}", self.project, self.issue).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
+    }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         if let Some(t) = &self.title { params.push("title", t); }
         if let Some(d) = &self.description { params.push("description", d); }
         if let Some(s) = &self.state_event { params.push("state_event", s); }
-        if let Some(l) = &self.labels { params.push("labels", l); }
+        if let Some(l) = &self.labels {
+            if l.is_empty() { params.push("labels", ""); }
+            else { params.push("labels", l); }
+        }
         if let Some(a) = &self.assignee_ids {
-            if a.is_empty() { params.push("assignee_ids[]", 0); }
+            if a.is_empty() { params.push("assignee_ids", "0"); }
             else { for id in a { params.push("assignee_ids[]", *id); } }
         }
         if let Some(m) = &self.milestone_id {
             match m {
                 Some(id) => { params.push("milestone_id", *id); },
-                None => { params.push("milestone_id", 0); }
+                None => { params.push("milestone_id", "0"); }
             }
         }
         if let Some(dd) = &self.due_date {
@@ -172,6 +180,11 @@ pub struct EditMergeRequest {
 impl Endpoint for EditMergeRequest {
     fn method(&self) -> Method { Method::PUT }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}", self.project, self.merge_request).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
+    }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         if let Some(t) = &self.title { params.push("title", t); }
@@ -217,7 +230,13 @@ pub struct ProjectLabels { pub project: u64 }
 impl Endpoint for ProjectLabels {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/labels", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("include_ancestor_groups", true);
+        params
+    }
 }
+impl Pageable for ProjectLabels {}
 
 #[derive(Debug, Clone)]
 pub struct ProjectMilestones { pub project: u64 }
@@ -225,6 +244,7 @@ impl Endpoint for ProjectMilestones {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/milestones", self.project).into() }
 }
+impl Pageable for ProjectMilestones {}
 
 #[derive(Debug, Clone)]
 pub struct ProjectMembers { pub project: u64 }
@@ -232,6 +252,7 @@ impl Endpoint for ProjectMembers {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/members/all", self.project).into() }
 }
+impl Pageable for ProjectMembers {}
 
 #[derive(Debug, Clone)]
 pub struct Groups { pub page: Option<u64>, pub per_page: Option<u64> }
@@ -262,7 +283,7 @@ impl Endpoint for ProjectPipelines {
 impl Pageable for ProjectPipelines {}
 
 #[derive(Debug, Clone)]
-pub struct PagedIssues { pub project: u64, pub page: u64, pub per_page: u64 }
+pub struct PagedIssues { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String> }
 impl Endpoint for PagedIssues {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues", self.project).into() }
@@ -270,6 +291,7 @@ impl Endpoint for PagedIssues {
         let mut params = gitlab::api::QueryParams::default();
         params.push("page", self.page);
         params.push("per_page", self.per_page);
+        if let Some(s) = &self.state { params.push("state", s); }
         params.push("with_labels_details", true);
         params
     }
@@ -277,7 +299,7 @@ impl Endpoint for PagedIssues {
 impl Pageable for PagedIssues {}
 
 #[derive(Debug, Clone)]
-pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64 }
+pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String> }
 impl Endpoint for PagedMergeRequests {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
@@ -285,6 +307,8 @@ impl Endpoint for PagedMergeRequests {
         let mut params = gitlab::api::QueryParams::default();
         params.push("page", self.page);
         params.push("per_page", self.per_page);
+        if let Some(s) = &self.state { params.push("state", s); }
+        params.push("with_labels_details", true);
         params
     }
 }
@@ -329,6 +353,7 @@ impl Endpoint for GlobalIssues {
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params.push("with_labels_details", true);
         params
     }
 }
@@ -346,13 +371,14 @@ impl Endpoint for GlobalMergeRequests {
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        params.push("with_labels_details", true);
         params
     }
 }
 impl Pageable for GlobalMergeRequests {}
 
 #[derive(Debug, Clone)]
-pub struct Todos { pub page: Option<u64>, pub per_page: Option<u64> }
+pub struct Todos { pub page: Option<u64>, pub per_page: Option<u64>, pub state: Option<String> }
 impl Endpoint for Todos {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "todos".into() }
@@ -360,10 +386,30 @@ impl Endpoint for Todos {
         let mut params = gitlab::api::QueryParams::default();
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        if let Some(s) = &self.state { params.push("state", s); }
         params
     }
 }
 impl Pageable for Todos {}
+
+#[derive(Debug, Clone)]
+pub struct MarkTodoAsDone { pub todo_id: u64 }
+impl Endpoint for MarkTodoAsDone {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("todos/{}/mark_as_done", self.todo_id).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct SnoozeTodo { pub todo_id: u64, pub snooze_until: String }
+impl Endpoint for SnoozeTodo {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("todos/{}/snooze", self.todo_id).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("snooze_until", &self.snooze_until);
+        params.into_body()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct MergeRequestDiffs { pub project: u64, pub merge_request: u64 }
@@ -386,6 +432,18 @@ pub struct PipelineVariables { pub project: u64, pub pipeline: u64 }
 impl Endpoint for PipelineVariables {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipelines/{}/variables", self.project, self.pipeline).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct SingleMergeRequest { pub project: u64, pub merge_request: u64 }
+impl Endpoint for SingleMergeRequest {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}", self.project, self.merge_request).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -420,6 +478,11 @@ pub struct CreateIssue { pub project: u64, pub title: String, pub description: O
 impl Endpoint for CreateIssue {
     fn method(&self) -> Method { Method::POST }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
+    }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         params.push("title", &self.title);
@@ -435,6 +498,11 @@ pub struct CreateMergeRequest { pub project: u64, pub source_branch: String, pub
 impl Endpoint for CreateMergeRequest {
     fn method(&self) -> Method { Method::POST }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("with_labels_details", true);
+        params
+    }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         params.push("source_branch", &self.source_branch);
@@ -765,11 +833,11 @@ mod tests {
         assert_eq!(group_projs.method(), Method::GET);
         let _ = group_projs.parameters();
 
-        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1 };
+        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1, state: Some("opened".into()) };
         assert_eq!(p_mrs.method(), Method::GET);
         let _ = p_mrs.parameters();
 
-        let p_issues = PagedIssues { project: 1, page: 1, per_page: 1 };
+        let p_issues = PagedIssues { project: 1, page: 1, per_page: 1, state: Some("opened".into()) };
         assert_eq!(p_issues.method(), Method::GET);
         let _ = p_issues.parameters();
 
@@ -781,9 +849,16 @@ mod tests {
         assert_eq!(g_issues.method(), Method::GET);
         let _ = g_issues.parameters();
 
-        let todos = Todos { page: Some(1), per_page: Some(1) };
+        let todos = Todos { page: Some(1), per_page: Some(1), state: Some("pending".into()) };
         assert_eq!(todos.method(), Method::GET);
         let _ = todos.parameters();
+
+        let mark_done = MarkTodoAsDone { todo_id: 1 };
+        assert_eq!(mark_done.method(), Method::POST);
+
+        let snooze = SnoozeTodo { todo_id: 1, snooze_until: "2026-05-03T12:00:00Z".into() };
+        assert_eq!(snooze.method(), Method::POST);
+        assert!(snooze.body().is_ok());
 
         let cancel_job = CancelJob { project: 1, job: 2 };
         assert_eq!(cancel_job.method(), Method::POST);
