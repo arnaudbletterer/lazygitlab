@@ -1,7 +1,6 @@
 use gitlab::api::AsyncQuery;
 use crate::models::*;
 use crate::api::*;
-use crate::app::parse_reactions;
 
 impl App {
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {

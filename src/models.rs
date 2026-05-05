@@ -328,6 +328,7 @@ pub enum Context {
 pub enum DetailSection {
     Metadata,
     Discussions,
+    Description,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

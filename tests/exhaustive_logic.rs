@@ -9,7 +9,7 @@ async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    let mut app = App::new(client);
+    let app = App::new(client);
     (server, app)
 }
 
@@ -108,14 +108,14 @@ async fn test_keyboard_exhaustive() {
     let (tx, _) = mpsc::unbounded_channel();
     app.tx = tx;
 
-    // Test Tab cycling (Sidebar -> Main -> Detail -> Sidebar)
-    app.active_panel = Panel::Dashboard;
+    // Test Tab cycling (Main -> Sidebar -> Detail -> Main)
+    app.active_panel = Panel::Main;
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
-    assert_eq!(app.active_panel, Panel::Main);
+    assert_eq!(app.active_panel, Panel::Dashboard);
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
     assert_eq!(app.active_panel, Panel::MainDetail);
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)).await;
-    assert_eq!(app.active_panel, Panel::Dashboard);
+    assert_eq!(app.active_panel, Panel::Main);
 
     // Test Enter zoom (Sidebar -> Main -> Detail)
     app.active_panel = Panel::Dashboard;

@@ -8,7 +8,7 @@ pub mod diff;
 pub use widgets::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use crate::models::{App, ViewMode, MenuSelection};
+use crate::models::{App, ViewMode, Panel};
 use list::render_list_view;
 use detail::render_detail_view;
 use diff::render_diff_view;
@@ -19,7 +19,7 @@ use crate::ui::widgets::{format_relative_time, format_time_only};
 pub fn ui(f: &mut Frame, app: &mut App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(f.area());
 
     match app.view_mode {
@@ -29,88 +29,75 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ViewMode::Diff => render_diff_view(f, app, main_chunks[0]),
     }
 
-    // Help / Status Bar (Bottom)
-    let mut help_spans = vec![
-        Span::styled(" j/k ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Move "),
-        Span::styled(" h/l ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Sidebar/Main "),
-        Span::styled(" Tab ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Next Panel "),
-        Span::styled(" Enter ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Select "),
-        Span::styled(" [ / ] ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Tabs "),
-        Span::styled(" / ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Filter "),
-        Span::styled(" o ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Open "),
-        Span::styled(" ? ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Help "),
-        Span::styled(" q ", Style::default().bg(app.theme.highlight_bg).fg(Color::White)), Span::raw(" Quit "),
+    // 1. Panels Shortcut Bar
+    let panel_shortcuts = vec![
+        Span::styled(" 1 ", Style::default().bg(if matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project) { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" Nav "),
+        Span::styled(" 2 ", Style::default().bg(if app.active_panel == Panel::Main { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" List "),
+        Span::styled(" 3 ", Style::default().bg(if app.active_panel == Panel::MainDetail { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" Detail "),
     ];
 
-    if app.view_mode == ViewMode::List {
-        if app.active_selection == MenuSelection::Todos {
-            help_spans.push(Span::raw(" | "));
-            help_spans.push(Span::styled(" d ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Done "));
-            help_spans.push(Span::styled(" s ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Snooze "));
-        } else if app.active_selection == MenuSelection::Pipelines {
-            help_spans.push(Span::raw(" | "));
-            help_spans.push(Span::styled(" p ", Style::default().bg(app.theme.highlight_bg).fg(Color::White))); help_spans.push(Span::raw(" Launch "));
-        }
+    // 2. Context-Aware Help / Keybindings Bar
+    let mut help_spans = vec![
+        Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Move "),
+        Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Panel "),
+        Span::styled(" Tab ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Next "),
+        Span::styled(" Enter ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
+    ];
+
+    if app.active_panel == Panel::Main {
+        help_spans.push(Span::styled(" [ / ] ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Tabs "));
+        help_spans.push(Span::styled(" / ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Filter "));
     }
+
+    if app.selected_mr.is_some() || app.selected_issue.is_some() {
+        help_spans.push(Span::styled(" c ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Close "));
+        help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
+    }
+
+    if app.active_panel == Panel::MainDetail {
+        help_spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Comment "));
+    }
+
+    help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
 
     let mut status_spans = Vec::new();
     if let Some(err) = &app.last_error {
         status_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
     }
     if app.is_loading {
-        let dots = match (chrono::Utc::now().timestamp_millis() / 500) % 4 {
-            1 => ".", 2 => "..", 3 => "...", _ => "",
-        };
         let msg = app.status_message.as_deref().unwrap_or("Loading");
-        status_spans.push(Span::styled(format!(" {}{} ", msg, dots), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        status_spans.push(Span::styled(format!(" {}... ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
     }
 
+    let footer_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(main_chunks[1]);
+
+    f.render_widget(Paragraph::new(Line::from(panel_shortcuts)), footer_layout[0]);
+    
     let footer_line = Line::from(vec![
         Line::from(help_spans).into_iter().collect::<Vec<_>>(),
         vec![Span::raw("   ")],
         status_spans,
     ].into_iter().flatten().collect::<Vec<_>>());
 
-    f.render_widget(Paragraph::new(footer_line), main_chunks[1]);
+    f.render_widget(Paragraph::new(footer_line), footer_layout[1]);
 
-    if app.show_project_popup {
-        render_project_popup(f, app);
-    }
-    if app.show_label_popup {
-        render_label_popup(f, app);
-    }
-    if app.show_assignee_popup {
-        render_assignee_popup(f, app);
-    }
-    if app.show_milestone_popup {
-        render_milestone_popup(f, app);
-    }
-    if app.show_calendar_popup {
-        render_calendar_popup(f, app);
-    }
-    if app.show_weight_popup {
-        render_weight_popup(f, app);
-    }
-    if app.show_pipeline_popup {
-        render_pipeline_popup(f, app);
-    }
-
-    if app.show_help_popup {
-        render_help_popup(f, app);
-    }
-
-    if app.show_create_issue_popup {
-        render_create_issue_popup(f, app);
-    }
-
-    if app.show_create_mr_popup {
-        render_create_mr_popup(f, app);
-    }
-
-    if app.show_snooze_popup {
-        render_snooze_popup(f, app);
-    }
+    // Contextual Popups
+    if app.show_project_popup { render_project_popup(f, app); }
+    if app.show_label_popup { render_label_popup(f, app); }
+    if app.show_assignee_popup { render_assignee_popup(f, app); }
+    if app.show_milestone_popup { render_milestone_popup(f, app); }
+    if app.show_calendar_popup { render_calendar_popup(f, app); }
+    if app.show_weight_popup { render_weight_popup(f, app); }
+    if app.show_pipeline_popup { render_pipeline_popup(f, app); }
+    if app.show_create_issue_popup { render_create_issue_popup(f, app); }
+    if app.show_create_mr_popup { render_create_mr_popup(f, app); }
+    if app.show_snooze_popup { render_snooze_popup(f, app); }
 }
+
+
 
 pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()

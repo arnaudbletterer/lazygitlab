@@ -176,7 +176,7 @@ async fn test_discussion_resolve_refresh() {
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "[RESOLVED]");
+    assert_buffer_contains(&terminal, " [R]");
 }
 
 #[tokio::test]
@@ -208,5 +208,5 @@ async fn test_mr_milestone_update_refresh() {
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "Milestone: v2.0");
+    assert_buffer_contains(&terminal, "Miles: v2.0");
 }

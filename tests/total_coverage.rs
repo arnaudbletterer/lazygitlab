@@ -7,12 +7,7 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use crossterm::event::KeyCode;
 
-struct PathContains(&'static str);
-impl wiremock::Match for PathContains {
-    fn matches(&self, request: &wiremock::Request) -> bool {
-        request.url.path().contains(self.0)
-    }
-}
+// Removed PathContains struct and its impl as it was unused
 
 async fn wait_for_async(app: &mut App, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
     let start = std::time::Instant::now();

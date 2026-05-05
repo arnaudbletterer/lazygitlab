@@ -190,15 +190,19 @@ mod tests {
         assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
     }
 
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     #[should_panic(expected = "GITLAB_TOKEN must be set")]
     fn test_config_from_env_panic() {
+        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::remove_var("GITLAB_TOKEN"); }
         Config::from_env();
     }
 
     #[test]
     fn test_config_from_env_success() {
+        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         unsafe {
             std::env::set_var("GITLAB_TOKEN", "test_token");
             std::env::set_var("GITLAB_URL", "https://test.gitlab.com");

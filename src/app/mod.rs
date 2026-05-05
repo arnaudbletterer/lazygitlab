@@ -570,21 +570,39 @@ impl App {
             }
             Panel::MainDetail => {
                 match self.detail_section {
-                    DetailSection::Metadata => {
-                        self.selected_metadata_field = match self.selected_metadata_field {
-                            MetadataField::Title => MetadataField::Labels,
-                            MetadataField::Labels => MetadataField::Assignees,
-                            MetadataField::Assignees => MetadataField::Milestone,
-                            MetadataField::Milestone => MetadataField::Description,
-                            _ => { self.detail_section = DetailSection::Discussions; self.discussion_state.select(Some(0)); MetadataField::Title }
-                        };
-                    }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
                             let current = self.discussion_state.selected().unwrap_or(0);
-                            if current >= self.discussions.len().saturating_sub(1) { self.detail_section = DetailSection::Metadata; self.selected_metadata_field = MetadataField::Title; self.discussion_state.select(None); }
-                            else { self.discussion_state.select(Some(current + 1)); }
-                        } else { self.detail_section = DetailSection::Metadata; self.selected_metadata_field = MetadataField::Title; }
+                            if current >= self.discussions.len().saturating_sub(1) {
+                                self.detail_section = DetailSection::Metadata;
+                                self.selected_metadata_field = MetadataField::Title;
+                                self.discussion_state.select(None);
+                            } else {
+                                self.discussion_state.select(Some(current + 1));
+                            }
+                        } else {
+                            self.detail_section = DetailSection::Metadata;
+                            self.selected_metadata_field = MetadataField::Title;
+                        }
+                    }
+                    DetailSection::Metadata => {
+                        match self.selected_metadata_field {
+                            MetadataField::Title => self.selected_metadata_field = MetadataField::Labels,
+                            MetadataField::Labels => self.selected_metadata_field = MetadataField::Assignees,
+                            MetadataField::Assignees => {
+                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
+                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
+                                else { self.detail_section = DetailSection::Description; }
+                            }
+                            MetadataField::Milestone | MetadataField::Weight => {
+                                self.detail_section = DetailSection::Description;
+                            }
+                            _ => self.detail_section = DetailSection::Description,
+                        }
+                    }
+                    DetailSection::Description => {
+                        self.detail_section = DetailSection::Discussions;
+                        if !self.discussions.is_empty() { self.discussion_state.select(Some(0)); }
                     }
                 }
             }
@@ -620,22 +638,32 @@ impl App {
             }
             Panel::MainDetail => {
                 match self.detail_section {
-                    DetailSection::Metadata => {
-                        self.selected_metadata_field = match self.selected_metadata_field {
-                            MetadataField::Title => { self.detail_section = DetailSection::Discussions; if !self.discussions.is_empty() { self.discussion_state.select(Some(self.discussions.len().saturating_sub(1))); } MetadataField::Title }
-                            MetadataField::Labels => MetadataField::Title,
-                            MetadataField::Assignees => MetadataField::Labels,
-                            MetadataField::Milestone => MetadataField::Assignees,
-                            MetadataField::Description => MetadataField::Milestone,
-                            _ => MetadataField::Description,
-                        };
-                    }
                     DetailSection::Discussions => {
-                        if !self.discussions.is_empty() {
-                            let current = self.discussion_state.selected().unwrap_or(0);
-                            if current == 0 { self.detail_section = DetailSection::Metadata; self.selected_metadata_field = MetadataField::Description; self.discussion_state.select(None); }
-                            else { self.discussion_state.select(Some(current - 1)); }
-                        } else { self.detail_section = DetailSection::Metadata; self.selected_metadata_field = MetadataField::Description; }
+                        let current = self.discussion_state.selected().unwrap_or(0);
+                        if current == 0 {
+                            self.detail_section = DetailSection::Description;
+                            self.discussion_state.select(None);
+                        } else {
+                            self.discussion_state.select(Some(current - 1));
+                        }
+                    }
+                    DetailSection::Metadata => {
+                        match self.selected_metadata_field {
+                            MetadataField::Title => {
+                                self.detail_section = DetailSection::Discussions;
+                                if !self.discussions.is_empty() { self.discussion_state.select(Some(self.discussions.len().saturating_sub(1))); }
+                            }
+                            MetadataField::Labels => self.selected_metadata_field = MetadataField::Title,
+                            MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
+                            MetadataField::Milestone | MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
+                            _ => self.selected_metadata_field = MetadataField::Title,
+                        }
+                    }
+                    DetailSection::Description => {
+                        self.detail_section = DetailSection::Metadata;
+                        if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
+                        else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
+                        else { self.selected_metadata_field = MetadataField::Assignees; }
                     }
                 }
             }
@@ -748,36 +776,54 @@ impl App {
             return;
         }
 
+        if self.view_mode == ViewMode::JobLog {
+            match key.code {
+                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => { self.toggle_job_section(); let _ = self.update_preview().await; return; }
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                _ => {}
+            }
+        }
+
+        if self.view_mode == ViewMode::Diff {
+            match key.code {
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1); self.mr_diff_state.select(Some(i)); let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 }; self.mr_diff_state.select(Some(i)); let _ = self.update_preview().await; return; }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Tab => {
                 self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
-                    Panel::Main => Panel::MainDetail,
-                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::MainDetail,
+                    Panel::MainDetail => Panel::Main,
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
-                    Panel::Main => Panel::Main,
+                    Panel::Dashboard | Panel::Explore | Panel::Project | Panel::Main => Panel::MainDetail,
                     Panel::MainDetail => Panel::MainDetail,
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::BackTab => {
                 self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::MainDetail,
-                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
-                    Panel::MainDetail => Panel::Main,
+                    Panel::Main => Panel::MainDetail,
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Dashboard,
-                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
                     Panel::MainDetail => Panel::Main,
+                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    _ => self.active_panel,
                 };
                 let _ = self.update_preview().await;
             }
@@ -800,7 +846,18 @@ impl App {
                 let _ = self.update_preview().await;
             }
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char('?') => self.toggle_help(),
+            KeyCode::Char('1') => { 
+                if !matches!(self.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project) {
+                    self.active_panel = match self.active_context {
+                        Context::Dashboard => Panel::Dashboard,
+                        Context::Explore => Panel::Explore,
+                        Context::Project => Panel::Project,
+                    };
+                }
+                let _ = self.update_preview().await; 
+            }
+            KeyCode::Char('2') => { self.active_panel = Panel::Main; let _ = self.update_preview().await; }
+            KeyCode::Char('3') => { self.active_panel = Panel::MainDetail; let _ = self.update_preview().await; }
             KeyCode::Char('o') => self.open_in_browser(),
             KeyCode::Char('[') => {
                 match self.active_selection {
@@ -849,6 +906,7 @@ impl App {
                     }
                 }
                 DetailSection::Discussions => { self.input_mode = true; self.input_target = InputTarget::Reply; self.reply_input.clear(); self.cursor_index = 0; }
+                DetailSection::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; if let Some(i) = &self.selected_issue { self.reply_input = i.description.clone().unwrap_or_default(); } else if let Some(m) = &self.selected_mr { self.reply_input = m.description.clone().unwrap_or_default(); } self.cursor_index = self.reply_input.chars().count(); }
             }
         }
     }
