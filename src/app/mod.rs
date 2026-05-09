@@ -40,7 +40,7 @@ impl App {
             jobs_state: ListState::default(),
             active_panel: Panel::Dashboard,
             view_mode: ViewMode::List,
-            detail_section: DetailSection::Discussions,
+            detail_section: DetailSection::Metadata,
             selected_metadata_field: MetadataField::Title,
             selected_mr: None,
             selected_issue: None,
@@ -48,6 +48,7 @@ impl App {
             selected_job: None,
             mr_diffs: Vec::new(),
             mr_diff_state: ListState::default(),
+            diff_line_state: ListState::default(),
             job_log: String::new(),
             job_log_lines: Vec::new(),
             collapsed_sections: std::collections::HashSet::new(),
@@ -59,8 +60,7 @@ impl App {
             input_mode: false,
             input_target: InputTarget::Reply,
             is_loading: false,
-            reply_input: String::new(),
-            cursor_index: 0,
+            textarea: ratatui_textarea::TextArea::default(),
             theme: Theme::load(),
             last_refresh: std::time::Instant::now(),
             tx,
@@ -149,61 +149,75 @@ impl App {
                 DataUpdate::Todos { data, page, has_more } => { self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); }
                 DataUpdate::AppendTodos(mut data) => { self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); }
 
-                DataUpdate::Projects { data, page, has_more } => { self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); }
-                DataUpdate::AppendProjects(mut data) => { self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); }
+                DataUpdate::Projects { data, page, has_more } => { 
+                    for p in &data { self.trigger_project_metadata_fetch(p.id); }
+                    self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); 
+                }
+                DataUpdate::AppendProjects(mut data) => { 
+                    for p in &data { self.trigger_project_metadata_fetch(p.id); }
+                    self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); 
+                }
 
                 DataUpdate::Groups { data, page, has_more } => { self.groups = data; self.groups_page = page; self.groups_has_more = has_more; self.filter_lists(); }
                 DataUpdate::AppendGroups(mut data) => { self.groups_has_more = data.len() >= 50; self.groups.append(&mut data); self.groups_page += 1; self.filter_lists(); }
 
                 DataUpdate::GlobalMRs { data, page, has_more } => { 
+                    let mut data = data;
+                    for mr in &data { self.trigger_project_metadata_fetch(mr.project_id); }
+                    for mr in &mut data { self.fix_mr_labels(mr); }
                     if self.active_context == Context::Dashboard { 
-                        let mut data = data;
-                        for mr in &mut data { Self::fix_mr_labels(&self.project_labels, mr); }
                         self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::ProjectMRs { project_id, mut data, page, has_more } => { 
+                    self.trigger_project_metadata_fetch(project_id);
+                    for mr in &mut data { self.fix_mr_labels(mr); }
                     if self.active_context == Context::Project && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { 
-                        for mr in &mut data { Self::fix_mr_labels(&self.project_labels, mr); }
                         self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::AppendGlobalMRs(mut data) => { 
+                    for mr in &data { self.trigger_project_metadata_fetch(mr.project_id); }
+                    for mr in &mut data { self.fix_mr_labels(mr); }
                     if self.active_context == Context::Dashboard { 
-                        for mr in &mut data { Self::fix_mr_labels(&self.project_labels, mr); }
                         self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::AppendProjectMRs { project_id, mut data } => { 
+                    self.trigger_project_metadata_fetch(project_id);
+                    for mr in &mut data { self.fix_mr_labels(mr); }
                     if self.active_context == Context::Project && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { 
-                        for mr in &mut data { Self::fix_mr_labels(&self.project_labels, mr); }
                         self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::ClearGlobalMRs => { if self.active_context == Context::Dashboard { self.merge_requests.clear(); self.filter_lists(); } }
 
                 DataUpdate::GlobalIssues { data, page, has_more } => { 
+                    let mut data = data;
+                    for issue in &data { self.trigger_project_metadata_fetch(issue.project_id); }
+                    for issue in &mut data { self.fix_issue_labels(issue); }
                     if self.active_context == Context::Dashboard { 
-                        let mut data = data;
-                        for issue in &mut data { Self::fix_issue_labels(&self.project_labels, issue); }
                         self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::ProjectIssues { project_id, mut data, page, has_more } => { 
+                    self.trigger_project_metadata_fetch(project_id);
+                    for issue in &mut data { self.fix_issue_labels(issue); }
                     if self.active_context == Context::Project && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { 
-                        for issue in &mut data { Self::fix_issue_labels(&self.project_labels, issue); }
                         self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::AppendGlobalIssues(mut data) => { 
+                    for issue in &data { self.trigger_project_metadata_fetch(issue.project_id); }
+                    for issue in &mut data { self.fix_issue_labels(issue); }
                     if self.active_context == Context::Dashboard { 
-                        for issue in &mut data { Self::fix_issue_labels(&self.project_labels, issue); }
                         self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
                     } 
                 }
                 DataUpdate::AppendProjectIssues { project_id, mut data } => { 
+                    self.trigger_project_metadata_fetch(project_id);
+                    for issue in &mut data { self.fix_issue_labels(issue); }
                     if self.active_context == Context::Project && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { 
-                        for issue in &mut data { Self::fix_issue_labels(&self.project_labels, issue); }
                         self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
                     } 
                 }
@@ -227,15 +241,17 @@ impl App {
                         self.project_milestones = milestones.clone(); 
                         self.project_members = members.clone(); 
                     }
+                    
+                    let labels_ref = &labels;
                     // Re-enrich existing lists using the NEW labels for THIS project
-                    for mr in &mut self.merge_requests { if mr.project_id == project_id { Self::fix_mr_labels(&labels, mr); } }
-                    for issue in &mut self.issues { if issue.project_id == project_id { Self::fix_issue_labels(&labels, issue); } }
-                    if let Some(selected) = &mut self.selected_mr { if selected.project_id == project_id { Self::fix_mr_labels(&labels, selected); } }
-                    if let Some(selected) = &mut self.selected_issue { if selected.project_id == project_id { Self::fix_issue_labels(&labels, selected); } }
+                    for mr in &mut self.merge_requests { if mr.project_id == project_id { Self::fix_label_list(labels_ref, &mut mr.labels); } }
+                    for issue in &mut self.issues { if issue.project_id == project_id { Self::fix_label_list(labels_ref, &mut issue.labels); } }
+                    if let Some(selected) = &mut self.selected_mr { if selected.project_id == project_id { Self::fix_label_list(labels_ref, &mut selected.labels); } }
+                    if let Some(selected) = &mut self.selected_issue { if selected.project_id == project_id { Self::fix_label_list(labels_ref, &mut selected.labels); } }
                     self.filter_lists();
                 }
                 DataUpdate::MRDetail(mut mr) => { 
-                    Self::fix_mr_labels(&self.project_labels, &mut mr);
+                    self.fix_mr_labels(&mut mr);
                     if let Some(selected) = &mut self.selected_mr { 
                         if selected.iid == mr.iid && selected.project_id == mr.project_id { 
                             // Preserve colors from existing selected_mr if the new one is grey
@@ -257,7 +273,7 @@ impl App {
                     }
                 }
                 DataUpdate::IssueDetail(mut issue) => { 
-                    Self::fix_issue_labels(&self.project_labels, &mut issue);
+                    self.fix_issue_labels(&mut issue);
                     if let Some(selected) = &mut self.selected_issue { 
                         if selected.iid == issue.iid && selected.project_id == issue.project_id { 
                             // Preserve colors from existing selected_issue if the new one is grey
@@ -287,25 +303,49 @@ impl App {
         self.update_preview().await;
     }
 
-    fn fix_label(project_labels: &[Label], label: &mut Label) {
+    fn fix_label(cache: &mut std::collections::HashMap<u64, Vec<Label>>, project_id: u64, label: &mut Label) {
+        // Learn from the label if it has color info
+        if label.id != 0 && label.color != "#808080" {
+            let entry = cache.entry(project_id).or_default();
+            if !entry.iter().any(|l| l.name == label.name) {
+                entry.push(label.clone());
+            }
+        }
+        // Fix the label if it is missing info
         if label.id == 0 || label.color == "#808080" {
-            if let Some(matching) = project_labels.iter().find(|l| l.name == label.name) {
-                label.id = matching.id;
-                label.color = matching.color.clone();
-                label.text_color = matching.text_color.clone();
+            if let Some(cached_labels) = cache.get(&project_id) {
+                if let Some(matching) = cached_labels.iter().find(|l| l.name == label.name) {
+                    label.id = matching.id;
+                    label.color = matching.color.clone();
+                    label.text_color = matching.text_color.clone();
+                }
             }
         }
     }
 
-    fn fix_issue_labels(project_labels: &[Label], issue: &mut Issue) {
-        for label in &mut issue.labels {
-            Self::fix_label(project_labels, label);
+    fn fix_label_list(labels: &[Label], item_labels: &mut [Label]) {
+        for label in item_labels {
+            if label.id == 0 || label.color == "#808080" {
+                if let Some(matching) = labels.iter().find(|l| l.name == label.name) {
+                    label.id = matching.id;
+                    label.color = matching.color.clone();
+                    label.text_color = matching.text_color.clone();
+                }
+            }
         }
     }
 
-    fn fix_mr_labels(project_labels: &[Label], mr: &mut MergeRequest) {
+    fn fix_issue_labels(&mut self, issue: &mut Issue) {
+        let project_id = issue.project_id;
+        for label in &mut issue.labels {
+            Self::fix_label(&mut self.project_label_cache, project_id, label);
+        }
+    }
+
+    fn fix_mr_labels(&mut self, mr: &mut MergeRequest) {
+        let project_id = mr.project_id;
         for label in &mut mr.labels {
-            Self::fix_label(project_labels, label);
+            Self::fix_label(&mut self.project_label_cache, project_id, label);
         }
     }
     pub async fn initial_setup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -314,57 +354,69 @@ impl App {
         let t1 = tx.clone(); let c1 = c.clone(); 
         tokio::spawn(async move { 
             let ep = Todos { page: Some(1), per_page: Some(50), state: Some("pending".to_string()) }; 
-            let res: Result<Vec<Todo>, _> = ep.query_async(&c1).await;
-            if let Ok(data) = res { let has_more = data.len() == 50; let _ = t1.send(DataUpdate::Todos { data, page: 1, has_more }); } 
+            let res: Result<Result<Vec<Todo>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c1)).await;
+            match res {
+                Ok(Ok(data)) => { let has_more = data.len() == 50; let _ = t1.send(DataUpdate::Todos { data, page: 1, has_more }); }
+                Ok(Err(e)) => { let _ = t1.send(DataUpdate::Error(format!("Todos fetch failed: {}", e))); }
+                Err(_) => { let _ = t1.send(DataUpdate::Error("Todos fetch timed out".into())); }
+            }
             let _ = t1.send(DataUpdate::Loading(false)); 
         });
         let t2 = tx.clone(); let c2 = c.clone(); 
         tokio::spawn(async move { 
-            let ep = PagedProjects { membership: true, page: 1, per_page: 50 }; 
-            let res: Result<Vec<Project>, _> = ep.query_async(&c2).await;
-            if let Ok(data) = res { let has_more = data.len() == 50; let _ = t2.send(DataUpdate::Projects { data, page: 1, has_more }); } 
+            let ep = PagedProjects { membership: true, page: 1, per_page: 100, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) }; 
+            let res: Result<Result<Vec<Project>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c2)).await;
+            match res {
+                Ok(Ok(data)) => { 
+                    let has_more = data.len() == 100; 
+                    let _ = t2.send(DataUpdate::Projects { data, page: 1, has_more }); 
+                }
+                Ok(Err(e)) => { let _ = t2.send(DataUpdate::Error(format!("Projects fetch failed: {}", e))); }
+                Err(_) => { let _ = t2.send(DataUpdate::Error("Projects fetch timed out".into())); }
+            }
             let _ = t2.send(DataUpdate::Loading(false)); 
         });
         let t3 = tx.clone(); let c3 = c.clone(); 
         tokio::spawn(async move { 
-            let ep = Groups { page: Some(1), per_page: Some(50) }; 
-            let res: Result<Vec<Group>, _> = ep.query_async(&c3).await;
-            if let Ok(data) = res { let has_more = data.len() == 50; let _ = t3.send(DataUpdate::Groups { data, page: 1, has_more }); } 
+            let ep = Groups { page: Some(1), per_page: Some(50), min_access_level: Some(10), top_level_only: None }; 
+            let res: Result<Result<Vec<Group>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c3)).await;
+            match res {
+                Ok(Ok(data)) => { let has_more = data.len() == 50; let _ = t3.send(DataUpdate::Groups { data, page: 1, has_more }); }
+                Ok(Err(e)) => { let _ = t3.send(DataUpdate::Error(format!("Groups fetch failed: {}", e))); }
+                Err(_) => { let _ = t3.send(DataUpdate::Error("Groups fetch timed out".into())); }
+            }
             let _ = t3.send(DataUpdate::Loading(false)); 
         });
         Ok(())
     }
 
-    pub async fn fetch_project_metadata(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn trigger_project_metadata_fetch(&self, project_id: u64) {
+        if self.project_label_cache.contains_key(&project_id) { return; }
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let lp = ProjectLabels { project: project_id };
-            let mp = ProjectMilestones { project: project_id };
-            let memp = ProjectMembers { project: project_id };
+            let lp_ep = ProjectLabels { project: project_id };
+            let mp_ep = ProjectMilestones { project: project_id };
+            let memp_ep = ProjectMembers { project: project_id };
 
-            let labels_res: Result<Vec<Label>, _> = gitlab::api::paged(lp, gitlab::api::Pagination::All).query_async(&client).await;
-            let milestones_res: Result<Vec<Milestone>, _> = gitlab::api::paged(mp, gitlab::api::Pagination::All).query_async(&client).await;
-            let members_res: Result<Vec<Author>, _> = gitlab::api::paged(memp, gitlab::api::Pagination::All).query_async(&client).await;
+            let lp = gitlab::api::paged(lp_ep, gitlab::api::Pagination::All);
+            let mp = gitlab::api::paged(mp_ep, gitlab::api::Pagination::All);
+            let memp = gitlab::api::paged(memp_ep, gitlab::api::Pagination::All);
 
-            let labels = labels_res.unwrap_or_else(|e| {
-                let _ = tx.send(DataUpdate::Error(format!("Labels fetch failed: {}", e)));
-                Vec::new()
-            });
-            let milestones = milestones_res.unwrap_or_else(|e| {
-                let _ = tx.send(DataUpdate::Error(format!("Milestones fetch failed: {}", e)));
-                Vec::new()
-            });
-            let members = members_res.unwrap_or_else(|e| {
-                let _ = tx.send(DataUpdate::Error(format!("Members fetch failed: {}", e)));
-                Vec::new()
-            });
+            let (l_res, m_res, mem_res) = tokio::join!(
+                tokio::time::timeout(std::time::Duration::from_secs(20), lp.query_async(&client)),
+                tokio::time::timeout(std::time::Duration::from_secs(20), mp.query_async(&client)),
+                tokio::time::timeout(std::time::Duration::from_secs(20), memp.query_async(&client))
+            );
+
+            let labels: Vec<Label> = match l_res { Ok(Ok(data)) => data, _ => Vec::new() };
+            let milestones: Vec<Milestone> = match m_res { Ok(Ok(data)) => data, _ => Vec::new() };
+            let members: Vec<Author> = match mem_res { Ok(Ok(data)) => data, _ => Vec::new() };
 
             if !labels.is_empty() || !milestones.is_empty() || !members.is_empty() {
                 let _ = tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
             }
         });
-        Ok(())
     }
 
     pub async fn refresh(&mut self) {
@@ -394,18 +446,18 @@ impl App {
 
         if let Some(mr) = self.selected_mr.clone() { 
             let _ = self.fetch_discussions(mr.project_id, mr.iid).await; 
-            let _ = self.fetch_project_metadata(mr.project_id).await;
+            self.trigger_project_metadata_fetch(mr.project_id);
         }
         else if let Some(issue) = self.selected_issue.clone() { 
             let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; 
-            let _ = self.fetch_project_metadata(issue.project_id).await;
+            self.trigger_project_metadata_fetch(issue.project_id);
         }
         else if let Some(pipeline) = self.selected_pipeline.clone() { 
             let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; 
-            let _ = self.fetch_project_metadata(pipeline.project_id).await;
+            self.trigger_project_metadata_fetch(pipeline.project_id);
         }
         else if let Some(project) = &self.selected_project {
-            let _ = self.fetch_project_metadata(project.id).await;
+            self.trigger_project_metadata_fetch(project.id);
         }
     }
 
@@ -460,13 +512,13 @@ impl App {
                                 if todo.target_type == "MergeRequest" {
                                     if self.selected_mr.as_ref().map_or(true, |m| m.iid != iid || m.project_id != todo.project.id) {
                                         self.selected_issue = None; self.discussions.clear();
-                                        self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author { id: 0, username: "".into() }, web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), created_at: "".into() });
+                                        self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author { id: 0, username: "".into() }, web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
                                         let _ = self.fetch_discussions(todo.project.id, iid).await;
                                     }
                                 } else if todo.target_type == "Issue" {
                                     if self.selected_issue.as_ref().map_or(true, |iss| iss.iid != iid || iss.project_id != todo.project.id) {
                                         self.selected_mr = None; self.discussions.clear();
-                                        self.selected_issue = Some(Issue { iid, project_id: todo.project.id, title: todo.body.clone(), description: None, author: Author { id: 0, username: "".into() }, assignees: Vec::new(), state: "opened".into(), web_url: todo.target_url.clone(), references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: "".into(), upvotes: None, downvotes: None, reactions: Vec::new() });
+                                        self.selected_issue = Some(Issue { iid, project_id: todo.project.id, title: todo.body.clone(), description: None, author: Author { id: 0, username: "".into() }, assignees: Vec::new(), state: "opened".into(), web_url: todo.target_url.clone(), references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
                                         let _ = self.fetch_issue_discussions(todo.project.id, iid).await;
                                     }
                                 }
@@ -764,14 +816,30 @@ impl App {
             return;
         }
         if self.input_mode {
-            match key.code {
-                KeyCode::Enter => self.enter().await,
-                KeyCode::Esc => { self.input_mode = false; }
-                KeyCode::Left => { self.cursor_index = self.cursor_index.saturating_sub(1); }
-                KeyCode::Right => { self.cursor_index = (self.cursor_index + 1).min(self.get_input_buffer().chars().count()); }
-                KeyCode::Char(c) => { let mut chars: Vec<char> = self.get_input_buffer().chars().collect(); chars.insert(self.cursor_index.min(chars.len()), c); *self.get_input_buffer_mut() = chars.into_iter().collect(); self.cursor_index += 1; if self.input_target == InputTarget::Filter { self.filter_lists(); } }
-                KeyCode::Backspace if self.cursor_index > 0 => { let mut chars: Vec<char> = self.get_input_buffer().chars().collect(); chars.remove(self.cursor_index - 1); *self.get_input_buffer_mut() = chars.into_iter().collect(); self.cursor_index -= 1; if self.input_target == InputTarget::Filter { self.filter_lists(); } }
-                _ => {}
+            if self.input_target == InputTarget::Filter {
+                match key.code {
+                    KeyCode::Enter => self.input_mode = false,
+                    KeyCode::Esc => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
+                    KeyCode::Char(c) => { self.filter_input.push(c); self.filter_lists(); }
+                    KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Enter if !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) && !key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
+                         // Default enter behavior depends on target, some might want multiline
+                         if matches!(self.input_target, InputTarget::EditTitle | InputTarget::SnoozeUntil) {
+                             self.enter().await;
+                         } else {
+                             self.textarea.input(key);
+                         }
+                    }
+                    KeyCode::Enter if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) || key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
+                        self.enter().await;
+                    }
+                    KeyCode::Esc => { self.input_mode = false; }
+                    _ => { self.textarea.input(key); }
+                }
             }
             return;
         }
@@ -788,9 +856,47 @@ impl App {
 
         if self.view_mode == ViewMode::Diff {
             match key.code {
-                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => { let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1); self.mr_diff_state.select(Some(i)); let _ = self.update_preview().await; return; }
-                KeyCode::Up | KeyCode::Char('k') => { let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 }; self.mr_diff_state.select(Some(i)); let _ = self.update_preview().await; return; }
+                KeyCode::Esc => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Left | KeyCode::Char('h') => { self.diff_line_state.select(None); let _ = self.update_preview().await; return; }
+                KeyCode::Right | KeyCode::Char('l') => { if self.diff_line_state.selected().is_none() { self.diff_line_state.select(Some(0)); } let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if self.diff_line_state.selected().is_some() {
+                        if let Some(selected_idx) = self.mr_diff_state.selected() {
+                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
+                                let line_count = mr_diff.diff.lines().count();
+                                let i = (self.diff_line_state.selected().unwrap() + 1) % line_count;
+                                self.diff_line_state.select(Some(i));
+                            }
+                        }
+                    } else {
+                        let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1);
+                        self.mr_diff_state.select(Some(i));
+                    }
+                    let _ = self.update_preview().await; return;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if self.diff_line_state.selected().is_some() {
+                        if let Some(selected_idx) = self.mr_diff_state.selected() {
+                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
+                                let line_count = mr_diff.diff.lines().count();
+                                let i = if self.diff_line_state.selected().unwrap() == 0 { line_count - 1 } else { self.diff_line_state.selected().unwrap() - 1 };
+                                self.diff_line_state.select(Some(i));
+                            }
+                        }
+                    } else {
+                        let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 };
+                        self.mr_diff_state.select(Some(i));
+                    }
+                    let _ = self.update_preview().await; return;
+                }
+                KeyCode::Char('c') => {
+                    if self.diff_line_state.selected().is_some() {
+                        self.input_mode = true;
+                        self.input_target = InputTarget::NewComment;
+                        self.textarea = ratatui_textarea::TextArea::default();
+                        return;
+                    }
+                }
                 _ => {}
             }
         }
@@ -832,6 +938,7 @@ impl App {
             KeyCode::Enter => {
                 match self.active_panel {
                     Panel::Dashboard | Panel::Explore | Panel::Project => {
+                        self.active_context = match self.active_panel { Panel::Dashboard => Context::Dashboard, Panel::Explore => Context::Explore, Panel::Project => Context::Project, _ => self.active_context };
                         let idx = match self.active_panel { Panel::Dashboard => self.dashboard_menu_state.selected().unwrap_or(0), Panel::Explore => self.explore_menu_state.selected().unwrap_or(0), Panel::Project => self.project_menu_state.selected().unwrap_or(0), _ => 0 };
                         self.active_selection = match (self.active_panel, idx) { (Panel::Dashboard, 0) => MenuSelection::Todos, (Panel::Dashboard, 1) => MenuSelection::MergeRequests, (Panel::Dashboard, 2) => MenuSelection::Issues, (Panel::Explore, 0) => MenuSelection::Projects, (Panel::Explore, 1) => MenuSelection::Groups, (Panel::Project, 0) => MenuSelection::Pipelines, (Panel::Project, 1) => MenuSelection::MergeRequests, (Panel::Project, 2) => MenuSelection::Issues, _ => self.active_selection };
                         self.active_panel = Panel::Main; 
@@ -878,6 +985,9 @@ impl App {
                 self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
             }
             KeyCode::Char('c') => { if let Some(_) = &self.selected_issue { let _ = self.toggle_issue_state().await; } else if let Some(_) = &self.selected_mr { let _ = self.toggle_mr_state().await; } }
+            KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
+            KeyCode::Char('R') => { if self.selected_mr.is_some() { let _ = self.unapprove_mr().await; } }
+            KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
             KeyCode::Char('s') => {
                 if self.active_selection == MenuSelection::Todos {
                     self.show_snooze_popup = true; self.snooze_state.select(Some(0));
@@ -893,11 +1003,18 @@ impl App {
 
     pub async fn enter_detail_action(&mut self) {
         if self.active_panel == Panel::MainDetail {
+            let project_id = if let Some(mr) = &self.selected_mr { Some(mr.project_id) } else if let Some(issue) = &self.selected_issue { Some(issue.project_id) } else { None };
+            if let Some(pid) = project_id {
+                if let Some(labels) = self.project_label_cache.get(&pid) { self.project_labels = labels.clone(); }
+                if let Some(milestones) = self.project_milestone_cache.get(&pid) { self.project_milestones = milestones.clone(); }
+                if let Some(members) = self.project_member_cache.get(&pid) { self.project_members = members.clone(); }
+            }
+
             match self.detail_section {
                 DetailSection::Metadata => {
                     match self.selected_metadata_field {
-                        MetadataField::Title => { self.input_mode = true; self.input_target = InputTarget::EditTitle; if let Some(i) = &self.selected_issue { self.reply_input = i.title.clone(); } else if let Some(m) = &self.selected_mr { self.reply_input = m.title.clone(); } self.cursor_index = self.reply_input.chars().count(); }
-                        MetadataField::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; if let Some(i) = &self.selected_issue { self.reply_input = i.description.clone().unwrap_or_default(); } else if let Some(m) = &self.selected_mr { self.reply_input = m.description.clone().unwrap_or_default(); } self.cursor_index = self.reply_input.chars().count(); }
+                        MetadataField::Title => { self.input_mode = true; self.input_target = InputTarget::EditTitle; let text = if let Some(i) = &self.selected_issue { i.title.clone() } else if let Some(m) = &self.selected_mr { m.title.clone() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
+                        MetadataField::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; let text = if let Some(i) = &self.selected_issue { i.description.clone().unwrap_or_default() } else if let Some(m) = &self.selected_mr { m.description.clone().unwrap_or_default() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
                         MetadataField::Labels => { self.show_label_popup = true; self.selected_label_ids = if let Some(i) = &self.selected_issue { i.labels.iter().map(|l| l.id()).collect() } else if let Some(m) = &self.selected_mr { m.labels.iter().map(|l| l.id()).collect() } else { Vec::new() }; self.label_state.select(Some(0)); }
                         MetadataField::Assignees => { self.show_assignee_popup = true; self.selected_assignee_ids = if let Some(i) = &self.selected_issue { i.assignees.iter().map(|a| a.id).collect() } else if let Some(m) = &self.selected_mr { m.assignees.iter().map(|a| a.id).collect() } else { Vec::new() }; self.assignee_state.select(Some(0)); }
                         MetadataField::Milestone => { self.show_milestone_popup = true; let mid = if let Some(i) = &self.selected_issue { i.milestone.as_ref().map(|m| m.id) } else if let Some(m) = &self.selected_mr { m.milestone.as_ref().map(|mi| mi.id) } else { None }; let idx = mid.and_then(|id| self.project_milestones.iter().position(|m| m.id == id)).map(|p| p + 1).unwrap_or(0); self.milestone_state.select(Some(idx)); }
@@ -905,8 +1022,8 @@ impl App {
                         _ => {}
                     }
                 }
-                DetailSection::Discussions => { self.input_mode = true; self.input_target = InputTarget::Reply; self.reply_input.clear(); self.cursor_index = 0; }
-                DetailSection::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; if let Some(i) = &self.selected_issue { self.reply_input = i.description.clone().unwrap_or_default(); } else if let Some(m) = &self.selected_mr { self.reply_input = m.description.clone().unwrap_or_default(); } self.cursor_index = self.reply_input.chars().count(); }
+                DetailSection::Discussions => { self.input_mode = true; self.input_target = InputTarget::Reply; self.textarea = ratatui_textarea::TextArea::default(); }
+                DetailSection::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; let text = if let Some(i) = &self.selected_issue { i.description.clone().unwrap_or_default() } else if let Some(m) = &self.selected_mr { m.description.clone().unwrap_or_default() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
             }
         }
     }
@@ -949,7 +1066,7 @@ impl App {
             HelpAction::Select => { self.enter().await; }
             HelpAction::ToggleHelp => self.toggle_help(),
             HelpAction::ToggleFocus => self.toggle_focus(),
-            HelpAction::Filter => { self.input_mode = true; self.input_target = InputTarget::Filter; self.show_filter_input = true; self.cursor_index = self.filter_input.chars().count(); }
+            HelpAction::Filter => { self.input_mode = true; self.input_target = InputTarget::Filter; self.show_filter_input = true; }
             HelpAction::OpenBrowser => self.open_in_browser(),
             _ => {}
         }
@@ -977,20 +1094,49 @@ impl App {
         }
         Ok(())
     }
-    pub fn get_input_buffer(&self) -> &String { match self.input_target { InputTarget::Filter => &self.filter_input, _ => &self.reply_input } }
-    pub fn get_input_buffer_mut(&mut self) -> &mut String { match self.input_target { InputTarget::Filter => &mut self.filter_input, _ => &mut self.reply_input } }
     pub async fn enter(&mut self) { 
         match self.input_target {
             InputTarget::EditTitle | InputTarget::EditDescription => { if self.selected_issue.is_some() { let _ = self.update_issue().await; } else if self.selected_mr.is_some() { let _ = self.update_mr().await; } }
             InputTarget::Reply => { let _ = self.post_reply().await; }
+            InputTarget::NewComment => { let _ = self.post_new_comment().await; }
             InputTarget::SnoozeUntil => { let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d")); let _ = self.snooze_todo(snooze_until).await; self.show_calendar_popup = false; }
             _ => {}
         }
     }
     pub async fn post_reply(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.reply_input.is_empty() { return Ok(()); }
-        if let Some(mr) = &self.selected_mr { if let Some(disc_idx) = self.discussion_state.selected() { if let Some(disc) = self.discussions.get(disc_idx) { let endpoint = AddDiscussionNote { project: mr.project_id, merge_request: mr.iid, discussion: disc.id.clone(), body: self.reply_input.clone() }; let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?; self.reply_input.clear(); self.input_mode = false; let _ = self.fetch_discussions(mr.project_id, mr.iid).await; } } }
-        else if let Some(issue) = &self.selected_issue { if let Some(disc_idx) = self.discussion_state.selected() { if let Some(disc) = self.discussions.get(disc_idx) { let endpoint = AddIssueDiscussionNote { project: issue.project_id, issue: issue.iid, discussion: disc.id.clone(), body: self.reply_input.clone() }; let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?; self.reply_input.clear(); self.input_mode = false; let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; } } }
+        let body = self.textarea.lines().join("\n");
+        if body.is_empty() { return Ok(()); }
+        if let Some(mr) = &self.selected_mr {
+            if let Some(disc_idx) = self.discussion_state.selected() {
+                if let Some(disc) = self.discussions.get(disc_idx) {
+                    let endpoint = AddMergeRequestDiscussionNote {
+                        project: mr.project_id,
+                        merge_request: mr.iid,
+                        discussion: disc.id.clone(),
+                        body,
+                    };
+                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                    self.textarea = ratatui_textarea::TextArea::default();
+                    self.input_mode = false;
+                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+                }
+            }
+        } else if let Some(issue) = &self.selected_issue {
+            if let Some(disc_idx) = self.discussion_state.selected() {
+                if let Some(disc) = self.discussions.get(disc_idx) {
+                    let endpoint = AddIssueDiscussionNote {
+                        project: issue.project_id,
+                        issue: issue.iid,
+                        discussion: disc.id.clone(),
+                        body,
+                    };
+                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                    self.textarea = ratatui_textarea::TextArea::default();
+                    self.input_mode = false;
+                    let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
+                }
+            }
+        }
         Ok(())
     }
     pub fn toggle_focus(&mut self) { self.active_panel = match self.active_panel { Panel::Main | Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project }, _ => Panel::Main }; }

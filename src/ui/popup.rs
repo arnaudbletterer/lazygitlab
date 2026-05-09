@@ -327,16 +327,6 @@ pub fn render_create_issue_popup(f: &mut Frame, app: &mut App) {
     let desc_para = Paragraph::new(app.create_issue_description.as_str()).block(desc_block).wrap(Wrap { trim: false });
     f.render_widget(desc_para, chunks[1]);
 
-    if app.input_target == InputTarget::CreateIssueTitle {
-        f.set_cursor_position(Position::new(chunks[0].x + app.cursor_index as u16 + 1, chunks[0].y + 1));
-    } else if app.input_target == InputTarget::CreateIssueDescription {
-        // Simple cursor placement for description (doesn't handle wraps perfectly)
-        let width = chunks[1].width as usize;
-        if width > 0 {
-            f.set_cursor_position(Position::new(chunks[1].x + (app.cursor_index % width) as u16 + 1, chunks[1].y + (app.cursor_index / width) as u16 + 1));
-        }
-    }
-
     render_shortcuts(f, chunks[2], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
 }
 
@@ -368,10 +358,6 @@ pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
         let block = Block::default().borders(Borders::ALL).title(titles[i]).border_style(style);
         let para = Paragraph::new(contents[i].as_str()).block(block);
         f.render_widget(para, field_chunks[i]);
-        
-        if app.input_target == targets[i] {
-            f.set_cursor_position(Position::new(field_chunks[i].x + app.cursor_index as u16 + 1, field_chunks[i].y + 1));
-        }
     }
 
     render_shortcuts(f, chunks[4], vec![("tab", "next field"), ("enter", "save"), ("esc", "cancel")], &app.theme);
@@ -423,7 +409,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         // 1. Project Popup
-        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: Some("ns/p1".into()), web_url: Some("u".into()) }];
+        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: Some("ns/p1".into()), web_url: Some("u".into()), default_branch: None }];
         terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
 
         // 2. Label Popup
