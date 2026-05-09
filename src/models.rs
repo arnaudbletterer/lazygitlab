@@ -85,6 +85,14 @@ pub struct MRDiff {
     pub old_path: String,
     pub new_path: String,
     pub diff: String,
+    #[serde(skip)]
+    pub display_lines: Vec<DiffDisplayLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DiffDisplayLine {
+    Code(String, Option<u64>, Option<u64>),
+    Discussion(Discussion),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -343,6 +351,7 @@ pub enum DetailSection {
     Metadata,
     Discussions,
     Description,
+    Changes,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -439,6 +448,7 @@ pub enum DataUpdate {
     Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
     MRDetail(MergeRequest),
     IssueDetail(Issue),
+    CurrentUser(Author),
     Loading(bool),
     Error(String),
     TriggerRefresh,
@@ -595,4 +605,5 @@ pub struct App {
     pub last_fetch_pipelines: Option<std::time::Instant>,
     pub show_snooze_popup: bool,
     pub snooze_state: ListState,
+    pub current_user: Option<Author>,
 }
