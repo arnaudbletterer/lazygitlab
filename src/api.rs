@@ -8,6 +8,7 @@ impl Endpoint for MergeRequestDiscussions {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/discussions", self.project, self.merge_request).into() }
 }
+impl Pageable for MergeRequestDiscussions {}
 
 #[derive(Debug, Clone)]
 pub struct CurrentUser;
