@@ -27,7 +27,7 @@ async fn setup_app() -> (MockServer, App) {
     app.active_context = Context::Project;
     app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests
     app.active_selection = MenuSelection::MergeRequests;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
     app.show_project_popup = false;
     (server, app)
 }
@@ -64,7 +64,7 @@ async fn test_mr_visual_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 123, "project_id": 1, "title": "Implement Feature X", "description": "This is a detailed description.", "author": {"id": 1, "username": "alice"}, "web_url": "u", "state": "opened", "references": {"full": "n/p!123"}, "upvotes": 5, "downvotes": 0, "labels": [{"id":1,"name":"bug","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"v1.0"}, "assignees": [{"id":2,"username":"bob"}], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 123, "project_id": 1, "title": "Implement Feature X", "description": "This is a detailed description.", "author": {"id": 1, "username": "alice"}, "web_url": "u", "state": "opened", "references": {"full": "n/p!123"}, "upvotes": 5, "downvotes": 0, "labels": [{"id":1,"name":"bug","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"v1.0"}, "assignees": [{"id":2,"username":"bob"}], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     let disc_json = r##"{"id": "1", "notes": [{"id":1,"body":"Please review this part.","author":{"id":2,"username":"bob"},"system":false,"created_at":"2026-04-25T12:30:00Z"}]}"##;
 
     Mock::given(path("/api/v4/projects/1/merge_requests/123")).and(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<MergeRequest>(mr_json).unwrap())).mount(&server).await;
@@ -96,7 +96,7 @@ async fn test_mr_visual_completeness() {
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 
     assert_buffer_contains(&terminal, "Title: Implement Feature X");
-    assert_buffer_contains(&terminal, "Labels: 1 labels");
+    assert_buffer_contains(&terminal, "Labels:  bug");
     assert_buffer_contains(&terminal, "Assign: @bob");
     assert_buffer_contains(&terminal, "Miles: v1.0");
     assert_buffer_contains(&terminal, "@bob:");
@@ -110,8 +110,8 @@ async fn test_navigation_and_focus() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     app.projects = vec![
-        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()) },
-        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()) },
+        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()), default_branch: None },
+        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()), default_branch: None },
     ];
     app.show_project_popup = true;
     app.projects_state.select(Some(0));
@@ -135,7 +135,7 @@ async fn test_navigation_and_focus() {
     assert_buffer_contains(&terminal, "Project");
 
     app.merge_requests = vec![
-        serde_json::from_str(r##"{"iid": 1, "project_id": 2, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##).unwrap(),
+        serde_json::from_str(r##"{"iid": 1, "project_id": 2, "title": "MR 1", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r1"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##).unwrap(),
     ];
     app.filter_lists();
     app.mrs_state.select(Some(0));
@@ -189,7 +189,7 @@ async fn test_issue_visual_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let issue_json = r##"{"iid": 456, "project_id": 1, "title": "Fix Critical Bug", "description": "Critical bug in engine.", "author": {"id": 1, "username": "alice"}, "assignees": [{"id":2,"username":"bob"}], "state": "opened", "web_url": "u", "references": {"full": "n/p#456"}, "labels": [], "milestone": null, "due_date": "2026-05-20", "weight": 9, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "task_completion_status": {"count": 5, "completed_count": 2}, "reactions": []}"##;
+    let issue_json = r##"{"iid": 456, "project_id": 1, "title": "Fix Critical Bug", "description": "Critical bug in engine.", "author": {"id": 1, "username": "alice"}, "assignees": [{"id":2,"username":"bob"}], "state": "opened", "web_url": "u", "references": {"full": "n/p#456"}, "labels": [], "milestone": null, "due_date": "2026-05-20", "weight": 9, "confidential": true, "created_at": "2026-04-25T12:00:00Z", "upvotes": 0, "downvotes": 0, "task_completion_status": {"count": 5, "completed_count": 2}, "reactions": [], "draft": false}"##;
     app.selected_issue = Some(serde_json::from_str(issue_json).unwrap());
     app.active_selection = MenuSelection::Issues;
     app.view_mode = ViewMode::List;
@@ -207,7 +207,7 @@ async fn test_interaction_completeness() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     let disc_resolved_json = r##"{"id": "1", "notes": [{"id":1,"body":"resolved note","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}], "resolved": true}"##;
 
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
@@ -216,7 +216,7 @@ async fn test_interaction_completeness() {
     app.detail_section = DetailSection::Discussions;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, " [R]");
+    assert_buffer_contains(&terminal, " [RESOLVED]");
 
     // Test Title Edit visual
     app.active_panel = Panel::MainDetail;
@@ -224,8 +224,7 @@ async fn test_interaction_completeness() {
     app.selected_metadata_field = MetadataField::Title;
     app.input_mode = true;
     app.input_target = InputTarget::EditTitle;
-    app.reply_input = "New Amazing Title".into();
-    app.cursor_index = app.reply_input.len();
+    app.textarea = ratatui_textarea::TextArea::from(vec!["New Amazing Title"]);
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     assert_buffer_contains(&terminal, "Title: New Amazing Title");

@@ -29,7 +29,7 @@ async fn run_monolithic_tests() {
     let mut app = App::new(client);
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.tx = tx;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
 
     // 1. Initial data load
     let _ = app.initial_setup().await;
@@ -53,7 +53,7 @@ async fn run_monolithic_tests() {
     app.view_mode = ViewMode::Detail;
     app.detail_section = DetailSection::Metadata;
     
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "desc\nline2", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [{"id":1,"username":"u1"}], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "desc\nline2", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [{"id":1,"username":"u1"}], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
 
     for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential] {

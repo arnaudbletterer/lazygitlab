@@ -33,8 +33,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
 
         if let Some(selected_idx) = app.mr_diff_state.selected() {
             if let Some(mr_diff) = app.mr_diffs.get(selected_idx) {
-                let mut lines = Vec::new();
-                for line in mr_diff.diff.lines() {
+                let diff_lines: Vec<ListItem> = mr_diff.diff.lines().map(|line| {
                     let style = if line.starts_with('+') {
                         Style::default().fg(Color::Green)
                     } else if line.starts_with('-') {
@@ -44,19 +43,20 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         Style::default()
                     };
-                    lines.push(Line::from(Span::styled(line, style)));
-                }
+                    ListItem::new(Line::from(Span::styled(line, style)))
+                }).collect();
 
-                let diff_paragraph = Paragraph::new(lines)
+                let diff_list = List::new(diff_lines)
                     .block(Block::default().borders(Borders::ALL).title(format!(" {} ", mr_diff.new_path)))
-                    .wrap(Wrap { trim: false })
-                    .scroll((0, 0)); // Could add scrolling here too
-                f.render_widget(diff_paragraph, chunks[1]);
+                    .highlight_style(Style::default().bg(app.theme.highlight_bg))
+                    .highlight_symbol("> ");
+                
+                f.render_stateful_widget(diff_list, chunks[1], &mut app.diff_line_state);
             }
         }
     }
 
-    render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("esc", "back"), ("q", "quit")], &app.theme);
+    render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("h/l", "file/line"), ("c", "comment"), ("esc", "back")], &app.theme);
 }
 
 #[cfg(test)]
@@ -90,10 +90,12 @@ mod tests {
             references: Some(References { full: "r".into() }),
             labels: vec![],
             milestone: None,
-            created_at: "t".into(),
+            created_at: Some("t".into()),
             upvotes: Some(0),
             downvotes: Some(0),
             reactions: vec![],
+            draft: Some(false),
+            diff_refs: None,
         });
         terminal.draw(|f| render_diff_view(f, &mut app, f.area())).unwrap();
 

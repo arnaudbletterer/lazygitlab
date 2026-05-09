@@ -20,7 +20,7 @@ async fn setup_app(server_uri: &str) -> (App, tokio::sync::mpsc::UnboundedReceiv
     app.active_panel = Panel::MainDetail;
     app.active_context = Context::Project;
     app.active_selection = MenuSelection::MergeRequests;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
     (app, rx)
 }
 
@@ -56,8 +56,8 @@ async fn test_mr_title_update_refresh() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
-    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "New Updated Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "Old Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
+    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "New Updated Title", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
 
     let mr: MergeRequest = serde_json::from_str(mr_json).unwrap();
     app.merge_requests = vec![mr.clone()];
@@ -68,7 +68,7 @@ async fn test_mr_title_update_refresh() {
     app.selected_metadata_field = MetadataField::Title;
     app.input_mode = true;
     app.input_target = InputTarget::EditTitle;
-    app.reply_input = "New Updated Title".into();
+    app.textarea = ratatui_textarea::TextArea::from(vec!["New Updated Title"]);
 
     Mock::given(method("PUT")).and(path("/api/v4/projects/1/merge_requests/1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"title":"New Updated Title"}))).mount(&server).await;
     Mock::given(method("GET")).and(path("/api/v4/projects/1/merge_requests/1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<MergeRequest>(updated_mr_json).unwrap())).mount(&server).await;
@@ -122,8 +122,8 @@ async fn test_mr_label_update_refresh() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
-    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [{"id":1,"name":"feature","color":"#00ff00","text_color":"#000000"}], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
+    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [{"id":1,"name":"feature","color":"#00ff00","text_color":"#000000"}], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
 
     let mr: MergeRequest = serde_json::from_str(mr_json).unwrap();
     app.merge_requests = vec![mr.clone()];
@@ -154,7 +154,7 @@ async fn test_discussion_resolve_refresh() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     let disc_json = r##"{"id": "1", "notes": [{"id":1,"body":"b","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}], "resolved": false}"##;
     let updated_disc_json = r##"{"id": "1", "notes": [{"id":1,"body":"b","author":{"id":1,"username":"u"},"system":false,"created_at":"t"}], "resolved": true}"##;
 
@@ -176,7 +176,7 @@ async fn test_discussion_resolve_refresh() {
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, " [R]");
+    assert_buffer_contains(&terminal, " [RESOLVED]");
 }
 
 #[tokio::test]
@@ -187,8 +187,8 @@ async fn test_mr_milestone_update_refresh() {
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
-    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": {"id":1,"title":"v2.0"}, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": []}"##;
+    let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": null, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
+    let updated_mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "d", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 0, "downvotes": 0, "labels": [], "milestone": {"id":1,"title":"v2.0"}, "assignees": [], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
 
     let mr: MergeRequest = serde_json::from_str(mr_json).unwrap();
     app.merge_requests = vec![mr.clone()];
