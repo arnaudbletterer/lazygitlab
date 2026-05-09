@@ -1,6 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, DetailSection};
 use crate::ui::detail::render_detail_view;
+use crate::ui::widgets::render_shortcuts;
 
 pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -138,13 +139,15 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.todos_state);
         }
         MenuSelection::MergeRequests => {
-            use crate::ui::widgets::hex_to_color;
             let items: Vec<ListItem> = app.filtered_mrs.iter().map(|item| {
                 match item {
                     GroupedItem::Item(mr) => {
+                        use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
                         let mut spans = vec![Span::raw(format!("!{} {}", mr.iid, mr.title)), Span::raw(" ")];
                         for label in &mr.labels {
-                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(hex_to_color(label.color())).fg(hex_to_color(label.text_color()))));
+                            let bg = hex_to_color(label.color());
+                            let fg = get_contrasting_text_color(label.color());
+                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(bg).fg(fg)));
                             spans.push(Span::raw(" "));
                         }
                         ListItem::new(Line::from(spans))
@@ -155,13 +158,15 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.mrs_state);
         }
         MenuSelection::Issues => {
-            use crate::ui::widgets::hex_to_color;
             let items: Vec<ListItem> = app.filtered_issues.iter().map(|item| {
                 match item {
                     GroupedItem::Item(i) => {
+                        use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
                         let mut spans = vec![Span::raw(format!("#{} {}", i.iid, i.title)), Span::raw(" ")];
                         for label in &i.labels {
-                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(hex_to_color(label.color())).fg(hex_to_color(label.text_color()))));
+                            let bg = hex_to_color(label.color());
+                            let fg = get_contrasting_text_color(label.color());
+                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(bg).fg(fg)));
                             spans.push(Span::raw(" "));
                         }
                         ListItem::new(Line::from(spans))
@@ -180,7 +185,24 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             }).collect();
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.pipelines_state);
         }
-        _ => {}
+        MenuSelection::Projects => {
+            let items: Vec<ListItem> = app.filtered_projects.iter().map(|p| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} ", p.name), Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(format!(" ({})", p.path_with_namespace.as_deref().unwrap_or("")), Style::default().fg(app.theme.dim)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.projects_state);
+        }
+        MenuSelection::Groups => {
+            let items: Vec<ListItem> = app.filtered_groups.iter().map(|g| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} ", g.name), Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(format!(" ({})", g.full_path), Style::default().fg(app.theme.dim)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.groups_state);
+        }
     }
 }
 
@@ -188,25 +210,54 @@ fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let is_disc_focused = app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Discussions;
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Discussions ")
+        .title(" Discussions (Threads) ")
         .border_style(if is_disc_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let is_replying = is_disc_focused && app.input_mode && app.input_target == crate::models::InputTarget::Reply;
+    
+    let chunks = if is_replying {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(5)])
+            .split(inner)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0)])
+            .split(inner)
+    };
 
     let comments: Vec<ListItem> = app.discussions.iter().enumerate().map(|(idx, d)| {
         let is_selected = is_disc_focused && app.discussion_state.selected() == Some(idx);
         let highlight = if is_selected { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() };
         if let Some(note) = d.notes.first() {
             let mut spans = vec![
-                Span::styled(if is_selected { "> " } else { "  " }, highlight),
+                Span::styled(if is_selected { "● " } else { "  " }, highlight.fg(app.theme.border)),
                 Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)),
             ];
-            if d.resolved.unwrap_or(false) { spans.push(Span::styled(" [R]", highlight.fg(app.theme.success))); }
+            if d.resolved.unwrap_or(false) { spans.push(Span::styled(" [RESOLVED]", highlight.fg(app.theme.success))); }
             spans.push(Span::styled(": ", highlight));
-            spans.push(Span::styled(note.body.chars().take(40).collect::<String>(), highlight));
+            spans.push(Span::styled(note.body.chars().take(30).collect::<String>(), highlight));
+            if note.body.len() > 30 { spans.push(Span::styled("...", highlight)); }
             ListItem::new(Line::from(spans))
-        } else { ListItem::new(" (empty)") }
+        } else { ListItem::new(" (empty thread)") }
     }).collect();
 
-    f.render_stateful_widget(List::new(comments).block(block), area, &mut app.discussion_state);
+    if comments.is_empty() {
+        f.render_widget(Paragraph::new(" No discussions found.").fg(app.theme.dim), chunks[0]);
+    } else {
+        f.render_stateful_widget(List::new(comments), chunks[0], &mut app.discussion_state);
+    }
+
+    if is_replying {
+        let reply_block = Block::default().borders(Borders::ALL).title(" Reply (Ctrl+Enter to send, Esc to cancel) ").border_style(Style::default().fg(app.theme.border));
+        f.render_widget(Clear, chunks[1]);
+        app.textarea.set_block(reply_block);
+        f.render_widget(&app.textarea, chunks[1]);
+    }
 }
 
 fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
@@ -223,16 +274,60 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     use crate::models::MetadataField;
     
     if let Some(mr) = &app.selected_mr {
-        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { &app.reply_input } else { &mr.title };
+        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { mr.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
-        lines.push(Line::from(vec![Span::raw(" Labels: "), Span::styled(format!("{} labels", mr.labels.len()), field_style(MetadataField::Labels))]));
-        lines.push(Line::from(vec![Span::raw(" Assign: "), Span::styled(if mr.assignees.is_empty() { "None".to_string() } else { format!("@{}", mr.assignees[0].username) }, field_style(MetadataField::Assignees))]));
+        
+        let mut label_spans = vec![Span::raw(" Labels: ")];
+        if mr.labels.is_empty() { label_spans.push(Span::styled("None", field_style(MetadataField::Labels))); }
+        else {
+            use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+            for (i, label) in mr.labels.iter().enumerate() {
+                if i > 0 { label_spans.push(Span::raw(", ")); }
+                let bg = hex_to_color(label.color());
+                let fg = get_contrasting_text_color(label.color());
+                label_spans.push(Span::styled(format!(" {} ", label.name()), field_style(MetadataField::Labels).bg(bg).fg(fg)));
+            }
+        }
+        lines.push(Line::from(label_spans));
+
+        let mut assign_spans = vec![Span::raw(" Assign: ")];
+        if mr.assignees.is_empty() { assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees))); }
+        else {
+            for (i, a) in mr.assignees.iter().enumerate() {
+                if i > 0 { assign_spans.push(Span::raw(", ")); }
+                assign_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Assignees).fg(app.theme.author)));
+            }
+        }
+        lines.push(Line::from(assign_spans));
+
         lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(mr.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
     } else if let Some(issue) = &app.selected_issue {
-        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { &app.reply_input } else { &issue.title };
+        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { issue.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
-        lines.push(Line::from(vec![Span::raw(" Labels: "), Span::styled(format!("{} labels", issue.labels.len()), field_style(MetadataField::Labels))]));
-        lines.push(Line::from(vec![Span::raw(" Assign: "), Span::styled(if issue.assignees.is_empty() { "None".to_string() } else { format!("@{}", issue.assignees[0].username) }, field_style(MetadataField::Assignees))]));
+
+        let mut label_spans = vec![Span::raw(" Labels: ")];
+        if issue.labels.is_empty() { label_spans.push(Span::styled("None", field_style(MetadataField::Labels))); }
+        else {
+            use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+            for (i, label) in issue.labels.iter().enumerate() {
+                if i > 0 { label_spans.push(Span::raw(", ")); }
+                let bg = hex_to_color(label.color());
+                let fg = get_contrasting_text_color(label.color());
+                label_spans.push(Span::styled(format!(" {} ", label.name()), field_style(MetadataField::Labels).bg(bg).fg(fg)));
+            }
+        }
+        lines.push(Line::from(label_spans));
+
+        let mut assign_spans = vec![Span::raw(" Assign: ")];
+        if issue.assignees.is_empty() { assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees))); }
+        else {
+            for (i, a) in issue.assignees.iter().enumerate() {
+                if i > 0 { assign_spans.push(Span::raw(", ")); }
+                assign_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Assignees).fg(app.theme.author)));
+            }
+        }
+        lines.push(Line::from(assign_spans));
+
         lines.push(Line::from(vec![Span::raw(" Weight: "), Span::styled(issue.weight.map(|w| w.to_string()).unwrap_or_else(|| "0".into()), field_style(MetadataField::Weight))]));
     } else if let Some(pipeline) = &app.selected_pipeline {
         lines.push(Line::from(vec![Span::raw(" Pipeline: "), Span::styled(format!("#{}", pipeline.id), field_style(MetadataField::Title))]));
@@ -241,4 +336,9 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(Paragraph::new(lines).block(block), area);
+
+    if is_meta_focused {
+        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+        render_shortcuts(f, help_area, vec![("j/k", "nav"), ("enter", "edit"), ("esc", "back")], &app.theme);
+    }
 }

@@ -95,7 +95,7 @@ where
             || app.view_mode == ViewMode::JobLog
             || (app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some());
 
-        let refresh_interval = if is_live_view { Duration::from_secs(2) } else { Duration::from_secs(10) };
+        let refresh_interval = if is_live_view { Duration::from_secs(2) } else { Duration::from_secs(5) };
 
         if app.last_refresh.elapsed() >= refresh_interval {
             app.refresh().await;

@@ -95,6 +95,17 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_create_issue_popup { render_create_issue_popup(f, app); }
     if app.show_create_mr_popup { render_create_mr_popup(f, app); }
     if app.show_snooze_popup { render_snooze_popup(f, app); }
+
+    if app.input_mode && app.input_target == crate::models::InputTarget::NewComment {
+        let area = widgets::centered_rect(60, 40, f.area());
+        f.render_widget(Clear, area);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" New Comment (Ctrl+Enter to send, Esc to cancel) ")
+            .border_style(Style::default().fg(app.theme.border));
+        app.textarea.set_block(block);
+        f.render_widget(&app.textarea, area);
+    }
 }
 
 

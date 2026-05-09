@@ -179,6 +179,20 @@ pub fn hex_to_color(hex: &str) -> Color {
     }
 }
 
+pub fn get_contrasting_text_color(bg_hex: &str) -> Color {
+    let hex = bg_hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f32;
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32;
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32;
+        // Calculate relative luminance
+        let luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        if luminance > 0.5 { Color::Black } else { Color::White }
+    } else {
+        Color::White
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
