@@ -10,7 +10,7 @@ async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    let mut app = App::new(client);
+    let app = App::new(client);
     (server, app)
 }
 
@@ -103,6 +103,6 @@ async fn test_ui_all_view_modes() {
     // Diff Mode
     app.view_mode = ViewMode::Diff;
     app.selected_mr = Some(MergeRequest { iid: 1, project_id: 1, title: "T".into(), description: Some("D".into()), author: Author { id: 1, username: "u".into() }, web_url: "u".into(), state: "opened".into(), references: None, upvotes: None, downvotes: None, labels: vec![], milestone: None, assignees: vec![], created_at: None, draft: None, diff_refs: None, reactions: vec![] });
-    app.mr_diffs = vec![MRDiff { old_path: "a".into(), new_path: "b".into(), diff: "d".into() }];
+    app.mr_diffs = vec![MRDiff { old_path: "a".into(), new_path: "b".into(), diff: "d".into(), display_lines: vec![DiffDisplayLine::Code("d".into(), Some(1), Some(1))] }];
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 }

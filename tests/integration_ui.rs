@@ -227,7 +227,8 @@ async fn test_interaction_completeness() {
     app.textarea = ratatui_textarea::TextArea::from(vec!["New Amazing Title"]);
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "Title: New Amazing Title");
+    assert_buffer_contains(&terminal, "Edit Title");
+    assert_buffer_contains(&terminal, "New Amazing Title");
 
     // Mock successful save
     Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"title":"New Amazing Title"}))).mount(&server).await;
