@@ -96,12 +96,20 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_create_mr_popup { render_create_mr_popup(f, app); }
     if app.show_snooze_popup { render_snooze_popup(f, app); }
 
-    if app.input_mode && app.input_target == crate::models::InputTarget::NewComment {
-        let area = widgets::centered_rect(60, 40, f.area());
+    if app.input_mode && app.input_target != crate::models::InputTarget::Filter {
+        let title = match app.input_target {
+            crate::models::InputTarget::Reply => " Reply (Ctrl+Enter to send, Esc to cancel) ",
+            crate::models::InputTarget::NewComment => " New Comment (Ctrl+Enter to send, Esc to cancel) ",
+            crate::models::InputTarget::EditTitle => " Edit Title (Enter to save, Esc to cancel) ",
+            crate::models::InputTarget::EditDescription => " Edit Description (Ctrl+Enter to save, Esc to cancel) ",
+            crate::models::InputTarget::SnoozeUntil => " Snooze Until (Enter to confirm) ",
+            _ => " Input (Ctrl+Enter to save, Esc to cancel) ",
+        };
+        let area = widgets::centered_rect(70, 40, f.area());
         f.render_widget(Clear, area);
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" New Comment (Ctrl+Enter to send, Esc to cancel) ")
+            .title(title)
             .border_style(Style::default().fg(app.theme.border));
         app.textarea.set_block(block);
         f.render_widget(&app.textarea, area);
