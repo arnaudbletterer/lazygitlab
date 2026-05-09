@@ -146,7 +146,6 @@ impl App {
             self.pipeline_variable_value_input.clear();
             self.input_mode = true;
             self.input_target = InputTarget::PipelineRef;
-            self.cursor_index = 0;
             self.show_branches_dropdown = true;
             self.filter_branches();
         }
@@ -195,7 +194,7 @@ impl App {
         let endpoint = CreatePipeline { 
             project: project_id, 
             ref_name: ref_name.to_string(),
-            variables,
+            variables: Some(variables),
         };
         tokio::spawn(async move {
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
@@ -401,7 +400,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut app = App::new(client);
         app.tx = tx;
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()) });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
         (server, app, rx)
     }
 
