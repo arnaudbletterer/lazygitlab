@@ -17,18 +17,34 @@ impl Endpoint for CurrentUser {
 }
 
 #[derive(Debug, Clone)]
-pub struct AddDiscussionNote {
+pub struct CreateMergeRequestDiscussion {
     pub project: u64,
     pub merge_request: u64,
-    pub discussion: String,
     pub body: String,
+    pub base_sha: Option<String>,
+    pub start_sha: Option<String>,
+    pub head_sha: Option<String>,
+    pub new_path: Option<String>,
+    pub old_path: Option<String>,
+    pub new_line: Option<u64>,
+    pub old_line: Option<u64>,
 }
-impl Endpoint for AddDiscussionNote {
+impl Endpoint for CreateMergeRequestDiscussion {
     fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/discussions/{}/notes", self.project, self.merge_request, self.discussion).into() }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/discussions", self.project, self.merge_request).into() }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         params.push("body", &self.body);
+        if let Some(base) = &self.base_sha {
+            params.push("position[base_sha]", base);
+            params.push("position[start_sha]", self.start_sha.as_ref().unwrap());
+            params.push("position[head_sha]", self.head_sha.as_ref().unwrap());
+            params.push("position[position_type]", "text");
+            if let Some(path) = &self.new_path { params.push("position[new_path]", path); }
+            if let Some(path) = &self.old_path { params.push("position[old_path]", path); }
+            if let Some(line) = self.new_line { params.push("position[new_line]", line); }
+            if let Some(line) = self.old_line { params.push("position[old_line]", line); }
+        }
         params.into_body()
     }
 }
@@ -47,6 +63,23 @@ impl Endpoint for ResolveDiscussion {
         let mut params = gitlab::api::QueryParams::default();
         params.push("resolved", self.resolved);
         params
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AddMergeRequestDiscussionNote {
+    pub project: u64,
+    pub merge_request: u64,
+    pub discussion: String,
+    pub body: String,
+}
+impl Endpoint for AddMergeRequestDiscussionNote {
+    fn method(&self) -> Method { Method::POST }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/discussions/{}/notes", self.project, self.merge_request, self.discussion).into() }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
+        let mut params = gitlab::api::FormParams::default();
+        params.push("body", &self.body);
+        params.into_body()
     }
 }
 
@@ -176,6 +209,7 @@ pub struct EditMergeRequest {
     pub remove_source_branch: Option<bool>,
     pub squash: Option<bool>,
     pub target_branch: Option<String>,
+    pub draft: Option<bool>,
 }
 impl Endpoint for EditMergeRequest {
     fn method(&self) -> Method { Method::PUT }
@@ -205,6 +239,7 @@ impl Endpoint for EditMergeRequest {
         if let Some(r) = &self.remove_source_branch { params.push("remove_source_branch", *r); }
         if let Some(s) = &self.squash { params.push("squash", *s); }
         if let Some(t) = &self.target_branch { params.push("target_branch", t); }
+        if let Some(d) = &self.draft { params.push("draft", *d); }
         params.into_body()
     }
 }
@@ -255,7 +290,7 @@ impl Endpoint for ProjectMembers {
 impl Pageable for ProjectMembers {}
 
 #[derive(Debug, Clone)]
-pub struct Groups { pub page: Option<u64>, pub per_page: Option<u64> }
+pub struct Groups { pub page: Option<u64>, pub per_page: Option<u64>, pub min_access_level: Option<u64>, pub top_level_only: Option<bool> }
 impl Endpoint for Groups {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "groups".into() }
@@ -263,6 +298,8 @@ impl Endpoint for Groups {
         let mut params = gitlab::api::QueryParams::default();
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        if let Some(m) = self.min_access_level { params.push("min_access_level", m); }
+        if let Some(t) = self.top_level_only { params.push("top_level_only", t); }
         params
     }
 }
@@ -283,7 +320,7 @@ impl Endpoint for ProjectPipelines {
 impl Pageable for ProjectPipelines {}
 
 #[derive(Debug, Clone)]
-pub struct PagedIssues { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String> }
+pub struct PagedIssues { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String>, pub order_by: Option<String>, pub sort: Option<String>, pub with_labels_details: Option<bool> }
 impl Endpoint for PagedIssues {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues", self.project).into() }
@@ -292,14 +329,17 @@ impl Endpoint for PagedIssues {
         params.push("page", self.page);
         params.push("per_page", self.per_page);
         if let Some(s) = &self.state { params.push("state", s); }
-        params.push("with_labels_details", true);
+        if let Some(o) = &self.order_by { params.push("order_by", o); }
+        if let Some(s) = &self.sort { params.push("sort", s); }
+        if let Some(w) = self.with_labels_details { params.push("with_labels_details", w); }
+        else { params.push("with_labels_details", true); }
         params
     }
 }
 impl Pageable for PagedIssues {}
 
 #[derive(Debug, Clone)]
-pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String> }
+pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String>, pub order_by: Option<String>, pub sort: Option<String>, pub with_labels_details: Option<bool> }
 impl Endpoint for PagedMergeRequests {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
@@ -308,14 +348,24 @@ impl Endpoint for PagedMergeRequests {
         params.push("page", self.page);
         params.push("per_page", self.per_page);
         if let Some(s) = &self.state { params.push("state", s); }
-        params.push("with_labels_details", true);
+        if let Some(o) = &self.order_by { params.push("order_by", o); }
+        if let Some(s) = &self.sort { params.push("sort", s); }
+        if let Some(w) = self.with_labels_details { params.push("with_labels_details", w); }
+        else { params.push("with_labels_details", true); }
         params
     }
 }
 impl Pageable for PagedMergeRequests {}
 
 #[derive(Debug, Clone)]
-pub struct PagedProjects { pub membership: bool, pub page: u64, pub per_page: u64 }
+pub struct PagedProjects { 
+    pub membership: bool, 
+    pub page: u64, 
+    pub per_page: u64,
+    pub simple: Option<bool>,
+    pub archived: Option<bool>,
+    pub order_by: Option<String>,
+}
 impl Endpoint for PagedProjects {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "projects".into() }
@@ -324,6 +374,9 @@ impl Endpoint for PagedProjects {
         params.push("membership", self.membership);
         params.push("page", self.page);
         params.push("per_page", self.per_page);
+        if let Some(s) = self.simple { params.push("simple", s); }
+        if let Some(a) = self.archived { params.push("archived", a); }
+        if let Some(o) = &self.order_by { params.push("order_by", o); }
         params
     }
 }
@@ -342,7 +395,16 @@ impl Endpoint for AddNote {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalIssues { pub scope: Option<String>, pub state: Option<String>, pub membership: Option<bool>, pub page: Option<u64>, pub per_page: Option<u64> }
+pub struct GlobalIssues { 
+    pub scope: Option<String>, 
+    pub state: Option<String>, 
+    pub membership: Option<bool>, 
+    pub page: Option<u64>, 
+    pub per_page: Option<u64>, 
+    pub order_by: Option<String>, 
+    pub sort: Option<String>,
+    pub with_labels_details: Option<bool>,
+}
 impl Endpoint for GlobalIssues {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "issues".into() }
@@ -353,14 +415,25 @@ impl Endpoint for GlobalIssues {
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
-        params.push("with_labels_details", true);
+        if let Some(o) = &self.order_by { params.push("order_by", o); }
+        if let Some(s) = &self.sort { params.push("sort", s); }
+        if let Some(w) = self.with_labels_details { params.push("with_labels_details", w); }
         params
     }
 }
 impl Pageable for GlobalIssues {}
 
 #[derive(Debug, Clone)]
-pub struct GlobalMergeRequests { pub scope: Option<String>, pub state: Option<String>, pub membership: Option<bool>, pub page: Option<u64>, pub per_page: Option<u64> }
+pub struct GlobalMergeRequests { 
+    pub scope: Option<String>, 
+    pub state: Option<String>, 
+    pub membership: Option<bool>, 
+    pub page: Option<u64>, 
+    pub per_page: Option<u64>, 
+    pub order_by: Option<String>, 
+    pub sort: Option<String>,
+    pub with_labels_details: Option<bool>,
+}
 impl Endpoint for GlobalMergeRequests {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "merge_requests".into() }
@@ -371,7 +444,9 @@ impl Endpoint for GlobalMergeRequests {
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
-        params.push("with_labels_details", true);
+        if let Some(o) = &self.order_by { params.push("order_by", o); }
+        if let Some(s) = &self.sort { params.push("sort", s); }
+        if let Some(w) = self.with_labels_details { params.push("with_labels_details", w); }
         params
     }
 }
@@ -569,16 +644,18 @@ impl Endpoint for GroupProjects {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreatePipeline { pub project: u64, pub ref_name: String, pub variables: Vec<crate::models::PipelineVariable> }
+pub struct CreatePipeline { pub project: u64, pub ref_name: String, pub variables: Option<Vec<crate::models::PipelineVariable>> }
 impl Endpoint for CreatePipeline {
     fn method(&self) -> Method { Method::POST }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/pipeline", self.project).into() }
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         params.push("ref", &self.ref_name);
-        for (i, var) in self.variables.iter().enumerate() {
-            params.push(format!("variables[{}][key]", i), &var.key);
-            params.push(format!("variables[{}][value]", i), &var.value);
+        if let Some(vars) = &self.variables {
+            for (i, var) in vars.iter().enumerate() {
+                params.push(format!("variables[{}][key]", i), &var.key);
+                params.push(format!("variables[{}][value]", i), &var.value);
+            }
         }
         params.into_body()
     }
@@ -719,10 +796,24 @@ impl Endpoint for CreateProject {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct JobLog { pub project: u64, pub job: u64 }
+impl Endpoint for JobLog {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/trace", self.project, self.job).into() }
+}
+
+#[derive(Debug, Clone)]
+pub struct Branches { pub project: u64 }
+impl Endpoint for Branches {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/branches", self.project).into() }
+}
+impl Pageable for Branches {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gitlab::api::Endpoint;
 
     #[test]
     fn test_all_endpoints_exhaustive() {
@@ -734,9 +825,9 @@ mod tests {
         assert_eq!(curr_user.method(), Method::GET);
         assert_eq!(curr_user.endpoint(), "user");
 
-        let add_disc = AddDiscussionNote { project: 1, merge_request: 2, discussion: "d".into(), body: "b".into() };
+        let add_disc = CreateMergeRequestDiscussion { project: 1, merge_request: 2, body: "b".into(), base_sha: None, start_sha: None, head_sha: None, new_path: None, old_path: None, new_line: None, old_line: None };
         assert_eq!(add_disc.method(), Method::POST);
-        assert_eq!(add_disc.endpoint(), "projects/1/merge_requests/2/discussions/d/notes");
+        assert_eq!(add_disc.endpoint(), "projects/1/merge_requests/2/discussions");
         assert!(add_disc.body().is_ok());
 
         let res_disc = ResolveDiscussion { project: 1, merge_request: 2, discussion: "d".into(), resolved: true };
@@ -785,7 +876,8 @@ mod tests {
             state_event: Some("close".into()), labels: Some("l".into()),
             assignee_ids: Some(vec![1]), reviewer_ids: Some(vec![2]),
             milestone_id: Some(Some(1)), remove_source_branch: Some(true),
-            squash: Some(true), target_branch: Some("b".into())
+            squash: Some(true), target_branch: Some("b".into()),
+            draft: Some(true),
         };
         assert_eq!(edit_mr.method(), Method::PUT);
         assert!(edit_mr.body().is_ok());
@@ -794,7 +886,8 @@ mod tests {
             project: 1, merge_request: 2, title: None, description: None,
             state_event: None, labels: None, assignee_ids: Some(vec![]),
             reviewer_ids: Some(vec![]), milestone_id: Some(None),
-            remove_source_branch: None, squash: None, target_branch: None
+            remove_source_branch: None, squash: None, target_branch: None,
+            draft: None,
         };
         assert!(edit_mr_nulls.body().is_ok());
 
@@ -821,11 +914,11 @@ mod tests {
         assert_eq!(search_projs.method(), Method::GET);
         let _ = search_projs.parameters();
 
-        let p_projs = PagedProjects { membership: true, page: 1, per_page: 1 };
+        let p_projs = PagedProjects { membership: true, page: 1, per_page: 1, simple: Some(true), archived: Some(false), order_by: None };
         assert_eq!(p_projs.method(), Method::GET);
         let _ = p_projs.parameters();
 
-        let groups = Groups { page: Some(1), per_page: Some(1) };
+        let groups = Groups { page: Some(1), per_page: Some(1), min_access_level: Some(10), top_level_only: None };
         assert_eq!(groups.method(), Method::GET);
         let _ = groups.parameters();
 
@@ -833,19 +926,19 @@ mod tests {
         assert_eq!(group_projs.method(), Method::GET);
         let _ = group_projs.parameters();
 
-        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1, state: Some("opened".into()) };
+        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1, state: Some("opened".into()), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(p_mrs.method(), Method::GET);
         let _ = p_mrs.parameters();
 
-        let p_issues = PagedIssues { project: 1, page: 1, per_page: 1, state: Some("opened".into()) };
+        let p_issues = PagedIssues { project: 1, page: 1, per_page: 1, state: Some("opened".into()), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(p_issues.method(), Method::GET);
         let _ = p_issues.parameters();
 
-        let g_mrs = GlobalMergeRequests { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1) };
+        let g_mrs = GlobalMergeRequests { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(g_mrs.method(), Method::GET);
         let _ = g_mrs.parameters();
 
-        let g_issues = GlobalIssues { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1) };
+        let g_issues = GlobalIssues { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(g_issues.method(), Method::GET);
         let _ = g_issues.parameters();
 
@@ -859,15 +952,6 @@ mod tests {
         let snooze = SnoozeTodo { todo_id: 1, snooze_until: "2026-05-03T12:00:00Z".into() };
         assert_eq!(snooze.method(), Method::POST);
         assert!(snooze.body().is_ok());
-
-        let cancel_job = CancelJob { project: 1, job: 2 };
-        assert_eq!(cancel_job.method(), Method::POST);
-
-        let retry_job = RetryJob { project: 1, job: 2 };
-        assert_eq!(retry_job.method(), Method::POST);
-
-        let play_job = PlayJob { project: 1, job: 2 };
-        assert_eq!(play_job.method(), Method::POST);
 
         let create_group = CreateGroup { name: "n".into(), path: "p".into(), parent_id: Some(1) };
         assert!(create_group.body().is_ok());
@@ -888,34 +972,13 @@ mod tests {
         let create_proj = CreateProject { name: "n".into(), path: "p".into(), namespace_id: Some(1) };
         assert!(create_proj.body().is_ok());
 
-        let cancel_pipe = CancelPipeline { project: 1, pipeline: 2 };
-        assert_eq!(cancel_pipe.method(), Method::POST);
-
-        let retry_pipe = RetryPipeline { project: 1, pipeline: 2 };
-        assert_eq!(retry_pipe.method(), Method::POST);
-
-        let create_pipe = CreatePipeline { project: 1, ref_name: "b".into(), variables: vec![crate::models::PipelineVariable{key:"k".into(), value:"v".into()}] };
+        let create_pipe = CreatePipeline { project: 1, ref_name: "b".into(), variables: Some(vec![crate::models::PipelineVariable{key:"k".into(), value:"v".into()}]) };
         assert_eq!(create_pipe.method(), Method::POST);
         assert!(create_pipe.body().is_ok());
-
-        let proj_lbls = ProjectLabels { project: 1 };
-        assert_eq!(proj_lbls.method(), Method::GET);
-        
-        let proj_mstones = ProjectMilestones { project: 1 };
-        assert_eq!(proj_mstones.method(), Method::GET);
-
-        let proj_members = ProjectMembers { project: 1 };
-        assert_eq!(proj_members.method(), Method::GET);
 
         let add_note = AddNote { project: 1, merge_request: 1, body: "b".into() };
         assert_eq!(add_note.method(), Method::POST);
         assert!(add_note.body().is_ok());
-
-        let proj_branches = ProjectBranches { project: 1 };
-        assert_eq!(proj_branches.method(), Method::GET);
-
-        let proj_pipe = ProjectPipeline { project: 1, pipeline: 1 };
-        assert_eq!(proj_pipe.method(), Method::GET);
 
         let approve_mr = ApproveMergeRequest { project: 1, merge_request: 1 };
         assert_eq!(approve_mr.method(), Method::POST);
@@ -940,6 +1003,26 @@ mod tests {
 
         let issue_award_emoji = IssueAwardEmoji { project: 1, issue: 1 };
         assert_eq!(issue_award_emoji.method(), Method::GET);
+        
+        let branch = Branches { project: 1 };
+        assert_eq!(branch.method(), Method::GET);
 
+        let job_log = JobLog { project: 1, job: 1 };
+        assert_eq!(job_log.method(), Method::GET);
+
+        let play_job = PlayJob { project: 1, job: 1 };
+        assert_eq!(play_job.method(), Method::POST);
+
+        let retry_job = RetryJob { project: 1, job: 1 };
+        assert_eq!(retry_job.method(), Method::POST);
+
+        let cancel_job = CancelJob { project: 1, job: 1 };
+        assert_eq!(cancel_job.method(), Method::POST);
+
+        let cancel_pipe = CancelPipeline { project: 1, pipeline: 1 };
+        assert_eq!(cancel_pipe.method(), Method::POST);
+
+        let retry_pipe = RetryPipeline { project: 1, pipeline: 1 };
+        assert_eq!(retry_pipe.method(), Method::POST);
     }
 }

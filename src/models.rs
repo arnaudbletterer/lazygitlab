@@ -31,6 +31,7 @@ pub struct Project {
     pub name: String,
     pub path_with_namespace: Option<String>,
     pub web_url: Option<String>,
+    pub default_branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -54,15 +55,26 @@ pub struct MergeRequest {
     pub labels: Vec<Label>,
     pub milestone: Option<Milestone>,
     pub assignees: Vec<Author>,
-    pub created_at: String,
+    pub created_at: Option<String>,
+    pub draft: Option<bool>,
+    pub diff_refs: Option<DiffRefs>,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DiffRefs {
+    pub base_sha: String,
+    pub head_sha: String,
+    pub start_sha: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Discussion {
     pub id: String,
     pub notes: Vec<Note>,
+    #[serde(default)]
+    pub individual_note: bool,
     #[serde(skip)]
     pub collapsed: bool,
     pub resolved: Option<bool>,
@@ -86,6 +98,7 @@ pub enum LineType {
 pub struct Note {
     pub body: String,
     pub author: Author,
+    #[serde(default)]
     pub system: bool,
     pub position: Option<Position>,
     #[serde(skip)]
@@ -283,8 +296,9 @@ pub struct Issue {
     pub due_date: Option<String>,
     pub weight: Option<i64>,
     pub task_completion_status: Option<TaskCompletionStatus>,
+    #[serde(default)]
     pub confidential: bool,
-    pub created_at: String,
+    pub created_at: Option<String>,
     pub upvotes: Option<u64>,
     pub downvotes: Option<u64>,
     #[serde(skip)]
@@ -461,6 +475,7 @@ pub struct App {
     pub selected_job: Option<Job>,
     pub mr_diffs: Vec<MRDiff>,
     pub mr_diff_state: ListState,
+    pub diff_line_state: ListState,
     pub job_log: String,
     pub job_log_lines: Vec<LogLine>,
     pub collapsed_sections: std::collections::HashSet<String>,
@@ -472,8 +487,7 @@ pub struct App {
     pub input_mode: bool,
     pub input_target: InputTarget,
     pub is_loading: bool,
-    pub reply_input: String,
-    pub cursor_index: usize,
+    pub textarea: ratatui_textarea::TextArea<'static>,
     pub theme: Theme,
     pub last_refresh: std::time::Instant,
     pub tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
