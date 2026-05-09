@@ -115,10 +115,46 @@ impl App {
         Ok(())
     }
 
+    pub async fn fetch_discussions(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let mr_endpoint = SingleMergeRequest { project: project_id, merge_request: mr_iid };
+            let mr_res: Result<crate::models::MergeRequest, _> = mr_endpoint.query_async(&client).await;
+            if let Ok(mut mr) = mr_res {
+                let emoji_endpoint = MergeRequestAwardEmoji { project: project_id, merge_request: mr_iid };
+                let reaction_values: Vec<serde_json::Value> = gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All).query_async(&client).await.unwrap_or_default();
+                mr.reactions = crate::app::parse_reactions(reaction_values);
+                let _ = tx.send(DataUpdate::MRDetail(mr));
+            }
+            let endpoint = MergeRequestDiscussions { project: project_id, merge_request: mr_iid };
+            let res: Result<Result<Vec<Discussion>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(endpoint, gitlab::api::Pagination::All).query_async(&client)).await;
+            match res {
+                Ok(Ok(mut discussions)) => {
+                    discussions.retain(|d| d.notes.first().map_or(false, |n| !n.system));
+                    let _ = tx.send(DataUpdate::Discussions { project_id, iid: mr_iid, data: discussions });
+                }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Discussions fetch failed: {}", e))); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Discussions fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
+
     pub async fn fetch_mr_diffs(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let endpoint = MergeRequestDiffs { project: project_id, merge_request: mr_iid };
-        let diffs: Vec<MRDiff> = endpoint.query_async(&self.gitlab).await?;
-        self.mr_diffs = diffs; self.mr_diff_state.select(Some(0));
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = MergeRequestDiffs { project: project_id, merge_request: mr_iid };
+            let res: Result<Result<Vec<MRDiff>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(endpoint, gitlab::api::Pagination::All).query_async(&client)).await;
+            match res {
+                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::Diffs { project_id, iid: mr_iid, data }); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Diffs fetch failed: {}", e))); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Diffs fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
@@ -131,47 +167,21 @@ impl App {
         if let Some(diff_idx) = self.mr_diff_state.selected() {
             if let Some(mr_diff) = self.mr_diffs.get(diff_idx) {
                 if let Some(line_idx) = self.diff_line_state.selected() {
-                    let diff_lines: Vec<&str> = mr_diff.diff.lines().collect();
-                    // Basic position calculation (could be improved)
-                    let mut old_line = None;
-                    let mut new_line = None;
-                    let mut current_old = 0;
-                    let mut current_new = 0;
-
-                    for (i, line) in diff_lines.iter().enumerate() {
-                        if line.starts_with("@@") {
-                            // Parse @@ -1,4 +1,4 @@
-                            let re = Regex::new(r"@@ -(\d+),?\d* \+(\d+),?\d* @@").unwrap();
-                            if let Some(caps) = re.captures(line) {
-                                current_old = caps[1].parse::<u64>().unwrap();
-                                current_new = caps[2].parse::<u64>().unwrap();
-                            }
-                        } else {
-                            if i == line_idx {
-                                if line.starts_with('+') { new_line = Some(current_new); }
-                                else if line.starts_with('-') { old_line = Some(current_old); }
-                                else { new_line = Some(current_new); old_line = Some(current_old); }
-                                break;
-                            }
-                            if line.starts_with('+') { current_new += 1; }
-                            else if line.starts_with('-') { current_old += 1; }
-                            else { current_new += 1; current_old += 1; }
+                    if let Some(DiffDisplayLine::Code(_, old_line, new_line)) = mr_diff.display_lines.get(line_idx) {
+                        if let Some(refs) = &mr.diff_refs {
+                            let endpoint = CreateMergeRequestDiscussion {
+                                project: pid, merge_request: iid, body,
+                                base_sha: Some(refs.base_sha.clone()),
+                                start_sha: Some(refs.start_sha.clone()),
+                                head_sha: Some(refs.head_sha.clone()),
+                                new_path: Some(mr_diff.new_path.clone()),
+                                old_path: Some(mr_diff.old_path.clone()),
+                                new_line: *new_line, old_line: *old_line,
+                            };
+                            let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                            self.input_mode = false; self.textarea = ratatui_textarea::TextArea::default();
+                            let _ = self.fetch_discussions(pid, iid).await;
                         }
-                    }
-
-                    if let Some(refs) = &mr.diff_refs {
-                        let endpoint = CreateMergeRequestDiscussion {
-                            project: pid, merge_request: iid, body,
-                            base_sha: Some(refs.base_sha.clone()),
-                            start_sha: Some(refs.start_sha.clone()),
-                            head_sha: Some(refs.head_sha.clone()),
-                            new_path: Some(mr_diff.new_path.clone()),
-                            old_path: Some(mr_diff.old_path.clone()),
-                            new_line, old_line,
-                        };
-                        let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
-                        self.input_mode = false; self.textarea = ratatui_textarea::TextArea::default();
-                        let _ = self.fetch_discussions(pid, iid).await;
                     }
                 }
             }
@@ -215,66 +225,6 @@ impl App {
                 let _ = tx.send(DataUpdate::Loading(false)); let _ = tx.send(DataUpdate::TriggerRefresh);
             });
         }
-        Ok(())
-    }
-
-    pub async fn fetch_discussions(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let mr_endpoint = SingleMergeRequest { project: project_id, merge_request: mr_iid };
-            let mr_res: Result<crate::models::MergeRequest, _> = mr_endpoint.query_async(&client).await;
-            if let Ok(mut mr) = mr_res {
-                let emoji_endpoint = MergeRequestAwardEmoji { project: project_id, merge_request: mr_iid };
-                let reaction_values: Vec<serde_json::Value> = gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All).query_async(&client).await.unwrap_or_default();
-                mr.reactions = crate::app::parse_reactions(reaction_values);
-                let _ = tx.send(DataUpdate::MRDetail(mr));
-            }
-            let endpoint = MergeRequestDiscussions { project: project_id, merge_request: mr_iid };
-            let res: Result<Result<Vec<Discussion>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
-            match res {
-                Ok(Ok(mut discussions)) => {
-                    // Filter out system threads entirely before processing
-                    discussions.retain(|d| d.notes.first().map_or(false, |n| !n.system));
-
-                    for d in discussions.iter_mut() { d.collapsed = true; }
-                    let diff_endpoint = MergeRequestDiffs { project: project_id, merge_request: mr_iid };
-                    let mr_diffs: Vec<MRDiff> = diff_endpoint.query_async(&client).await.unwrap_or_default();
-                    for discussion in &mut discussions {
-                        for note in &mut discussion.notes {
-                            if let Some(pos) = &note.position {
-                                let path = pos.new_path.as_ref().or(pos.old_path.as_ref());
-                                if let (Some(path), Some(_target)) = (path, pos.new_line.or(pos.old_line)) {
-                                    if let Some(mr_diff) = mr_diffs.iter().find(|d| d.new_path == *path || d.old_path == *path) {
-                                        if let Some(context) = parse_diff_context(&mr_diff.diff, pos.new_line, pos.old_line) { note.context = Some(context); }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    let _ = tx.send(DataUpdate::Discussions { project_id, iid: mr_iid, data: discussions });
-                }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Discussions fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Discussions fetch timed out".into())); }
-            }
-            let _ = tx.send(DataUpdate::Loading(false));
-        });
-        Ok(())
-    }
-
-    pub async fn fetch_diffs(&mut self, project_id: u64, mr_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone();
-        let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let endpoint = MergeRequestDiffs { project: project_id, merge_request: mr_iid };
-            let res: Result<Result<Vec<MRDiff>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
-            match res {
-                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::Diffs { project_id, iid: mr_iid, data }); }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Diffs fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Diffs fetch timed out".into())); }
-            }
-            let _ = tx.send(DataUpdate::Loading(false));
-        });
         Ok(())
     }
 
