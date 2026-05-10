@@ -171,6 +171,7 @@ async fn test_user_story_post_comment_and_visibility() {
     
     app.active_context = Context::Project;
     app.active_selection = MenuSelection::MergeRequests;
+    app.active_panel = Panel::MainDetail;
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
@@ -210,7 +211,7 @@ async fn test_user_story_post_comment_and_visibility() {
     let refreshed_discussions = vec![
         Discussion {
             id: "new_disc_id".into(),
-            notes: vec![Note { body: "New Review Comment".into(), author: Author { id: 1, username: "u".into() }, system: false, position: Some(Position { new_path: Some("file.rs".into()), old_path: Some("file.rs".into()), new_line: Some(2), old_line: None }), context: None }],
+            notes: vec![Note { body: "New Review Comment".into(), author: Author { id: 1, username: "u".into() }, system: false, position: Some(Position { new_path: Some("file.rs".into()), old_path: Some("file.rs".into()), new_line: Some(2), old_line: None, line_range: None }), context: None }],
             individual_note: false,
             collapsed: false,
             resolved: Some(false),
@@ -223,10 +224,20 @@ async fn test_user_story_post_comment_and_visibility() {
     // 4. Submit comment
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL)).await;
     
-    // 5. Process updates (this should trigger fetch_discussions which sends DataUpdate::Discussions)
-    // We need to wait for the background tasks spawned in post_new_comment
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    app.process_updates(&mut _rx).await;
+    // 5. Process updates (multiple cycles because of background tasks)
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        app.process_updates(&mut _rx).await;
+        let enriched_diff = &app.mr_diffs[0];
+        let has_comment = enriched_diff.display_lines.iter().any(|dl| {
+            if let DiffDisplayLine::Discussion(d) = dl {
+                d.notes[0].body == "New Review Comment"
+            } else { false }
+        });
+        if has_comment {
+            break;
+        }
+    }
 
     // 6. Verify visibility in diff display lines
     let enriched_diff = &app.mr_diffs[0];

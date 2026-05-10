@@ -288,11 +288,18 @@ async fn test_collaboration_on_lazygitlab_test() {
                 let test_reply = format!("Automated E2E Reply Test {}", chrono::Local::now());
                 app.textarea = ratatui_textarea::TextArea::from(vec![test_reply.clone()]);
                 app.post_reply().await.expect("Failed to post reply");
-                wait_for_loading_finish(&mut app, &mut rx).await;
-
-                // Verify the reply exists in the discussions after refresh
-                let found = app.discussions.iter().any(|d| d.notes.iter().any(|n| n.body.contains(&test_reply)));
-                assert!(found, "Reply was not found in discussions after posting!");
+                
+                // Poll until the reply appears
+                let poll_start = std::time::Instant::now();
+                let mut found = false;
+                while std::time::Instant::now().duration_since(poll_start) < std::time::Duration::from_secs(15) {
+                    app.process_updates(&mut rx).await;
+                    found = app.discussions.iter().any(|d| d.notes.iter().any(|n| n.body.contains(&test_reply)));
+                    if found { break; }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                
+                assert!(found, "Reply was not found in discussions after posting (timed out)!");
             } else {
                 println!("No replyable threaded discussions found in MR !{}. Skipping reply test.", mr.iid);
             }
