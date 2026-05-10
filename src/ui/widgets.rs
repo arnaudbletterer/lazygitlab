@@ -83,13 +83,17 @@ pub struct Theme {
     pub closed_mr: Color,  // GitLab Red (Closed MRs)
     pub shortcut_key: Color,
     pub shortcut_desc: Color,
+    pub keyword: Color,
+    pub code: Color,
+    pub code_bg: Color,
+    pub range_highlight: Color,
 }
 
 impl Theme {
     pub fn default() -> Self {
         Self {
             border: Color::Green,
-            highlight_bg: Color::Blue,
+            highlight_bg: Color::Rgb(100, 100, 200), // Brighter blue for primary highlight
             author: Color::Magenta,
             dim: Color::Rgb(100, 100, 100),
             success: Color::Rgb(26, 170, 85), // #1aaa55
@@ -101,6 +105,10 @@ impl Theme {
             closed_mr: Color::Rgb(219, 59, 33), // #db3b21 (Same as failed/red)
             shortcut_key: Color::Cyan,
             shortcut_desc: Color::White,
+            keyword: Color::Rgb(255, 120, 120), // Light red for keywords
+            code: Color::Rgb(150, 255, 150),    // Light green for code
+            code_bg: Color::Rgb(30, 30, 30),    // Dark background for code blocks
+            range_highlight: Color::Rgb(60, 60, 100), // Darker blue for associated lines
         }
     }
 
