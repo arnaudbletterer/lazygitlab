@@ -29,6 +29,8 @@ pub struct CreateMergeRequestDiscussion {
     pub old_path: Option<String>,
     pub new_line: Option<u64>,
     pub old_line: Option<u64>,
+    pub range_start_new: Option<u64>,
+    pub range_start_old: Option<u64>,
 }
 impl Endpoint for CreateMergeRequestDiscussion {
     fn method(&self) -> Method { Method::POST }
@@ -43,8 +45,21 @@ impl Endpoint for CreateMergeRequestDiscussion {
             params.push("position[position_type]", "text");
             if let Some(path) = &self.new_path { params.push("position[new_path]", path); }
             if let Some(path) = &self.old_path { params.push("position[old_path]", path); }
-            if let Some(line) = self.new_line { params.push("position[new_line]", line); }
-            if let Some(line) = self.old_line { params.push("position[old_line]", line); }
+            
+            if let Some(rs_new) = self.range_start_new {
+                // Multi-line range
+                params.push("position[line_range][start][new_line]", rs_new);
+                if let Some(rs_old) = self.range_start_old { params.push("position[line_range][start][old_line]", rs_old); }
+                params.push("position[line_range][start][type]", if self.range_start_old.is_some() && self.range_start_new.is_some() { "text" } else if self.range_start_new.is_some() { "new" } else { "old" });
+                
+                params.push("position[line_range][end][new_line]", self.new_line.unwrap());
+                if let Some(old) = self.old_line { params.push("position[line_range][end][old_line]", old); }
+                params.push("position[line_range][end][type]", if self.old_line.is_some() && self.new_line.is_some() { "text" } else if self.new_line.is_some() { "new" } else { "old" });
+            } else {
+                // Single line
+                if let Some(line) = self.new_line { params.push("position[new_line]", line); }
+                if let Some(line) = self.old_line { params.push("position[old_line]", line); }
+            }
         }
         params.into_body()
     }
@@ -826,7 +841,7 @@ mod tests {
         assert_eq!(curr_user.method(), Method::GET);
         assert_eq!(curr_user.endpoint(), "user");
 
-        let add_disc = CreateMergeRequestDiscussion { project: 1, merge_request: 2, body: "b".into(), base_sha: None, start_sha: None, head_sha: None, new_path: None, old_path: None, new_line: None, old_line: None };
+        let add_disc = CreateMergeRequestDiscussion { project: 1, merge_request: 2, body: "b".into(), base_sha: None, start_sha: None, head_sha: None, new_path: None, old_path: None, new_line: None, old_line: None, range_start_new: None, range_start_old: None };
         assert_eq!(add_disc.method(), Method::POST);
         assert_eq!(add_disc.endpoint(), "projects/1/merge_requests/2/discussions");
         assert!(add_disc.body().is_ok());

@@ -119,6 +119,21 @@ pub struct Position {
     pub old_path: Option<String>,
     pub new_line: Option<u64>,
     pub old_line: Option<u64>,
+    pub line_range: Option<LineRange>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LineRange {
+    pub start: LinePosition,
+    pub end: LinePosition,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LinePosition {
+    pub line_code: Option<String>,
+    pub r#type: Option<String>,
+    pub new_line: Option<u64>,
+    pub old_line: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -486,6 +501,7 @@ pub struct App {
     pub mr_diffs: Vec<MRDiff>,
     pub mr_diff_state: ListState,
     pub diff_line_state: ListState,
+    pub diff_selection_start: Option<usize>,
     pub job_log: String,
     pub job_log_lines: Vec<LogLine>,
     pub collapsed_sections: std::collections::HashSet<String>,
