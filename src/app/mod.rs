@@ -49,6 +49,7 @@ impl App {
             mr_diffs: Vec::new(),
             mr_diff_state: ListState::default(),
             diff_line_state: ListState::default(),
+            diff_selection_start: None,
             job_log: String::new(),
             job_log_lines: Vec::new(),
             collapsed_sections: std::collections::HashSet::new(),
@@ -884,11 +885,21 @@ impl App {
         use chrono::Timelike;
 
         // On Windows, characters produced via AltGr are often reported with Control + Alt modifiers.
-        // We strip these modifiers for character input to ensure they are correctly processed by text areas and filters.
+        // We strip these modifiers ONLY if both are present to ensure AltGr characters are correctly processed
+        // while preserving single modifiers like Control for shortcuts (e.g., Ctrl+Enter).
         let mut processed_key = key;
         if let KeyCode::Char(_) = processed_key.code {
             if processed_key.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) {
                 processed_key.modifiers.remove(KeyModifiers::CONTROL | KeyModifiers::ALT);
+            }
+        }
+
+        // Global Keys: Process q (Quit) and o (Open in Browser) at the top level, but only when input_mode is false.
+        if !self.input_mode {
+            match processed_key.code {
+                KeyCode::Char('q') => { self.should_quit = true; return; }
+                KeyCode::Char('o') => { self.open_in_browser(); return; }
+                _ => {}
             }
         }
 
@@ -992,15 +1003,17 @@ impl App {
                 }
             } else {
                 match processed_key.code {
-                    KeyCode::Enter if !processed_key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) && !processed_key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
-                         if matches!(self.input_target, InputTarget::EditTitle | InputTarget::SnoozeUntil) {
-                             self.enter().await;
-                         } else {
-                             self.textarea.input(processed_key);
-                         }
-                    }
-                    KeyCode::Enter if processed_key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) || processed_key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
+                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SHIFT) => {
                         self.enter().await;
+                    }
+                    KeyCode::Char('\n') | KeyCode::Char('\r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.enter().await;
+                    }
+                    KeyCode::Enter if matches!(self.input_target, InputTarget::EditTitle | InputTarget::SnoozeUntil) => {
+                        self.enter().await;
+                    }
+                    KeyCode::Enter => {
+                        self.textarea.input(processed_key);
                     }
                     KeyCode::Esc => { self.input_mode = false; }
                     _ => { self.textarea.input(processed_key); }
@@ -1021,17 +1034,38 @@ impl App {
 
         if self.view_mode == ViewMode::Diff {
             match processed_key.code {
-                KeyCode::Esc => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Left | KeyCode::Char('h') => { self.diff_line_state.select(None); let _ = self.update_preview().await; return; }
-                KeyCode::Right | KeyCode::Char('l') => { if self.diff_line_state.selected().is_none() { self.diff_line_state.select(Some(0)); } let _ = self.update_preview().await; return; }
+                KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    if self.diff_line_state.selected().is_some() {
+                        self.diff_line_state.select(None);
+                        self.diff_selection_start = None;
+                    } else {
+                        self.view_mode = ViewMode::List;
+                    }
+                    let _ = self.update_preview().await;
+                    return;
+                }
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => {
+                    self.diff_line_state.select(Some(0));
+                    self.diff_selection_start = None;
+                    let _ = self.update_preview().await; return;
+                }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.diff_line_state.selected().is_some() {
                         if let Some(selected_idx) = self.mr_diff_state.selected() {
                             if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
                                 let line_count = mr_diff.display_lines.len();
                                 if line_count > 0 {
-                                    let i = (self.diff_line_state.selected().unwrap() + 1) % line_count;
-                                    self.diff_line_state.select(Some(i));
+                                    let current = self.diff_line_state.selected().unwrap();
+                                    let next = (current + 1) % line_count;
+                                    
+                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
+                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
+                                    } else {
+                                        self.diff_selection_start = None;
+                                    }
+                                    
+                                    self.diff_line_state.select(Some(next));
                                 }
                             }
                         }
@@ -1039,6 +1073,7 @@ impl App {
                         let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1);
                         self.mr_diff_state.select(Some(i));
                         self.diff_line_state.select(None);
+                        self.diff_selection_start = None;
                     }
                     let _ = self.update_preview().await; return;
                 }
@@ -1048,8 +1083,16 @@ impl App {
                             if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
                                 let line_count = mr_diff.display_lines.len();
                                 if line_count > 0 {
-                                    let i = if self.diff_line_state.selected().unwrap() == 0 { line_count - 1 } else { self.diff_line_state.selected().unwrap() - 1 };
-                                    self.diff_line_state.select(Some(i));
+                                    let current = self.diff_line_state.selected().unwrap();
+                                    let prev = if current == 0 { line_count - 1 } else { current - 1 };
+
+                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
+                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
+                                    } else {
+                                        self.diff_selection_start = None;
+                                    }
+
+                                    self.diff_line_state.select(Some(prev));
                                 }
                             }
                         }
@@ -1057,6 +1100,7 @@ impl App {
                         let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 };
                         self.mr_diff_state.select(Some(i));
                         self.diff_line_state.select(None);
+                        self.diff_selection_start = None;
                     }
                     let _ = self.update_preview().await; return;
                 }
@@ -1064,6 +1108,7 @@ impl App {
                     if let Some(selected_idx) = self.mr_diff_state.selected() {
                         if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
                             if let Some(line_idx) = self.diff_line_state.selected() {
+                                // Check if we are on a code line
                                 if let Some(DiffDisplayLine::Code(..)) = mr_diff.display_lines.get(line_idx) {
                                     self.input_mode = true;
                                     self.input_target = InputTarget::NewComment;
@@ -1099,6 +1144,25 @@ impl App {
                                     disc.collapsed = !disc.collapsed;
                                     if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
                                         main_disc.collapsed = disc.collapsed;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                KeyCode::Char('s') => {
+                    if let Some(selected_idx) = self.mr_diff_state.selected() {
+                        if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) {
+                            if let Some(line_idx) = self.diff_line_state.selected() {
+                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) {
+                                    // Automatically collapse on resolve
+                                    disc.collapsed = true;
+                                    if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
+                                        main_disc.collapsed = true;
+                                        if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) {
+                                            self.discussion_state.select(Some(pos));
+                                            let _ = self.resolve_discussion().await;
+                                        }
                                     }
                                 }
                             }
@@ -1229,8 +1293,22 @@ impl App {
                 if self.active_selection == MenuSelection::Todos {
                     self.show_snooze_popup = true; self.snooze_state.select(Some(0));
                 } else {
-                    if let Some(_) = &self.selected_mr { let _ = self.resolve_discussion().await; }
-                    else if let Some(_) = &self.selected_issue { let _ = self.resolve_issue_discussion().await; }
+                    if let Some(_) = &self.selected_mr { 
+                        if let Some(idx) = self.discussion_state.selected() {
+                            if let Some(disc) = self.discussions.get_mut(idx) {
+                                disc.collapsed = true;
+                            }
+                        }
+                        let _ = self.resolve_discussion().await; 
+                    }
+                    else if let Some(_) = &self.selected_issue { 
+                        if let Some(idx) = self.discussion_state.selected() {
+                            if let Some(disc) = self.discussions.get_mut(idx) {
+                                disc.collapsed = true;
+                            }
+                        }
+                        let _ = self.resolve_issue_discussion().await; 
+                    }
                 }
             }
             KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
@@ -1354,31 +1432,43 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             if let Some(disc_idx) = self.discussion_state.selected() {
                 if let Some(disc) = self.discussions.get(disc_idx) {
-                    let endpoint = AddMergeRequestDiscussionNote {
-                        project: mr.project_id,
-                        merge_request: mr.iid,
-                        discussion: disc.id.clone(),
-                        body,
-                    };
-                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                    let pid = mr.project_id; let iid = mr.iid; let disc_id = disc.id.clone();
+                    let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+                    tokio::spawn(async move {
+                        let endpoint = AddMergeRequestDiscussionNote {
+                            project: pid, merge_request: iid, discussion: disc_id, body,
+                        };
+                        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                        match res {
+                            Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                            Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post reply failed: {}", e))); }
+                            Err(_) => { let _ = tx.send(DataUpdate::Error("Post reply timed out".into())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
                     self.textarea = ratatui_textarea::TextArea::default();
                     self.input_mode = false;
-                    let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
                 }
             }
         } else if let Some(issue) = &self.selected_issue {
             if let Some(disc_idx) = self.discussion_state.selected() {
                 if let Some(disc) = self.discussions.get(disc_idx) {
-                    let endpoint = AddIssueDiscussionNote {
-                        project: issue.project_id,
-                        issue: issue.iid,
-                        discussion: disc.id.clone(),
-                        body,
-                    };
-                    let _: serde_json::Value = endpoint.query_async(&self.gitlab).await?;
+                    let pid = issue.project_id; let iid = issue.iid; let disc_id = disc.id.clone();
+                    let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+                    tokio::spawn(async move {
+                        let endpoint = AddIssueDiscussionNote {
+                            project: pid, issue: iid, discussion: disc_id, body,
+                        };
+                        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                        match res {
+                            Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                            Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post reply failed: {}", e))); }
+                            Err(_) => { let _ = tx.send(DataUpdate::Error("Post reply timed out".into())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
                     self.textarea = ratatui_textarea::TextArea::default();
                     self.input_mode = false;
-                    let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
                 }
             }
         }
