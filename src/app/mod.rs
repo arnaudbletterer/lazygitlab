@@ -1497,7 +1497,7 @@ impl App {
         }
 
         #[cfg(not(test))]
-        if let Some(mut url) = url {
+        if let Some(url) = url {
             if url == "u" { return; }
             if !url.starts_with("http://") && !url.starts_with("https://") {
                 // Try to prepend instance URL if it looks like a relative path
