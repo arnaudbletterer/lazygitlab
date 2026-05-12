@@ -64,6 +64,7 @@ Refine the foundation for scale.
 *   **Rate Limiting:** As we add more features (like file trees and inline comments), API calls will increase. We must implement robust caching and respect rate limits.
 *   **Crate Dependencies:** Evaluate new dependencies carefully (e.g., for multi-line editing or tree views) to avoid bloating the binary or complicating cross-platform builds.
 
-## Verification
-*   Each phase must include unit tests for new models/API calls.
+## Project Standards
+*   **Versioning:** Always use `python scripts/bump_version.py` for releases to maintain consistency between tags and `Cargo.toml`. See [RELEASING.md](./RELEASING.md) for details.
+*   **Verification:** Each phase must include unit tests for new models/API calls.
 *   UI testing via `ratatui::backend::TestBackend` must be updated to cover new interactive components (especially the multi-line editor and board views).
