@@ -205,12 +205,20 @@ mod tests {
     use ratatui::Terminal;
     use crate::models::{MRDiff, MergeRequest, Author, References};
     use gitlab::GitlabBuilder;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::path;
 
     #[tokio::test]
     async fn test_render_diff_view() {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v4/user"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})))
+            .mount(&server)
+            .await;
+
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
-        let client = GitlabBuilder::new("localhost", "t").insecure().build_async().await.unwrap();
+        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
         let mut app = App::new(client);
         
         app.selected_mr = Some(MergeRequest {
@@ -256,7 +264,7 @@ mod tests {
         let buffer = terminal.backend().buffer();
         for y in 0..buffer.area().height {
             for x in 0..buffer.area().width {
-                content.push(buffer.get(x, y).symbol().chars().next().unwrap());
+                content.push(buffer[(x, y)].symbol().chars().next().unwrap());
             }
             content.push('\n');
         }

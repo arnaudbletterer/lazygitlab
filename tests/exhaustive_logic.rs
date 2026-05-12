@@ -1,4 +1,4 @@
-use lazygitlab::models::{App, MenuSelection, Project, Issue, GroupedItem, Panel, Context, HelpAction, Author, Todo, References};
+use lazygitlab::models::{App, MenuSelection, Project, Issue, GroupedItem, Panel, Context, Author, Todo, References};
 use gitlab::GitlabBuilder;
 use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;

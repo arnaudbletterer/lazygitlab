@@ -1,7 +1,6 @@
 use gitlab::api::AsyncQuery;
 use crate::models::*;
 use crate::api::*;
-use regex::Regex;
 
 impl App {
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -363,6 +362,32 @@ impl App {
                     });
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub async fn create_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let title = self.create_mr_title.clone();
+            let source_branch = self.create_mr_source_branch.clone();
+            let target_branch = self.create_mr_target_branch.clone();
+            let description = if self.create_mr_description.is_empty() { None } else { Some(self.create_mr_description.clone()) };
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = CreateMergeRequest { project: pid, source_branch, target_branch, title, description };
+                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
+                match res {
+                    Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR creation failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("MR creation timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+            self.show_create_mr_popup = false;
+            self.input_mode = false;
         }
         Ok(())
     }

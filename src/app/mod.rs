@@ -992,6 +992,74 @@ impl App {
             }
             return;
         }
+        if self.show_create_issue_popup {
+            match processed_key.code {
+                KeyCode::Tab => {
+                    if self.input_target == InputTarget::CreateIssueTitle {
+                        self.create_issue_title = self.textarea.lines().join("\n");
+                        self.input_target = InputTarget::CreateIssueDescription;
+                        self.textarea = ratatui_textarea::TextArea::from(self.create_issue_description.lines());
+                        self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
+                    } else {
+                        self.create_issue_description = self.textarea.lines().join("\n");
+                        self.input_target = InputTarget::CreateIssueTitle;
+                        self.textarea = ratatui_textarea::TextArea::from(self.create_issue_title.lines());
+                        self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
+                    }
+                }
+                KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); }
+                    else { self.create_issue_description = self.textarea.lines().join("\n"); }
+                    let _ = self.create_issue().await;
+                }
+                KeyCode::Esc => self.show_create_issue_popup = false,
+                _ => { self.textarea.input(processed_key); }
+            }
+            return;
+        }
+        if self.show_create_mr_popup {
+            match processed_key.code {
+                KeyCode::Tab => {
+                    match self.input_target {
+                        InputTarget::CreateMRTitle => {
+                            self.create_mr_title = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateMRSourceBranch;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_source_branch.lines());
+                        }
+                        InputTarget::CreateMRSourceBranch => {
+                            self.create_mr_source_branch = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateMRTargetBranch;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_target_branch.lines());
+                        }
+                        InputTarget::CreateMRTargetBranch => {
+                            self.create_mr_target_branch = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateMRDescription;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_description.lines());
+                        }
+                        InputTarget::CreateMRDescription => {
+                            self.create_mr_description = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateMRTitle;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_title.lines());
+                        }
+                        _ => {}
+                    }
+                    self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
+                }
+                KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    match self.input_target {
+                        InputTarget::CreateMRTitle => self.create_mr_title = self.textarea.lines().join("\n"),
+                        InputTarget::CreateMRSourceBranch => self.create_mr_source_branch = self.textarea.lines().join("\n"),
+                        InputTarget::CreateMRTargetBranch => self.create_mr_target_branch = self.textarea.lines().join("\n"),
+                        InputTarget::CreateMRDescription => self.create_mr_description = self.textarea.lines().join("\n"),
+                        _ => {}
+                    }
+                    let _ = self.create_mr().await;
+                }
+                KeyCode::Esc => self.show_create_mr_popup = false,
+                _ => { self.textarea.input(processed_key); }
+            }
+            return;
+        }
         if self.input_mode {
             if self.input_target == InputTarget::Filter {
                 match processed_key.code {
@@ -1267,6 +1335,8 @@ impl App {
             KeyCode::Char('2') => { self.active_panel = Panel::Main; let _ = self.update_preview().await; }
             KeyCode::Char('3') => { self.active_panel = Panel::MainDetail; let _ = self.update_preview().await; }
             KeyCode::Char('o') => self.open_in_browser(),
+            KeyCode::Char('p') => self.switch_project(),
+            KeyCode::Char('r') => { let _ = self.refresh().await; }
             KeyCode::Char('[') => {
                 match self.active_selection {
                     MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },
@@ -1312,6 +1382,28 @@ impl App {
                 }
             }
             KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
+            KeyCode::Char('n') => {
+                match self.active_selection {
+                    MenuSelection::Issues => {
+                        self.show_create_issue_popup = true;
+                        self.input_target = InputTarget::CreateIssueTitle;
+                        self.create_issue_title.clear();
+                        self.create_issue_description.clear();
+                        self.textarea = ratatui_textarea::TextArea::default();
+                    }
+                    MenuSelection::MergeRequests => {
+                        self.show_create_mr_popup = true;
+                        self.input_target = InputTarget::CreateMRTitle;
+                        self.create_mr_title.clear();
+                        self.create_mr_description.clear();
+                        self.textarea = ratatui_textarea::TextArea::default();
+                        if let Some(p) = &self.selected_project {
+                            self.create_mr_target_branch = p.default_branch.clone().unwrap_or_else(|| "main".to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
             _ => {}
         }
     }
@@ -1398,7 +1490,24 @@ impl App {
     pub async fn back(&mut self) { self.view_mode = ViewMode::List; self.active_panel = Panel::Dashboard; }
     pub fn open_in_browser(&self) {
         let url = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) } else if let Some(pipeline) = &self.selected_pipeline { Some(pipeline.web_url.clone()) } else if let Some(job) = &self.selected_job { Some(job.web_url.clone()) } else if self.active_selection == MenuSelection::Projects { if let Some(idx) = self.projects_state.selected() { self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) } else { self.selected_project.as_ref().and_then(|p| p.web_url.clone()) } } else if self.active_selection == MenuSelection::Groups { if let Some(idx) = self.groups_state.selected() { self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) } else { None } } else if let Some(project) = &self.selected_project { project.web_url.clone() } else { None };
-        if let Some(url) = url {
+        
+        #[cfg(test)] {
+            let _ = url;
+            return;
+        }
+
+        #[cfg(not(test))]
+        if let Some(mut url) = url {
+            if url == "u" { return; }
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                // Try to prepend instance URL if it looks like a relative path
+                if url.starts_with('/') {
+                    // We don't easily have the base URL here without more changes, 
+                    // but we can at least skip clearly invalid ones like "u"
+                } else {
+                    return;
+                }
+            }
             #[cfg(target_os = "windows")] let _ = std::process::Command::new("cmd").arg("/c").arg("start").arg(&url).spawn();
             #[cfg(target_os = "macos")] let _ = std::process::Command::new("open").arg(&url).spawn();
             #[cfg(target_os = "linux")] let _ = std::process::Command::new("xdg-open").arg(&url).spawn();

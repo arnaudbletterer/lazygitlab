@@ -1,4 +1,4 @@
-use lazygitlab::models::{App, MergeRequest, Author, Panel, DataUpdate, Project, Milestone, Label, References, Issue, Discussion};
+use lazygitlab::models::{App, MergeRequest, Author, Panel};
 use gitlab::GitlabBuilder;
 use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;

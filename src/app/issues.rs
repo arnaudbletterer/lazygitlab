@@ -306,6 +306,30 @@ impl App {
         }
         Ok(())
     }
+
+    pub async fn create_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let title = self.create_issue_title.clone();
+            let description = if self.create_issue_description.is_empty() { None } else { Some(self.create_issue_description.clone()) };
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = CreateIssue { project: pid, title, description, assignee_ids: Vec::new(), label_names: Vec::new() };
+                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
+                match res {
+                    Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue creation failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Issue creation timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+            self.show_create_issue_popup = false;
+            self.input_mode = false;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

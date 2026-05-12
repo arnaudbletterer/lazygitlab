@@ -25,7 +25,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct Config { url: String, token: String }
 impl Config {
     fn from_env() -> Self {
-        let url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
+        let mut url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            url = format!("https://{}", url);
+        }
         let token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
         if token.is_empty() {
             panic!("GITLAB_TOKEN must be set");
