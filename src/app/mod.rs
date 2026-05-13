@@ -2,6 +2,7 @@ pub mod issues;
 pub mod mrs;
 pub mod pipelines;
 pub mod global;
+pub mod boards;
 
 use gitlab::{AsyncGitlab, api::AsyncQuery};
 use crate::models::*;
@@ -142,6 +143,22 @@ impl App {
             show_snooze_popup: false,
             snooze_state: ListState::default(),
             current_user: None,
+            repository_tree: Vec::new(),
+            repository_tree_state: tui_tree_widget::TreeState::default(),
+            selected_file_content: None,
+            commits: Vec::new(),
+            commits_state: ListState::default(),
+            commits_page: 1,
+            commits_has_more: true,
+            project_boards: Vec::new(),
+            project_boards_state: ListState::default(),
+            selected_board: None,
+            board_lists: Vec::new(),
+            board_lists_state: ListState::default(),
+            board_issues: std::collections::HashMap::new(),
+            board_issue_states: std::collections::HashMap::new(),
+            epics: Vec::new(),
+            epics_state: ListState::default(),
         }
     }
 
@@ -337,6 +354,70 @@ impl App {
                 DataUpdate::TriggerRefresh => { self.refresh().await; }
                 DataUpdate::CheckPagination => { let _ = self.check_pagination().await; }
                 DataUpdate::CurrentUser(user) => { self.current_user = Some(user); }
+                DataUpdate::RepositoryTree { project_id, data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.repository_tree = data;
+                        self.update_tree_state();
+                    }
+                }
+                DataUpdate::RepositoryFile { project_id, file_path, data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        if let Some(selected_path) = self.repository_tree_state.selected().last() {
+                            if selected_path == &file_path {
+                                self.selected_file_content = Some(data);
+                            }
+                        }
+                    }
+                }
+                DataUpdate::Branches { project_id, data, .. } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.project_branches = data;
+                        self.filter_lists();
+                    }
+                }
+                DataUpdate::Commits { project_id, data, page, has_more } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.commits = data;
+                        self.commits_page = page;
+                        self.commits_has_more = has_more;
+                        self.filter_lists();
+                    }
+                }
+                DataUpdate::AppendCommits { project_id, mut data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.commits_has_more = data.len() >= 50;
+                        self.commits.append(&mut data);
+                        self.commits_page += 1;
+                        self.filter_lists();
+                    }
+                }
+                DataUpdate::Boards { project_id, data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.project_boards = data;
+                        self.project_boards_state.select(if self.project_boards.is_empty() { None } else { Some(0) });
+                    }
+                }
+                DataUpdate::BoardLists { project_id, board_id, data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        if self.selected_board.as_ref().map_or(false, |b| b.id == board_id) {
+                            self.board_lists = data.clone();
+                            self.board_lists_state.select(if self.board_lists.is_empty() { None } else { Some(0) });
+                            let lists_to_fetch = self.board_lists.clone();
+                            for list in lists_to_fetch {
+                                let _ = self.fetch_board_list_issues(board_id, list.id);
+                            }
+                        }
+                    }
+                }
+                DataUpdate::BoardIssues { project_id, board_id: _, list_id, data } => {
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.board_issues.insert(list_id, data);
+                    }
+                }
+                DataUpdate::Epics { group_id: _, data } => {
+                    self.epics = data;
+                    self.epics_state.select(if self.epics.is_empty() { None } else { Some(0) });
+                }
             }
         }
         self.update_preview().await;
@@ -579,6 +660,11 @@ impl App {
                         MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
                         MenuSelection::Issues => { let _ = self.fetch_issues().await; }
                         MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
+                        MenuSelection::Repository => { let _ = self.fetch_repository_tree().await; }
+                        MenuSelection::Branches => { if let Some(p) = &self.selected_project { let _ = self.fetch_branches(p.id).await; } }
+                        MenuSelection::Commits => { let _ = self.fetch_commits().await; }
+                        MenuSelection::Boards => { let _ = self.fetch_boards().await; }
+                        MenuSelection::Epics => { let _ = self.fetch_epics().await; }
                         _ => {}
                     }
                 }
@@ -623,7 +709,16 @@ impl App {
             Panel::Project => {
                 self.active_context = Context::Project;
                 let idx = self.project_menu_state.selected().unwrap_or(0);
-                self.active_selection = match idx { 0 => MenuSelection::Pipelines, 1 => MenuSelection::MergeRequests, _ => MenuSelection::Issues };
+                self.active_selection = match idx { 
+                    0 => MenuSelection::MergeRequests, 
+                    1 => MenuSelection::Issues, 
+                    2 => MenuSelection::Pipelines, 
+                    3 => MenuSelection::Repository, 
+                    4 => MenuSelection::Branches, 
+                    5 => MenuSelection::Commits,
+                    6 => MenuSelection::Boards,
+                    _ => MenuSelection::Epics 
+                };
             }
             _ => {}
         }
@@ -713,6 +808,18 @@ impl App {
                         }
                     }
                 }
+                MenuSelection::Boards => {
+                    if let Some(i) = self.project_boards_state.selected() {
+                        if let Some(board) = self.project_boards.get(i).cloned() {
+                            if self.selected_board.as_ref().map_or(true, |b| b.id != board.id) {
+                                self.selected_board = Some(board.clone());
+                                self.board_lists.clear();
+                                self.board_issues.clear();
+                                let _ = self.fetch_board_lists(board.id).await;
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         } else {
@@ -744,12 +851,21 @@ impl App {
             }
             Panel::Explore => {
                 let current = self.explore_menu_state.selected().unwrap_or(0);
-                if current >= 1 { self.active_panel = Panel::Project; self.project_menu_state.select(Some(0)); }
+                if current >= 1 { 
+                    if self.selected_project.is_some() {
+                        self.active_panel = Panel::Project; self.project_menu_state.select(Some(0)); 
+                    } else {
+                        self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(0));
+                    }
+                }
                 else { self.explore_menu_state.select(Some(current + 1)); }
             }
             Panel::Project => {
                 let current = self.project_menu_state.selected().unwrap_or(0);
-                if current >= 2 { self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(0)); }
+                let max_idx = if let Some(p) = &self.selected_project {
+                    if p.namespace.as_ref().map_or(false, |n| n.kind == "group") { 7 } else { 6 }
+                } else { 0 };
+                if current >= max_idx { self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(0)); }
                 else { self.project_menu_state.select(Some(current + 1)); }
             }
             Panel::Main => {
@@ -760,6 +876,11 @@ impl App {
                     MenuSelection::Pipelines => if !self.pipelines.is_empty() { let i = (self.pipelines_state.selected().unwrap_or(0) + 1) % self.pipelines.len(); self.pipelines_state.select(Some(i)); }
                     MenuSelection::Projects => if !self.projects.is_empty() { let i = (self.projects_state.selected().unwrap_or(0) + 1) % self.projects.len(); self.projects_state.select(Some(i)); }
                     MenuSelection::Groups => if !self.groups.is_empty() { let i = (self.groups_state.selected().unwrap_or(0) + 1) % self.groups.len(); self.groups_state.select(Some(i)); }
+                    MenuSelection::Repository => { self.repository_tree_state.key_down(); }
+                    MenuSelection::Branches => if !self.project_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.branches_state.select(Some(i)); }
+                    MenuSelection::Commits => if !self.commits.is_empty() { let i = (self.commits_state.selected().unwrap_or(0) + 1) % self.commits.len(); self.commits_state.select(Some(i)); }
+                    MenuSelection::Boards => if !self.project_boards.is_empty() { let i = (self.project_boards_state.selected().unwrap_or(0) + 1) % self.project_boards.len(); self.project_boards_state.select(Some(i)); }
+                    MenuSelection::Epics => if !self.epics.is_empty() { let i = (self.epics_state.selected().unwrap_or(0) + 1) % self.epics.len(); self.epics_state.select(Some(i)); }
                 }
                 let _ = self.tx.send(DataUpdate::CheckPagination);
             }
@@ -816,7 +937,18 @@ impl App {
         match self.active_panel {
             Panel::Dashboard => {
                 let current = self.dashboard_menu_state.selected().unwrap_or(0);
-                if current == 0 { self.active_panel = Panel::Project; self.project_menu_state.select(Some(2)); }
+                if current == 0 { 
+                    if self.selected_project.is_some() {
+                        self.active_panel = Panel::Project; 
+                        let max_idx = if let Some(p) = &self.selected_project {
+                            if p.namespace.as_ref().map_or(false, |n| n.kind == "group") { 7 } else { 6 }
+                        } else { 0 };
+                        self.project_menu_state.select(Some(max_idx)); 
+                    } else {
+                        self.active_panel = Panel::Explore;
+                        self.explore_menu_state.select(Some(1));
+                    }
+                }
                 else { self.dashboard_menu_state.select(Some(current - 1)); }
             }
             Panel::Explore => {
@@ -837,6 +969,11 @@ impl App {
                     MenuSelection::Pipelines => if !self.pipelines.is_empty() { let i = if self.pipelines_state.selected().unwrap_or(0) == 0 { self.pipelines.len() - 1 } else { self.pipelines_state.selected().unwrap() - 1 }; self.pipelines_state.select(Some(i)); }
                     MenuSelection::Projects => if !self.projects.is_empty() { let i = if self.projects_state.selected().unwrap_or(0) == 0 { self.projects.len() - 1 } else { self.projects_state.selected().unwrap() - 1 }; self.projects_state.select(Some(i)); }
                     MenuSelection::Groups => if !self.groups.is_empty() { let i = if self.groups_state.selected().unwrap_or(0) == 0 { self.groups.len() - 1 } else { self.groups_state.selected().unwrap() - 1 }; self.groups_state.select(Some(i)); }
+                    MenuSelection::Repository => { self.repository_tree_state.key_up(); }
+                    MenuSelection::Branches => if !self.project_branches.is_empty() { let i = if self.branches_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.branches_state.selected().unwrap() - 1 }; self.branches_state.select(Some(i)); }
+                    MenuSelection::Commits => if !self.commits.is_empty() { let i = if self.commits_state.selected().unwrap_or(0) == 0 { self.commits.len() - 1 } else { self.commits_state.selected().unwrap() - 1 }; self.commits_state.select(Some(i)); }
+                    MenuSelection::Boards => if !self.project_boards.is_empty() { let i = if self.project_boards_state.selected().unwrap_or(0) == 0 { self.project_boards.len() - 1 } else { self.project_boards_state.selected().unwrap() - 1 }; self.project_boards_state.select(Some(i)); }
+                    MenuSelection::Epics => if !self.epics.is_empty() { let i = if self.epics_state.selected().unwrap_or(0) == 0 { self.epics.len() - 1 } else { self.epics_state.selected().unwrap() - 1 }; self.epics_state.select(Some(i)); }
                 }
             }
             Panel::MainDetail => {
@@ -884,6 +1021,8 @@ impl App {
         use crossterm::event::{KeyCode, KeyModifiers};
         use chrono::Timelike;
 
+        tracing::info!("User action: key pressed: {:?}", key);
+
         // On Windows, characters produced via AltGr are often reported with Control + Alt modifiers.
         // We strip these modifiers ONLY if both are present to ensure AltGr characters are correctly processed
         // while preserving single modifiers like Control for shortcuts (e.g., Ctrl+Enter).
@@ -899,6 +1038,70 @@ impl App {
             match processed_key.code {
                 KeyCode::Char('q') => { self.should_quit = true; return; }
                 KeyCode::Char('o') => { self.open_in_browser(); return; }
+                _ => {}
+            }
+        }
+
+        if self.view_mode == ViewMode::Board {
+            match processed_key.code {
+                KeyCode::Esc => { 
+                     self.view_mode = ViewMode::List; 
+                     self.selected_board = None; 
+                     return; 
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    let current = self.board_lists_state.selected().unwrap_or(0);
+                    let next = if current == 0 { self.board_lists.len().saturating_sub(1) } else { current - 1 };
+                    self.board_lists_state.select(Some(next));
+                    return;
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    let current = self.board_lists_state.selected().unwrap_or(0);
+                    let next = (current + 1) % self.board_lists.len().max(1);
+                    self.board_lists_state.select(Some(next));
+                    return;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if let Some(list_idx) = self.board_lists_state.selected() {
+                        if let Some(list) = self.board_lists.get(list_idx) {
+                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            if issues > 0 {
+                                let state = self.board_issue_states.entry(list.id).or_default();
+                                let current = state.selected().unwrap_or(0);
+                                state.select(Some((current + 1) % issues));
+                            }
+                        }
+                    }
+                    return;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(list_idx) = self.board_lists_state.selected() {
+                        if let Some(list) = self.board_lists.get(list_idx) {
+                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            if issues > 0 {
+                                let state = self.board_issue_states.entry(list.id).or_default();
+                                let current = state.selected().unwrap_or(0);
+                                state.select(Some(if current == 0 { issues - 1 } else { current - 1 }));
+                            }
+                        }
+                    }
+                    return;
+                }
+                KeyCode::Enter => {
+                    if let Some(list_idx) = self.board_lists_state.selected() {
+                        if let Some(list) = self.board_lists.get(list_idx) {
+                            let state = self.board_issue_states.entry(list.id).or_default();
+                            if let Some(issue_idx) = state.selected() {
+                                if let Some(issue) = self.board_issues.get(&list.id).and_then(|v| v.get(issue_idx)).cloned() {
+                                    self.selected_issue = Some(issue);
+                                    self.view_mode = ViewMode::Detail;
+                                    self.detail_section = DetailSection::Metadata;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
                 _ => {}
             }
         }
@@ -1100,6 +1303,15 @@ impl App {
             }
         }
 
+        if self.view_mode == ViewMode::Tree {
+            match processed_key.code {
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                _ => {}
+            }
+        }
+
         if self.view_mode == ViewMode::Diff {
             match processed_key.code {
                 KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
@@ -1280,11 +1492,56 @@ impl App {
                     Panel::Dashboard | Panel::Explore | Panel::Project => {
                         self.active_context = match self.active_panel { Panel::Dashboard => Context::Dashboard, Panel::Explore => Context::Explore, Panel::Project => Context::Project, _ => self.active_context };
                         let idx = match self.active_panel { Panel::Dashboard => self.dashboard_menu_state.selected().unwrap_or(0), Panel::Explore => self.explore_menu_state.selected().unwrap_or(0), Panel::Project => self.project_menu_state.selected().unwrap_or(0), _ => 0 };
-                        self.active_selection = match (self.active_panel, idx) { (Panel::Dashboard, 0) => MenuSelection::Todos, (Panel::Dashboard, 1) => MenuSelection::MergeRequests, (Panel::Dashboard, 2) => MenuSelection::Issues, (Panel::Explore, 0) => MenuSelection::Projects, (Panel::Explore, 1) => MenuSelection::Groups, (Panel::Project, 0) => MenuSelection::Pipelines, (Panel::Project, 1) => MenuSelection::MergeRequests, (Panel::Project, 2) => MenuSelection::Issues, _ => self.active_selection };
+                        self.active_selection = match (self.active_panel, idx) { 
+                            (Panel::Dashboard, 0) => MenuSelection::Todos, 
+                            (Panel::Dashboard, 1) => MenuSelection::MergeRequests, 
+                            (Panel::Dashboard, 2) => MenuSelection::Issues, 
+                            (Panel::Explore, 0) => MenuSelection::Projects, 
+                            (Panel::Explore, 1) => MenuSelection::Groups, 
+                            (Panel::Project, 0) => MenuSelection::MergeRequests, 
+                            (Panel::Project, 1) => MenuSelection::Issues, 
+                            (Panel::Project, 2) => MenuSelection::Pipelines, 
+                            (Panel::Project, 3) => MenuSelection::Repository, 
+                            (Panel::Project, 4) => MenuSelection::Branches, 
+                            (Panel::Project, 5) => MenuSelection::Commits,
+                            (Panel::Project, 6) => MenuSelection::Boards,
+                            _ => MenuSelection::Epics 
+                        };
                         self.active_panel = Panel::Main; 
+                        self.refresh().await;
                     }
                     Panel::Main => {
-                        if self.active_selection == MenuSelection::MergeRequests && self.selected_mr.is_some() {
+                        if self.active_selection == MenuSelection::Projects {
+                            if let Some(i) = self.projects_state.selected() {
+                                self.selected_project = Some(self.filtered_projects[i].clone());
+                                self.active_panel = Panel::Main;
+                                self.active_context = Context::Project;
+                                self.project_menu_state.select(Some(0));
+                                self.active_selection = MenuSelection::MergeRequests;
+                                let _ = self.update_preview().await;
+                            }
+                        } else if self.active_selection == MenuSelection::Repository {
+                            if let Some(selected_path) = self.repository_tree_state.selected().last() {
+                                if let Some(item) = self.repository_tree.iter().find(|i| &i.path == selected_path) {
+                                    if item.r#type == "blob" {
+                                        self.view_mode = ViewMode::Tree;
+                                        let _ = self.fetch_repository_file(selected_path.clone()).await;
+                                    } else {
+                                        self.repository_tree_state.toggle_selected();
+                                    }
+                                }
+                            }
+                        } else if self.active_selection == MenuSelection::Boards {
+                            if let Some(i) = self.project_boards_state.selected() {
+                                if let Some(board) = self.project_boards.get(i).cloned() {
+                                    self.selected_board = Some(board.clone());
+                                    self.view_mode = ViewMode::Board;
+                                    self.board_lists.clear();
+                                    self.board_issues.clear();
+                                    let _ = self.fetch_board_lists(board.id).await;
+                                }
+                            }
+                        } else if self.active_selection == MenuSelection::MergeRequests && self.selected_mr.is_some() {
                             self.view_mode = ViewMode::Diff;
                             self.mr_diff_state.select(Some(0));
                             let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
@@ -1450,15 +1707,26 @@ impl App {
         self.filtered_issues = self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
         self.filtered_projects = self.projects.iter().filter(|p| p.name.to_lowercase().contains(&filter)).cloned().collect();
         self.filtered_pipelines = self.pipelines.iter().filter(|p| p.ref_name.to_lowercase().contains(&filter)).cloned().collect();
+        self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
         self.clamp_selections();
     }
 
     pub fn clamp_selections(&mut self) {
-        if !self.filtered_todos.is_empty() && self.todos_state.selected().is_none() { self.todos_state.select(Some(0)); }
-        if !self.filtered_mrs.is_empty() && self.mrs_state.selected().is_none() { self.mrs_state.select(Some(0)); }
-        if !self.filtered_issues.is_empty() && self.issues_state.selected().is_none() { self.issues_state.select(Some(0)); }
-        if !self.filtered_projects.is_empty() && self.projects_state.selected().is_none() { self.projects_state.select(Some(0)); }
-        if !self.filtered_pipelines.is_empty() && self.pipelines_state.selected().is_none() { self.pipelines_state.select(Some(0)); }
+        let clamp = |state: &mut ListState, len: usize| {
+            if len == 0 { state.select(None); }
+            else if let Some(i) = state.selected() { if i >= len { state.select(Some(len - 1)); } }
+            else { state.select(Some(0)); }
+        };
+
+        clamp(&mut self.todos_state, self.filtered_todos.len());
+        clamp(&mut self.mrs_state, self.filtered_mrs.len());
+        clamp(&mut self.issues_state, self.filtered_issues.len());
+        clamp(&mut self.projects_state, self.filtered_projects.len());
+        clamp(&mut self.pipelines_state, self.filtered_pipelines.len());
+        clamp(&mut self.groups_state, self.filtered_groups.len());
+        clamp(&mut self.branches_state, self.filtered_branches.len());
+        clamp(&mut self.commits_state, self.commits.len());
+
         if self.dashboard_menu_state.selected().is_none() { self.dashboard_menu_state.select(Some(0)); }
         if self.explore_menu_state.selected().is_none() { self.explore_menu_state.select(Some(0)); }
         if self.project_menu_state.selected().is_none() { self.project_menu_state.select(Some(0)); }
@@ -1514,6 +1782,11 @@ impl App {
         }
     }
     pub fn parse_job_log(&mut self) { self.job_log_lines = pipelines::parse_job_log(&self.job_log); }
+    pub fn update_tree_state(&mut self) {
+        // Build items for tui_tree_widget
+        // This is a flat list right now, but tui_tree_widget requires TreeItem
+        // We will deal with mapping it in the UI, but here we can just ensure state is valid.
+    }
     pub async fn check_pagination(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.active_panel != Panel::Main { return Ok(()); }
         match self.active_selection {
@@ -1523,6 +1796,8 @@ impl App {
             MenuSelection::Pipelines => { if let Some(i) = self.pipelines_state.selected() { if i + 10 >= self.pipelines.len() { self.fetch_next_pipelines().await?; } } }
             MenuSelection::Projects => { if let Some(i) = self.projects_state.selected() { if i + 10 >= self.filtered_projects.len() { self.fetch_next_projects().await?; } } }
             MenuSelection::Groups => { if let Some(i) = self.groups_state.selected() { if i + 10 >= self.filtered_groups.len() { self.fetch_next_groups().await?; } } }
+            MenuSelection::Repository | MenuSelection::Branches | MenuSelection::Boards | MenuSelection::Epics => {}
+            MenuSelection::Commits => { if let Some(i) = self.commits_state.selected() { if i + 10 >= self.commits.len() { self.fetch_next_commits().await?; } } }
         }
         Ok(())
     }
@@ -1585,7 +1860,22 @@ impl App {
     }
     pub fn toggle_focus(&mut self) { self.active_panel = match self.active_panel { Panel::Main | Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project }, _ => Panel::Main }; }
     pub fn switch_project(&mut self) { self.show_project_popup = true; let _ = self.fetch_projects(); }
-    pub async fn select_project(&mut self) { if let Some(i) = self.projects_state.selected() { if let Some(project) = self.projects.get(i).cloned() { self.selected_project = Some(project); self.show_project_popup = false; self.active_panel = Panel::Project; self.active_context = Context::Project; self.project_menu_state.select(Some(0)); self.active_selection = MenuSelection::Pipelines; self.selected_mr = None; self.selected_issue = None; self.selected_pipeline = None; self.discussions.clear(); self.jobs.clear(); self.merge_requests.clear(); self.issues.clear(); self.pipelines.clear(); self.filter_lists(); let _ = self.refresh().await; } } }
+    pub async fn select_project(&mut self) { 
+        if let Some(i) = self.projects_state.selected() { 
+            if let Some(project) = self.projects.get(i).cloned() { 
+                self.selected_project = Some(project); 
+                self.show_project_popup = false; 
+                self.active_panel = Panel::Main; 
+                self.active_context = Context::Project; 
+                self.project_menu_state.select(Some(0)); 
+                self.active_selection = MenuSelection::MergeRequests; 
+                self.selected_mr = None; self.selected_issue = None; self.selected_pipeline = None; 
+                self.discussions.clear(); self.jobs.clear(); self.merge_requests.clear(); self.issues.clear(); self.pipelines.clear(); 
+                self.filter_lists(); 
+                let _ = self.refresh().await; 
+            } 
+        } 
+    }
 }
 
 pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoji> {
@@ -1596,3 +1886,4 @@ pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoj
     }
     reactions
 }
+

@@ -347,7 +347,7 @@ mod tests {
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
         let mut app = App::new(client);
-        app.tx = tx; app.active_panel = Panel::Project; app.active_context = Context::Project; app.active_selection = MenuSelection::Issues; app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
+        app.tx = tx; app.active_panel = Panel::Project; app.active_context = Context::Project; app.active_selection = MenuSelection::Issues; app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
         (server, app, rx)
     }
 

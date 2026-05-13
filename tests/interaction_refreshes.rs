@@ -20,7 +20,7 @@ async fn setup_app(server_uri: &str) -> (App, tokio::sync::mpsc::UnboundedReceiv
     app.active_panel = Panel::MainDetail;
     app.active_context = Context::Project;
     app.active_selection = MenuSelection::MergeRequests;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
     (app, rx)
 }
 

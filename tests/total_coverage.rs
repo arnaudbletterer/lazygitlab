@@ -29,7 +29,7 @@ async fn run_monolithic_tests() {
     let mut app = App::new(client);
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.tx = tx;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
 
     // 1. Initial data load
     let _ = app.initial_setup().await;

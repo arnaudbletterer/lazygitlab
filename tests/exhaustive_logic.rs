@@ -12,6 +12,7 @@ fn dummy_project(id: u64, name: &str) -> Project {
         path_with_namespace: Some(format!("n/{}", name)),
         web_url: Some("u".into()),
         default_branch: None,
+        namespace: None,
     }
 }
 

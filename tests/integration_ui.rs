@@ -27,7 +27,7 @@ async fn setup_app() -> (MockServer, App) {
     app.active_context = Context::Project;
     app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests
     app.active_selection = MenuSelection::MergeRequests;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
+    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
     app.show_project_popup = false;
     (server, app)
 }
@@ -110,8 +110,8 @@ async fn test_navigation_and_focus() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     app.projects = vec![
-        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()), default_branch: None },
-        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()), default_branch: None },
+        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()), default_branch: None, namespace: None },
+        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()), default_branch: None, namespace: None },
     ];
     app.show_project_popup = true;
     app.projects_state.select(Some(0));
