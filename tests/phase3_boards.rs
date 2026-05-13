@@ -63,6 +63,30 @@ async fn test_fetch_board_lists_and_issues() {
 }
 
 #[tokio::test]
+async fn test_fetch_board_list_issues() {
+    let (server, mut app, mut rx) = setup_app().await;
+    let project_id = 123;
+    let board_id = 1;
+    let list_id = 10;
+    app.selected_project = Some(Project { id: project_id, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
+
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v4/projects/{}/boards/{}/lists/{}/issues", project_id, board_id, list_id)))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([{"iid": 1, "project_id": project_id, "title": "I1", "state": "opened", "web_url": "u", "author": {"id": 1, "username": "u1"}, "assignees": [], "labels": []}])))
+        .mount(&server)
+        .await;
+
+    app.fetch_board_list_issues(board_id, list_id).await.unwrap();
+    let _ = rx.recv().await.unwrap(); // Loading(true)
+    let update = rx.recv().await.unwrap();
+    if let DataUpdate::BoardIssues { list_id: lid, data, .. } = update {
+        assert_eq!(lid, list_id);
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0].title, "I1");
+    } else { panic!("Expected DataUpdate::BoardIssues"); }
+}
+
+#[tokio::test]
 async fn test_ui_board_navigation() {
     let (server, mut app, mut rx) = setup_app().await;
     let backend = TestBackend::new(100, 40);

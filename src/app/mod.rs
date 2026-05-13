@@ -676,8 +676,13 @@ impl App {
                         MenuSelection::Repository => { let _ = self.fetch_repository_tree().await; }
                         MenuSelection::Branches => { if let Some(p) = &self.selected_project { let _ = self.fetch_branches(p.id).await; } }
                         MenuSelection::Commits => { let _ = self.fetch_commits().await; }
-                        MenuSelection::Boards => { let _ = self.fetch_boards().await; }
-                        MenuSelection::Epics => { let _ = self.fetch_epics().await; }
+                        MenuSelection::Boards => { 
+                            if let Some(board) = self.selected_board.clone() {
+                                let _ = self.fetch_board_lists(board.id).await;
+                            } else {
+                                let _ = self.fetch_boards().await; 
+                            }
+                        }                        MenuSelection::Epics => { let _ = self.fetch_epics().await; }
                         _ => {}
                     }
                 }

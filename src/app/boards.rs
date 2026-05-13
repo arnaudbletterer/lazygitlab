@@ -51,11 +51,20 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = ProjectBoardListIssues { project: pid, board: board_id, list: list_id };
-                let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(ep, gitlab::api::Pagination::Limit(50)).query_async(&client)).await;
+                // Increase timeout to 60s for stress test projects
+                let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), paged(ep, gitlab::api::Pagination::Limit(50)).query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { let _ = tx.send(DataUpdate::BoardIssues { project_id: pid, board_id, list_id, data }); }
-                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
-                    Err(_) => { let _ = tx.send(DataUpdate::Error("Board issues fetch timed out".into())); }
+                    Ok(Err(e)) => { 
+                        let err_msg = e.to_string();
+                        // If it's a 404, maybe the list was deleted or is special
+                        if err_msg.contains("404") {
+                            let _ = tx.send(DataUpdate::BoardIssues { project_id: pid, board_id, list_id, data: Vec::new() });
+                        } else {
+                            let _ = tx.send(DataUpdate::Error(format!("List {} error: {}", list_id, err_msg))); 
+                        }
+                    }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error(format!("List {} fetch timed out", list_id))); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
