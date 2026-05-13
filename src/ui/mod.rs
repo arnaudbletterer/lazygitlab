@@ -49,24 +49,15 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         Span::styled(" Enter ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
     ];
 
-    if app.active_panel == Panel::Main {
-        help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
-        help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
-        help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
-    }
-
     help_spans.push(Span::styled(" / ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Search "));
-
-    if app.selected_mr.is_some() || app.selected_issue.is_some() {
-        help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
-        help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
-        help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
-    }
+    help_spans.push(Span::styled(" g ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Go "));
 
     if app.active_panel == Panel::MainDetail {
         help_spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Comment "));
     }
 
+    help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
+    help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
     help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
 
     let mut status_spans = Vec::new();

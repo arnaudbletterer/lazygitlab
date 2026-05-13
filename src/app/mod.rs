@@ -167,6 +167,7 @@ impl App {
             last_input: std::time::Instant::now(),
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
             theme_set: syntect::highlighting::ThemeSet::load_defaults(),
+            pending_g_prefix: false,
         }
     }
 
@@ -1036,6 +1037,63 @@ impl App {
         self.last_input = std::time::Instant::now();
         tracing::info!("User action: key pressed: {:?}", key);
 
+        if self.pending_g_prefix {
+            self.pending_g_prefix = false;
+            match key.code {
+                KeyCode::Char('t') => { // Go to Todos
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Todos;
+                    self.active_panel = Panel::Main;
+                    self.dashboard_menu_state.select(Some(0));
+                    let _ = self.refresh().await;
+                }
+                KeyCode::Char('m') => { // Go to MRs
+                    if self.active_context == Context::Project {
+                        self.active_selection = MenuSelection::MergeRequests;
+                        self.project_menu_state.select(Some(0));
+                    } else {
+                        self.active_context = Context::Dashboard;
+                        self.active_selection = MenuSelection::MergeRequests;
+                        self.dashboard_menu_state.select(Some(1));
+                    }
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
+                KeyCode::Char('i') => { // Go to Issues
+                    if self.active_context == Context::Project {
+                        self.active_selection = MenuSelection::Issues;
+                        self.project_menu_state.select(Some(1));
+                    } else {
+                        self.active_context = Context::Dashboard;
+                        self.active_selection = MenuSelection::Issues;
+                        self.dashboard_menu_state.select(Some(2));
+                    }
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
+                KeyCode::Char('p') => { // Go to Pipelines
+                    if self.selected_project.is_some() {
+                        self.active_context = Context::Project;
+                        self.active_selection = MenuSelection::Pipelines;
+                        self.project_menu_state.select(Some(2));
+                        self.active_panel = Panel::Main;
+                        let _ = self.refresh().await;
+                    }
+                }
+                KeyCode::Char('r') => { // Go to Repository
+                    if self.selected_project.is_some() {
+                        self.active_context = Context::Project;
+                        self.active_selection = MenuSelection::Repository;
+                        self.project_menu_state.select(Some(3));
+                        self.active_panel = Panel::Main;
+                        let _ = self.refresh().await;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // On Windows, characters produced via AltGr are often reported with Control + Alt modifiers.
         // We strip these modifiers ONLY if both are present to ensure AltGr characters are correctly processed
         // while preserving single modifiers like Control for shortcuts (e.g., Ctrl+Enter).
@@ -1698,63 +1756,8 @@ impl App {
                 }
             }
             KeyCode::Char('g') => {
-                // Wait for next key to determine destination
-                if let Some(event) = crossterm::event::read().ok() {
-                    if let crossterm::event::Event::Key(next_key) = event {
-                        match next_key.code {
-                            KeyCode::Char('t') => { // Go to Todos
-                                self.active_context = Context::Dashboard;
-                                self.active_selection = MenuSelection::Todos;
-                                self.active_panel = Panel::Main;
-                                self.dashboard_menu_state.select(Some(0));
-                                let _ = self.refresh().await;
-                            }
-                            KeyCode::Char('m') => { // Go to MRs
-                                if self.active_context == Context::Project {
-                                    self.active_selection = MenuSelection::MergeRequests;
-                                    self.project_menu_state.select(Some(0));
-                                } else {
-                                    self.active_context = Context::Dashboard;
-                                    self.active_selection = MenuSelection::MergeRequests;
-                                    self.dashboard_menu_state.select(Some(1));
-                                }
-                                self.active_panel = Panel::Main;
-                                let _ = self.refresh().await;
-                            }
-                            KeyCode::Char('i') => { // Go to Issues
-                                if self.active_context == Context::Project {
-                                    self.active_selection = MenuSelection::Issues;
-                                    self.project_menu_state.select(Some(1));
-                                } else {
-                                    self.active_context = Context::Dashboard;
-                                    self.active_selection = MenuSelection::Issues;
-                                    self.dashboard_menu_state.select(Some(2));
-                                }
-                                self.active_panel = Panel::Main;
-                                let _ = self.refresh().await;
-                            }
-                            KeyCode::Char('p') => { // Go to Pipelines
-                                if self.selected_project.is_some() {
-                                    self.active_context = Context::Project;
-                                    self.active_selection = MenuSelection::Pipelines;
-                                    self.project_menu_state.select(Some(2));
-                                    self.active_panel = Panel::Main;
-                                    let _ = self.refresh().await;
-                                }
-                            }
-                            KeyCode::Char('r') => { // Go to Repository
-                                if self.selected_project.is_some() {
-                                    self.active_context = Context::Project;
-                                    self.active_selection = MenuSelection::Repository;
-                                    self.project_menu_state.select(Some(3));
-                                    self.active_panel = Panel::Main;
-                                    let _ = self.refresh().await;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+                self.pending_g_prefix = true;
+                return;
             }
             KeyCode::Char('/') => {
                 self.show_search = true;
