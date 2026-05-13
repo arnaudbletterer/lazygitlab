@@ -262,6 +262,49 @@ impl App {
         });
         Ok(())
     }
+    pub fn copy_url(&mut self) {
+        let url = if let Some(mr) = &self.selected_mr { 
+            Some(mr.web_url.clone()) 
+        } else if let Some(issue) = &self.selected_issue { 
+            Some(issue.web_url.clone()) 
+        } else if let Some(pipeline) = &self.selected_pipeline { 
+            Some(pipeline.web_url.clone()) 
+        } else if let Some(job) = &self.selected_job { 
+            Some(job.web_url.clone()) 
+        } else if self.active_selection == MenuSelection::Projects { 
+            if let Some(idx) = self.projects_state.selected() { 
+                self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) 
+            } else { 
+                self.selected_project.as_ref().and_then(|p| p.web_url.clone()) 
+            } 
+        } else if self.active_selection == MenuSelection::Groups { 
+            if let Some(idx) = self.groups_state.selected() { 
+                self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) 
+            } else { 
+                None 
+            } 
+        } else if let Some(project) = &self.selected_project { 
+            project.web_url.clone() 
+        } else { 
+            None 
+        };
+
+        if let Some(url) = url {
+            match arboard::Clipboard::new() {
+                Ok(mut clipboard) => {
+                    if let Err(e) = clipboard.set_text(url) {
+                        self.last_error = Some(format!("Failed to copy URL: {}", e));
+                    } else {
+                        self.status_message = Some("URL copied to clipboard!".into());
+                        // Clear message after some time? Not easily done without a timer, but fine for now.
+                    }
+                }
+                Err(e) => {
+                    self.last_error = Some(format!("Clipboard error: {}", e));
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

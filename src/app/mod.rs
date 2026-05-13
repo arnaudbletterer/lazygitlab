@@ -3,6 +3,7 @@ pub mod mrs;
 pub mod pipelines;
 pub mod global;
 pub mod boards;
+pub mod search;
 
 use gitlab::{AsyncGitlab, api::AsyncQuery};
 use crate::models::*;
@@ -159,12 +160,23 @@ impl App {
             board_issue_states: std::collections::HashMap::new(),
             epics: Vec::new(),
             epics_state: ListState::default(),
+            show_search: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            search_state: ListState::default(),
+            last_input: std::time::Instant::now(),
+            syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
+            theme_set: syntect::highlighting::ThemeSet::load_defaults(),
         }
     }
 
     pub async fn process_updates(&mut self, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
         while let Ok(update) = rx.try_recv() {
             match update {
+                DataUpdate::SearchResults { data } => {
+                    self.search_results = data;
+                    self.search_state.select(if self.search_results.is_empty() { None } else { Some(0) });
+                }
                 DataUpdate::Todos { data, page, has_more } => { self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); }
                 DataUpdate::AppendTodos(mut data) => { self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); }
 
@@ -1021,6 +1033,7 @@ impl App {
         use crossterm::event::{KeyCode, KeyModifiers};
         use chrono::Timelike;
 
+        self.last_input = std::time::Instant::now();
         tracing::info!("User action: key pressed: {:?}", key);
 
         // On Windows, characters produced via AltGr are often reported with Control + Alt modifiers.
@@ -1038,6 +1051,7 @@ impl App {
             match processed_key.code {
                 KeyCode::Char('q') => { self.should_quit = true; return; }
                 KeyCode::Char('o') => { self.open_in_browser(); return; }
+                KeyCode::Char('y') => { self.copy_url(); return; }
                 _ => {}
             }
         }
@@ -1263,6 +1277,68 @@ impl App {
             }
             return;
         }
+        if self.show_search && !self.input_mode {
+            match processed_key.code {
+                KeyCode::Esc => {
+                    self.show_search = false;
+                    self.search_results.clear();
+                    return;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if !self.search_results.is_empty() {
+                        let i = match self.search_state.selected() {
+                            Some(i) => if i >= self.search_results.len() - 1 { 0 } else { i + 1 },
+                            None => 0,
+                        };
+                        self.search_state.select(Some(i));
+                    }
+                    return;
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    if !self.search_results.is_empty() {
+                        let i = match self.search_state.selected() {
+                            Some(i) => if i == 0 { self.search_results.len() - 1 } else { i - 1 },
+                            None => 0,
+                        };
+                        self.search_state.select(Some(i));
+                    }
+                    return;
+                }
+                KeyCode::Enter => {
+                    if let Some(idx) = self.search_state.selected() {
+                        if let Some(res) = self.search_results.get(idx).cloned() {
+                            match res {
+                                SearchResult::Project(p) => {
+                                    self.selected_project = Some(p);
+                                    self.active_context = Context::Project;
+                                    self.active_panel = Panel::Project;
+                                    self.show_search = false;
+                                    let _ = self.refresh().await;
+                                }
+                                SearchResult::Issue(i) => {
+                                    self.selected_issue = Some(i);
+                                    self.view_mode = ViewMode::Detail;
+                                    self.show_search = false;
+                                }
+                                SearchResult::MergeRequest(m) => {
+                                    self.selected_mr = Some(m);
+                                    self.view_mode = ViewMode::Detail;
+                                    self.show_search = false;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                KeyCode::Char('/') => {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::Search;
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         if self.input_mode {
             if self.input_target == InputTarget::Filter {
                 match processed_key.code {
@@ -1270,6 +1346,26 @@ impl App {
                     KeyCode::Esc => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
                     KeyCode::Char(c) => { self.filter_input.push(c); self.filter_lists(); }
                     KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
+                    _ => {}
+                }
+            } else if self.input_target == InputTarget::Search {
+                match processed_key.code {
+                    KeyCode::Enter => {
+                        self.input_mode = false;
+                        let _ = self.trigger_global_search().await;
+                    }
+                    KeyCode::Esc => {
+                        self.input_mode = false;
+                        self.show_search = false;
+                        self.search_query.clear();
+                        self.search_results.clear();
+                    }
+                    KeyCode::Char(c) => {
+                        self.search_query.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        self.search_query.pop();
+                    }
                     _ => {}
                 }
             } else {
@@ -1594,6 +1690,79 @@ impl App {
             KeyCode::Char('o') => self.open_in_browser(),
             KeyCode::Char('p') => self.switch_project(),
             KeyCode::Char('r') => { let _ = self.refresh().await; }
+            KeyCode::Char('f') => {
+                if self.active_panel == Panel::Main {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::Filter;
+                    self.show_filter_input = true;
+                }
+            }
+            KeyCode::Char('g') => {
+                // Wait for next key to determine destination
+                if let Some(event) = crossterm::event::read().ok() {
+                    if let crossterm::event::Event::Key(next_key) = event {
+                        match next_key.code {
+                            KeyCode::Char('t') => { // Go to Todos
+                                self.active_context = Context::Dashboard;
+                                self.active_selection = MenuSelection::Todos;
+                                self.active_panel = Panel::Main;
+                                self.dashboard_menu_state.select(Some(0));
+                                let _ = self.refresh().await;
+                            }
+                            KeyCode::Char('m') => { // Go to MRs
+                                if self.active_context == Context::Project {
+                                    self.active_selection = MenuSelection::MergeRequests;
+                                    self.project_menu_state.select(Some(0));
+                                } else {
+                                    self.active_context = Context::Dashboard;
+                                    self.active_selection = MenuSelection::MergeRequests;
+                                    self.dashboard_menu_state.select(Some(1));
+                                }
+                                self.active_panel = Panel::Main;
+                                let _ = self.refresh().await;
+                            }
+                            KeyCode::Char('i') => { // Go to Issues
+                                if self.active_context == Context::Project {
+                                    self.active_selection = MenuSelection::Issues;
+                                    self.project_menu_state.select(Some(1));
+                                } else {
+                                    self.active_context = Context::Dashboard;
+                                    self.active_selection = MenuSelection::Issues;
+                                    self.dashboard_menu_state.select(Some(2));
+                                }
+                                self.active_panel = Panel::Main;
+                                let _ = self.refresh().await;
+                            }
+                            KeyCode::Char('p') => { // Go to Pipelines
+                                if self.selected_project.is_some() {
+                                    self.active_context = Context::Project;
+                                    self.active_selection = MenuSelection::Pipelines;
+                                    self.project_menu_state.select(Some(2));
+                                    self.active_panel = Panel::Main;
+                                    let _ = self.refresh().await;
+                                }
+                            }
+                            KeyCode::Char('r') => { // Go to Repository
+                                if self.selected_project.is_some() {
+                                    self.active_context = Context::Project;
+                                    self.active_selection = MenuSelection::Repository;
+                                    self.project_menu_state.select(Some(3));
+                                    self.active_panel = Panel::Main;
+                                    let _ = self.refresh().await;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('/') => {
+                self.show_search = true;
+                self.input_mode = true;
+                self.input_target = InputTarget::Search;
+                self.search_query.clear();
+                self.search_results.clear();
+            }
             KeyCode::Char('[') => {
                 match self.active_selection {
                     MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },

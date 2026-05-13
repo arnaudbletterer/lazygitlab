@@ -50,13 +50,17 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     ];
 
     if app.active_panel == Panel::Main {
-        help_spans.push(Span::styled(" [ / ] ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Tabs "));
-        help_spans.push(Span::styled(" / ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Filter "));
+        help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
+        help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
+        help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
     }
 
+    help_spans.push(Span::styled(" / ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Search "));
+
     if app.selected_mr.is_some() || app.selected_issue.is_some() {
-        help_spans.push(Span::styled(" c ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Close "));
         help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
+        help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
+        help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
     }
 
     if app.active_panel == Panel::MainDetail {
@@ -100,8 +104,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_create_issue_popup { render_create_issue_popup(f, app); }
     if app.show_create_mr_popup { render_create_mr_popup(f, app); }
     if app.show_snooze_popup { render_snooze_popup(f, app); }
+    if app.show_search { render_search_popup(f, app); }
+    if app.show_help_popup { render_help_popup(f, app); }
 
-    if app.input_mode && app.input_target != crate::models::InputTarget::Filter {
+    if app.input_mode && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search) {
         let title = match app.input_target {
             crate::models::InputTarget::Reply => " Reply (Ctrl+Enter to send, Esc to cancel) ",
             crate::models::InputTarget::NewComment => " New Comment (Ctrl+Enter to send, Esc to cancel) ",
