@@ -14,26 +14,40 @@ use lazygitlab::ui::ui;
 #[cfg(not(tarpaulin_include))]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
+    let _guard = crate::logger::init();
     let config = Config::from_env();
-    let client = GitlabBuilder::new(config.url, config.token).build_async().await?;
+    let mut builder = GitlabBuilder::new(config.url, config.token);
+    if config.insecure {
+        builder.insecure();
+    }
+    let client = builder.build_async().await?;
     let mut app = App::new(client);
     
     // Start TUI first
     run_with_terminal(&mut app).await
 }
 
-struct Config { url: String, token: String }
+struct Config { url: String, token: String, insecure: bool }
 impl Config {
     fn from_env() -> Self {
         let mut url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            url = format!("https://{}", url);
+        let mut insecure = false;
+        if url.starts_with("http://") {
+            insecure = true;
+            url = url.strip_prefix("http://").unwrap().to_string();
+        } else if url.starts_with("https://") {
+            url = url.strip_prefix("https://").unwrap().to_string();
         }
+        
+        while url.ends_with('/') {
+            url.pop();
+        }
+
         let token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
         if token.is_empty() {
             panic!("GITLAB_TOKEN must be set");
         }
-        Self { url, token }
+        Self { url, token, insecure }
     }
 }
 
@@ -212,6 +226,14 @@ mod tests {
         }
         let config = Config::from_env();
         assert_eq!(config.token, "test_token");
-        assert_eq!(config.url, "https://test.gitlab.com");
+        assert_eq!(config.url, "test.gitlab.com");
+        assert!(!config.insecure);
+
+        unsafe {
+            std::env::set_var("GITLAB_URL", "http://test.gitlab.com/");
+        }
+        let config = Config::from_env();
+        assert_eq!(config.url, "test.gitlab.com");
+        assert!(config.insecure);
     }
 }
