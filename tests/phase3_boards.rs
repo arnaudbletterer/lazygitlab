@@ -101,7 +101,7 @@ async fn test_ui_board_navigation() {
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
     app.update_preview().await;
 
-    app.project_boards = vec![Board { id: 1, name: "B1".into() }];
+    app.project_boards = vec![Board { id: 1, name: "B1".into(), lists: None }];
     app.project_boards_state.select(Some(0));
     
     Mock::given(method("GET"))

@@ -499,6 +499,7 @@ pub enum GroupedItem<T> {
 pub struct Board {
     pub id: u64,
     pub name: String,
+    pub lists: Option<Vec<BoardList>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

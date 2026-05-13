@@ -30,13 +30,40 @@ impl App {
             let pid = project.id;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                // 1. Fetch the label lists
                 let ep = ProjectBoardLists { project: pid, board: board_id };
                 let res: Result<Result<Vec<BoardList>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(ep, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
-                match res {
-                    Ok(Ok(data)) => { let _ = tx.send(DataUpdate::BoardLists { project_id: pid, board_id, data }); }
-                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
-                    Err(_) => { let _ = tx.send(DataUpdate::Error("Board lists fetch timed out".into())); }
+                
+                // 2. Fetch full board details to check for default columns (Backlog/Closed)
+                let det_ep = ProjectBoardDetails { project: pid, board: board_id };
+                let det_res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), det_ep.query_async(&client)).await;
+
+                let mut all_lists = match res {
+                    Ok(Ok(data)) => data,
+                    _ => Vec::new(),
+                };
+
+                if let Ok(Ok(det)) = det_res {
+                    // GitLab board details can include "backlog_list" and "closed_list"
+                    // These are not in the 'lists' endpoint.
+                    
+                    if let Some(backlog) = det.get("backlog_list") {
+                        if let Ok(bl) = serde_json::from_value::<BoardList>(backlog.clone()) {
+                            if !all_lists.iter().any(|l| l.id == bl.id) {
+                                all_lists.insert(0, bl);
+                            }
+                        }
+                    }
+                    if let Some(closed) = det.get("closed_list") {
+                        if let Ok(cl) = serde_json::from_value::<BoardList>(closed.clone()) {
+                            if !all_lists.iter().any(|l| l.id == cl.id) {
+                                all_lists.push(cl);
+                            }
+                        }
+                    }
                 }
+
+                let _ = tx.send(DataUpdate::BoardLists { project_id: pid, board_id, data: all_lists });
                 let _ = tx.send(DataUpdate::Loading(false));
             });
         }
@@ -48,24 +75,31 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let pid = project.id;
+            
+            // Check if this is a default list (Backlog/Closed) by looking at its list_type in our state
+            let _list_type = self.board_lists.iter().find(|l| l.id == list_id).map(|l| l.list_type.clone()).unwrap_or_default();
+            
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let mut data = Vec::new();
+                
                 let ep = ProjectBoardListIssues { project: pid, board: board_id, list: list_id };
                 // Increase timeout to 60s for stress test projects
                 let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), paged(ep, gitlab::api::Pagination::Limit(50)).query_async(&client)).await;
+                
                 match res {
-                    Ok(Ok(data)) => { let _ = tx.send(DataUpdate::BoardIssues { project_id: pid, board_id, list_id, data }); }
+                    Ok(Ok(d)) => { data = d; }
                     Ok(Err(e)) => { 
                         let err_msg = e.to_string();
-                        // If it's a 404, maybe the list was deleted or is special
-                        if err_msg.contains("404") {
-                            let _ = tx.send(DataUpdate::BoardIssues { project_id: pid, board_id, list_id, data: Vec::new() });
-                        } else {
+                        // Special handling for backlog/closed if needed, but the endpoint should work
+                        if !err_msg.contains("404") {
                             let _ = tx.send(DataUpdate::Error(format!("List {} error: {}", list_id, err_msg))); 
                         }
                     }
                     Err(_) => { let _ = tx.send(DataUpdate::Error(format!("List {} fetch timed out", list_id))); }
                 }
+                
+                let _ = tx.send(DataUpdate::BoardIssues { project_id: pid, board_id, list_id, data });
                 let _ = tx.send(DataUpdate::Loading(false));
             });
         }

@@ -898,6 +898,13 @@ impl Endpoint for ProjectBoardLists {
 impl Pageable for ProjectBoardLists {}
 
 #[derive(Debug, Clone)]
+pub struct ProjectBoardDetails { pub project: u64, pub board: u64 }
+impl Endpoint for ProjectBoardDetails {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/boards/{}", self.project, self.board).into() }
+}
+
+#[derive(Debug, Clone)]
 pub struct ProjectBoardListIssues { pub project: u64, pub board: u64, pub list: u64 }
 impl Endpoint for ProjectBoardListIssues {
     fn method(&self) -> Method { Method::GET }
