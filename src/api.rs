@@ -868,6 +868,20 @@ impl Endpoint for RawFile {
 }
 
 #[derive(Debug, Clone)]
+pub struct GlobalSearch { pub scope: String, pub search: String }
+impl Endpoint for GlobalSearch {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { "search".into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        params.push("scope", &self.scope);
+        params.push("search", &self.search);
+        params
+    }
+}
+impl Pageable for GlobalSearch {}
+
+#[derive(Debug, Clone)]
 pub struct ProjectBoards { pub project: u64 }
 impl Endpoint for ProjectBoards {
     fn method(&self) -> Method { Method::GET }
