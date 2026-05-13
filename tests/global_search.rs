@@ -1,4 +1,4 @@
-use lazygitlab::models::{App, DataUpdate, SearchResult, ViewMode, Context, Panel, InputTarget};
+use lazygitlab::models::{App, SearchResult};
 use gitlab::GitlabBuilder;
 use tokio::sync::mpsc;
 use wiremock::{MockServer, Mock, ResponseTemplate};

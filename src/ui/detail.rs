@@ -51,7 +51,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                     ];
                     if note.system { header.push(Span::styled(" [SYSTEM]", Style::default().fg(app.theme.dim))); }
                     content.push(Line::from(header));
-                    content.extend(render_markdown(&note.body, &app.theme));
+                    content.extend(render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set));
                     content.push(Line::from(""));
                 }
                 if disc.notes.is_empty() { content.push(Line::from(" No notes in this discussion.")); }
@@ -65,14 +65,14 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 f.render_widget(&app.textarea, inner);
                 return;
             } else {
-                content.extend(render_markdown(mr.description.as_deref().unwrap_or("No description provided."), &app.theme));
+                content.extend(render_markdown(mr.description.as_deref().unwrap_or("No description provided."), &app.theme, &app.syntax_set, &app.theme_set));
             }
         } else if let Some(issue) = &app.selected_issue {
             if is_editing_desc {
                 f.render_widget(&app.textarea, inner);
                 return;
             } else {
-                content.extend(render_markdown(issue.description.as_deref().unwrap_or("No description provided."), &app.theme));
+                content.extend(render_markdown(issue.description.as_deref().unwrap_or("No description provided."), &app.theme, &app.syntax_set, &app.theme_set));
             }
         } else {
             content.push(Line::from(" No item selected."));

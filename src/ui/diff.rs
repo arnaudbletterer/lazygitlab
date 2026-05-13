@@ -158,7 +158,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                                 ]));
                                 
                                 // Render markdown body with indentation
-                                let markdown_lines = render_markdown(&note.body, &app.theme);
+                                let markdown_lines = render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set);
                                 for line in markdown_lines {
                                     let mut line_spans = vec![Span::styled(format!("{}  ", indent), content_style)];
                                     for span in line.spans {

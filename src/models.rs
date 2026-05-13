@@ -411,6 +411,7 @@ pub enum InputTarget {
     CreateMRSourceBranch,
     CreateMRTargetBranch,
     SnoozeUntil,
+    Search,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -520,6 +521,13 @@ pub struct Epic {
     pub web_url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SearchResult {
+    Project(Project),
+    Issue(Issue),
+    MergeRequest(MergeRequest),
+}
+
 #[derive(Debug)]
 pub enum DataUpdate {
     Todos { data: Vec<Todo>, page: u64, has_more: bool },
@@ -558,6 +566,7 @@ pub enum DataUpdate {
     BoardLists { project_id: u64, board_id: u64, data: Vec<BoardList> },
     BoardIssues { project_id: u64, board_id: u64, list_id: u64, data: Vec<Issue> },
     Epics { group_id: u64, data: Vec<Epic> },
+    SearchResults { data: Vec<SearchResult> },
     Loading(bool),
     Error(String),
     TriggerRefresh,
@@ -738,5 +747,15 @@ pub struct App {
     pub board_issue_states: std::collections::HashMap<u64, ListState>,
     pub epics: Vec<Epic>,
     pub epics_state: ListState,
+
+    // Search
+    pub show_search: bool,
+    pub search_query: String,
+    pub search_results: Vec<SearchResult>,
+    pub search_state: ListState,
+    pub last_input: std::time::Instant,
+
+    pub syntax_set: syntect::parsing::SyntaxSet,
+    pub theme_set: syntect::highlighting::ThemeSet,
 }
 
