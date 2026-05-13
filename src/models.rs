@@ -26,12 +26,22 @@ pub enum MergeRequestFilter {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Namespace {
+    pub id: u64,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub full_path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Project {
     pub id: u64,
     pub name: String,
     pub path_with_namespace: Option<String>,
     pub web_url: Option<String>,
     pub default_branch: Option<String>,
+    pub namespace: Option<Namespace>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -156,6 +166,26 @@ pub struct Group {
     pub web_url: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Branch {
+    pub name: String,
+    pub merged: Option<bool>,
+    pub protected: Option<bool>,
+    pub default: Option<bool>,
+    pub web_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Commit {
+    pub id: String,
+    pub short_id: String,
+    pub title: String,
+    pub author_name: String,
+    pub created_at: String,
+    pub message: String,
+    pub web_url: Option<String>,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum MenuSelection {
     Todos,
@@ -164,6 +194,11 @@ pub enum MenuSelection {
     Pipelines,
     Projects,
     Groups,
+    Repository,
+    Branches,
+    Commits,
+    Boards,
+    Epics,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -184,6 +219,33 @@ pub enum ViewMode {
     Detail,
     JobLog,
     Diff,
+    Tree,
+    Board,
+    Epics,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RepositoryTreeItem {
+    pub id: String,
+    pub name: String,
+    pub r#type: String,
+    pub path: String,
+    pub mode: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RepositoryFile {
+    pub file_name: String,
+    pub file_path: String,
+    pub size: u64,
+    pub encoding: String,
+    pub content_sha256: String,
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    pub blob_id: String,
+    pub commit_id: String,
+    pub last_commit_id: String,
+    pub content: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -328,10 +390,7 @@ pub struct Issue {
     pub reactions: Vec<AwardEmoji>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Branch {
-    pub name: String,
-}
+
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputTarget {
@@ -435,6 +494,32 @@ pub enum GroupedItem<T> {
     Item(T),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Board {
+    pub id: u64,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BoardList {
+    pub id: u64,
+    pub label: Option<Label>,
+    pub position: Option<u32>,
+    #[serde(default)]
+    pub list_type: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Epic {
+    pub id: u64,
+    pub iid: u64,
+    pub group_id: Option<u64>,
+    pub title: String,
+    pub description: Option<String>,
+    pub state: String,
+    pub web_url: String,
+}
+
 #[derive(Debug)]
 pub enum DataUpdate {
     Todos { data: Vec<Todo>, page: u64, has_more: bool },
@@ -464,6 +549,15 @@ pub enum DataUpdate {
     MRDetail(MergeRequest),
     IssueDetail(Issue),
     CurrentUser(Author),
+    RepositoryTree { project_id: u64, data: Vec<RepositoryTreeItem> },
+    RepositoryFile { project_id: u64, file_path: String, data: RepositoryFile },
+    Branches { project_id: u64, data: Vec<Branch>, page: u64, has_more: bool },
+    Commits { project_id: u64, data: Vec<Commit>, page: u64, has_more: bool },
+    AppendCommits { project_id: u64, data: Vec<Commit> },
+    Boards { project_id: u64, data: Vec<Board> },
+    BoardLists { project_id: u64, board_id: u64, data: Vec<BoardList> },
+    BoardIssues { project_id: u64, board_id: u64, list_id: u64, data: Vec<Issue> },
+    Epics { group_id: u64, data: Vec<Epic> },
     Loading(bool),
     Error(String),
     TriggerRefresh,
@@ -553,7 +647,7 @@ pub struct App {
     pub pipeline_variables_state: ListState,
 
     pub project_branches: Vec<Branch>,
-    pub filtered_branches: Vec<String>,
+    pub filtered_branches: Vec<Branch>,
     pub branches_state: ListState,
     pub show_branches_dropdown: bool,
 
@@ -622,4 +716,27 @@ pub struct App {
     pub show_snooze_popup: bool,
     pub snooze_state: ListState,
     pub current_user: Option<Author>,
+
+    // Repository
+    pub repository_tree: Vec<RepositoryTreeItem>,
+    pub repository_tree_state: tui_tree_widget::TreeState<String>,
+    pub selected_file_content: Option<RepositoryFile>,
+
+    // History
+    pub commits: Vec<Commit>,
+    pub commits_state: ListState,
+    pub commits_page: u64,
+    pub commits_has_more: bool,
+
+    // Kanban Boards & Epics
+    pub project_boards: Vec<Board>,
+    pub project_boards_state: ListState,
+    pub selected_board: Option<Board>,
+    pub board_lists: Vec<BoardList>,
+    pub board_lists_state: ListState,
+    pub board_issues: std::collections::HashMap<u64, Vec<Issue>>,
+    pub board_issue_states: std::collections::HashMap<u64, ListState>,
+    pub epics: Vec<Epic>,
+    pub epics_state: ListState,
 }
+

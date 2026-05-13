@@ -4,6 +4,7 @@ pub mod list;
 pub mod detail;
 pub mod popup;
 pub mod diff;
+pub mod boards;
 
 pub use widgets::Theme;
 use ratatui::prelude::*;
@@ -12,6 +13,7 @@ use crate::models::{App, ViewMode, Panel};
 use list::render_list_view;
 use detail::render_detail_view;
 use diff::render_diff_view;
+use boards::{render_boards_view, render_epics_view};
 use popup::*;
 use ansi_to_tui::IntoText;
 use crate::ui::widgets::{format_relative_time, format_time_only};
@@ -27,6 +29,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ViewMode::Detail => render_detail_view(f, app, main_chunks[0]),
         ViewMode::JobLog => render_job_log_view(f, app, main_chunks[0]),
         ViewMode::Diff => render_diff_view(f, app, main_chunks[0]),
+        ViewMode::Tree => render_tree_view(f, app, main_chunks[0]),
+        ViewMode::Board => render_boards_view(f, app, main_chunks[0]),
+        ViewMode::Epics => render_epics_view(f, app, main_chunks[0]),
     }
 
     // 1. Panels Shortcut Bar
@@ -271,6 +276,40 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(log, chunks[1]);
 
     widgets::render_shortcuts(f, chunks[2], vec![("tab", "toggle section"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
+}
+
+fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
+    let block = Block::default()
+        .title(format!(" File Content: {} ", app.selected_file_content.as_ref().map(|f| f.file_path.as_str()).unwrap_or("")))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(app.theme.border));
+        
+    if let Some(file) = &app.selected_file_content {
+        use base64::{Engine as _, engine::general_purpose};
+        let clean_content = file.content.replace("\n", "").replace("\r", "");
+        if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
+            if let Ok(text) = String::from_utf8(decoded) {
+                let mut lines = Vec::new();
+                for (i, line) in text.lines().enumerate() {
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("{:4} ", i + 1), Style::default().fg(app.theme.dim)),
+                        Span::raw(line),
+                    ]));
+                }
+                let p = Paragraph::new(lines).block(block).scroll((app.job_log_scroll, 0));
+                f.render_widget(p, area);
+            } else {
+                let p = Paragraph::new("Binary or non-UTF8 content").block(block);
+                f.render_widget(p, area);
+            }
+        } else {
+            let p = Paragraph::new("Failed to decode base64").block(block);
+            f.render_widget(p, area);
+        }
+    } else {
+        let p = Paragraph::new("Loading...").block(block);
+        f.render_widget(p, area);
+    }
 }
 
 #[cfg(test)]

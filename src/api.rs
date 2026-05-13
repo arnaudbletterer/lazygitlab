@@ -827,6 +827,78 @@ impl Endpoint for Branches {
 }
 impl Pageable for Branches {}
 
+#[derive(Debug, Clone)]
+pub struct Commits { pub project: u64, pub ref_name: Option<String> }
+impl Endpoint for Commits {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/commits", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(r) = &self.ref_name { params.push("ref_name", r); }
+        params
+    }
+}
+impl Pageable for Commits {}
+
+#[derive(Debug, Clone)]
+pub struct RepositoryTree { pub project: u64, pub path: Option<String>, pub ref_name: Option<String>, pub recursive: Option<bool> }
+impl Endpoint for RepositoryTree {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/tree", self.project).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(p) = &self.path { params.push("path", p); }
+        if let Some(r) = &self.ref_name { params.push("ref", r); }
+        if let Some(r) = self.recursive { params.push("recursive", r); }
+        params
+    }
+}
+impl Pageable for RepositoryTree {}
+
+#[derive(Debug, Clone)]
+pub struct RawFile { pub project: u64, pub file_path: String, pub ref_name: Option<String> }
+impl Endpoint for RawFile {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/files/{}/raw", self.project, self.file_path.replace("/", "%2F")).into() }
+    fn parameters(&self) -> gitlab::api::QueryParams<'_> {
+        let mut params = gitlab::api::QueryParams::default();
+        if let Some(r) = &self.ref_name { params.push("ref", r); }
+        params
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectBoards { pub project: u64 }
+impl Endpoint for ProjectBoards {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/boards", self.project).into() }
+}
+impl Pageable for ProjectBoards {}
+
+#[derive(Debug, Clone)]
+pub struct ProjectBoardLists { pub project: u64, pub board: u64 }
+impl Endpoint for ProjectBoardLists {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/boards/{}/lists", self.project, self.board).into() }
+}
+impl Pageable for ProjectBoardLists {}
+
+#[derive(Debug, Clone)]
+pub struct ProjectBoardListIssues { pub project: u64, pub board: u64, pub list: u64 }
+impl Endpoint for ProjectBoardListIssues {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/boards/{}/lists/{}/issues", self.project, self.board, self.list).into() }
+}
+impl Pageable for ProjectBoardListIssues {}
+
+#[derive(Debug, Clone)]
+pub struct GroupEpics { pub group: u64 }
+impl Endpoint for GroupEpics {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("groups/{}/epics", self.group).into() }
+}
+impl Pageable for GroupEpics {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1040,5 +1112,21 @@ mod tests {
 
         let retry_pipe = RetryPipeline { project: 1, pipeline: 1 };
         assert_eq!(retry_pipe.method(), Method::POST);
+
+        let p_boards = ProjectBoards { project: 1 };
+        assert_eq!(p_boards.method(), Method::GET);
+        assert_eq!(p_boards.endpoint(), "projects/1/boards");
+
+        let p_board_lists = ProjectBoardLists { project: 1, board: 2 };
+        assert_eq!(p_board_lists.method(), Method::GET);
+        assert_eq!(p_board_lists.endpoint(), "projects/1/boards/2/lists");
+
+        let p_board_issues = ProjectBoardListIssues { project: 1, board: 2, list: 3 };
+        assert_eq!(p_board_issues.method(), Method::GET);
+        assert_eq!(p_board_issues.endpoint(), "projects/1/boards/2/lists/3/issues");
+
+        let g_epics = GroupEpics { group: 1 };
+        assert_eq!(g_epics.method(), Method::GET);
+        assert_eq!(g_epics.endpoint(), "groups/1/epics");
     }
 }

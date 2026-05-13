@@ -14,9 +14,9 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),      // Status (Top)
-            Constraint::Min(0),         // Dashboard (Expands)
-            Constraint::Min(0),         // Explore (Expands)
-            Constraint::Min(0),         // Project (Expands)
+            Constraint::Length(5),      // Dashboard (3 items + title/border)
+            Constraint::Length(4),      // Explore (2 items + title/border)
+            if app.selected_project.is_some() { Constraint::Min(10) } else { Constraint::Length(0) },
         ])
         .split(chunks[0]);
 
@@ -28,14 +28,25 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let status_text = if let Some(project) = &app.selected_project {
         format!(" Project: {}\n Context: {:?}", project.name, app.active_context)
     } else {
-        format!(" No Project Selected\n Context: {:?}", app.active_context)
+        format!(" No Project Selected\n Context: Dashboard")
     };
     f.render_widget(Paragraph::new(status_text).block(status_block), side_chunks[0]);
 
     // 2. Navigation Panels (Filling space)
     render_nav_panel(f, app.active_panel, &app.theme, side_chunks[1], Panel::Dashboard, " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues"]);
     render_nav_panel(f, app.active_panel, &app.theme, side_chunks[2], Panel::Explore, " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
-    render_nav_panel(f, app.active_panel, &app.theme, side_chunks[3], Panel::Project, " Project ", &mut app.project_menu_state, vec!["  Merge Requests", "  Issues", "  Pipelines"]);
+    
+    if app.selected_project.is_some() {
+        let mut project_items = vec!["  Merge Requests", "  Issues", "  Pipelines", "  Repository", "  Branches", "  Commits", "  Boards"];
+        if let Some(project) = &app.selected_project {
+            if let Some(namespace) = &project.namespace {
+                if namespace.kind == "group" {
+                    project_items.push("  Epics");
+                }
+            }
+        }
+        render_nav_panel(f, app.active_panel, &app.theme, side_chunks[3], Panel::Project, " Project ", &mut app.project_menu_state, project_items);
+    }
 
     // --- RIGHT COLUMN: MAIN REGION (LIST -> DESCRIPTION -> CONTEXT) ---
     let is_item_selected = app.selected_mr.is_some() || app.selected_issue.is_some() || app.selected_pipeline.is_some();
@@ -90,12 +101,17 @@ fn render_nav_panel(f: &mut Frame, active_panel: Panel, theme: &crate::ui::Theme
 fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     let is_main_focused = app.active_panel == Panel::Main;
     let list_title = match app.active_selection {
-        MenuSelection::Todos => " Todos ",
+        MenuSelection::Todos => " To-Do List ",
         MenuSelection::MergeRequests => " Merge Requests ",
         MenuSelection::Issues => " Issues ",
         MenuSelection::Pipelines => " Pipelines ",
         MenuSelection::Projects => " Projects ",
         MenuSelection::Groups => " Groups ",
+        MenuSelection::Repository => " Repository ",
+        MenuSelection::Branches => " Branches ",
+        MenuSelection::Commits => " Commits ",
+        MenuSelection::Boards => " Boards ",
+        MenuSelection::Epics => " Epics ",
     };
     let list_block = Block::default()
         .borders(Borders::ALL)
@@ -202,6 +218,54 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 ]))
             }).collect();
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.groups_state);
+        }
+        MenuSelection::Repository => {
+            let mut tree_items: Vec<tui_tree_widget::TreeItem<'static, String>> = Vec::new();
+            for item in &app.repository_tree {
+                let text = if item.r#type == "tree" { format!("📁 {}", item.name) } else { format!("📄 {}", item.name) };
+                tree_items.push(tui_tree_widget::TreeItem::new_leaf(item.path.clone(), text));
+            }
+            let tree = tui_tree_widget::Tree::new(&tree_items)
+                .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
+                .block(Block::default().title("Tree").borders(Borders::ALL).border_style(if is_main_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) }))
+                .highlight_style(if is_main_focused { highlight_style } else { no_highlight })
+                .highlight_symbol(if is_main_focused { "> " } else { "  " });
+            f.render_stateful_widget(tree, list_chunks[1], &mut app.repository_tree_state);
+        }
+        MenuSelection::Branches => {
+            let items: Vec<ListItem> = app.filtered_branches.iter().map(|b| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} ", b.name), Style::default().add_modifier(Modifier::BOLD)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.branches_state);
+        }
+        MenuSelection::Commits => {
+            let items: Vec<ListItem> = app.commits.iter().map(|c| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} ", c.short_id), Style::default().fg(app.theme.dim)),
+                    Span::styled(c.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(format!(" - {}", c.author_name), Style::default().fg(app.theme.dim)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.commits_state);
+        }
+        MenuSelection::Boards => {
+            let items: Vec<ListItem> = app.project_boards.iter().map(|b| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {} ", b.name), Style::default().add_modifier(Modifier::BOLD)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.project_boards_state);
+        }
+        MenuSelection::Epics => {
+            let items: Vec<ListItem> = app.epics.iter().map(|e| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!("&{} ", e.iid), Style::default().fg(app.theme.dim)),
+                    Span::styled(e.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
+                ]))
+            }).collect();
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
         }
     }
 }

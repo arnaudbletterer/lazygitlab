@@ -163,6 +163,105 @@ impl App {
         }
         Ok(())
     }
+
+    pub async fn fetch_repository_tree(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let c = self.gitlab.clone(); let tx = self.tx.clone(); let pid = project.id;
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = RepositoryTree { project: pid, path: None, ref_name: None, recursive: Some(true) };
+                let res: Result<Result<Vec<RepositoryTreeItem>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(ep, gitlab::api::Pagination::All).query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => { let _ = tx.send(DataUpdate::RepositoryTree { project_id: pid, data }); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Repository tree fetch failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Repository tree fetch timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_repository_file(&mut self, file_path: String) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let c = self.gitlab.clone(); let tx = self.tx.clone(); let pid = project.id;
+            let ref_name = project.default_branch.clone().unwrap_or_else(|| "main".to_string());
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let endpoint = gitlab::api::projects::repository::files::File::builder()
+                    .project(pid)
+                    .file_path(file_path.clone())
+                    .ref_(ref_name)
+                    .build()
+                    .unwrap();
+                let res: Result<Result<RepositoryFile, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => { let _ = tx.send(DataUpdate::RepositoryFile { project_id: pid, file_path, data }); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Repository file fetch failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Repository file fetch timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_commits(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(project) = &self.selected_project {
+            let c = self.gitlab.clone(); let tx = self.tx.clone(); let pid = project.id;
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = Commits { project: pid, ref_name: None };
+                let res: Result<Result<Vec<Commit>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(ep, gitlab::api::Pagination::Limit(50)).query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => { let has_more = data.len() == 50; let _ = tx.send(DataUpdate::Commits { project_id: pid, data, page: 1, has_more }); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Commits fetch failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Commits fetch timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_next_commits(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.commits_has_more || self.is_loading { return Ok(()); }
+        if let Some(project) = &self.selected_project {
+            let pid = project.id;
+            let c = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = Commits { project: pid, ref_name: None };
+                let res: Result<Result<Vec<Commit>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(ep, gitlab::api::Pagination::Limit(50)).query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => { 
+                        if !data.is_empty() { let _ = tx.send(DataUpdate::AppendCommits { project_id: pid, data }); }
+                        else { let _ = tx.send(DataUpdate::Loading(false)); }
+                    }
+                    _ => { let _ = tx.send(DataUpdate::Loading(false)); }
+                }
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn fetch_branches(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let endpoint = ProjectBranches { project: project_id };
+            let res: Result<Result<Vec<Branch>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
+            match res {
+                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::Branches { project_id, data, page: 1, has_more: false }); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Branches fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]

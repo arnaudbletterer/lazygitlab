@@ -118,18 +118,6 @@ impl App {
         Ok(())
     }
 
-    pub async fn fetch_branches(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone();
-        let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let endpoint = ProjectBranches { project: project_id };
-            let _res: Result<Result<Vec<Branch>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
-            let _ = tx.send(DataUpdate::Loading(false));
-        });
-        Ok(())
-    }
-
     pub fn filter_branches(&mut self) {
         self.filtered_branches = filter_branch_names(&self.project_branches, &self.pipeline_ref_input);
         self.branches_state.select(if self.filtered_branches.is_empty() { None } else { Some(0) });
@@ -357,9 +345,9 @@ pub fn parse_job_log(raw_log: &str) -> Vec<LogLine> {
     lines
 }
 
-pub fn filter_branch_names(branches: &[Branch], search: &str) -> Vec<String> {
+pub fn filter_branch_names(branches: &[Branch], search: &str) -> Vec<Branch> {
     let search = search.to_lowercase();
-    branches.iter().map(|b| b.name.clone()).filter(|name| name.to_lowercase().contains(&search)).collect()
+    branches.iter().filter(|b| b.name.to_lowercase().contains(&search)).cloned().collect()
 }
 
 #[cfg(test)]
@@ -382,9 +370,10 @@ mod tests {
 
     #[test]
     fn test_filter_branch_names_logic() {
-        let branches = vec![Branch { name: "main".into() }, Branch { name: "dev".into() }];
-        assert_eq!(filter_branch_names(&branches, "MA"), vec!["main"]);
-        assert_eq!(filter_branch_names(&branches, "xyz"), Vec::<String>::new());
+        let branches = vec![Branch { name: "main".into(), merged: None, protected: None, default: None, web_url: None }, Branch { name: "dev".into(), merged: None, protected: None, default: None, web_url: None }];
+        assert_eq!(filter_branch_names(&branches, "MA").len(), 1);
+        assert_eq!(filter_branch_names(&branches, "MA")[0].name, "main");
+        assert_eq!(filter_branch_names(&branches, "xyz").len(), 0);
     }
 
     use gitlab::GitlabBuilder;
@@ -400,7 +389,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut app = App::new(client);
         app.tx = tx;
-        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None });
+        app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
         (server, app, rx)
     }
 

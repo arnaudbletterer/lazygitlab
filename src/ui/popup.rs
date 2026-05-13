@@ -240,7 +240,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
         );
         f.render_widget(Clear, dropdown_area);
         let branches: Vec<ListItem> = app.filtered_branches.iter()
-            .map(|b| ListItem::new(b.as_str()))
+            .map(|b| ListItem::new(b.name.as_str()))
             .collect();
         let list = List::new(branches)
             .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
@@ -428,7 +428,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         // 1. Project Popup
-        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: Some("ns/p1".into()), web_url: Some("u".into()), default_branch: None }];
+        app.projects = vec![Project { id: 1, name: "P1".into(), path_with_namespace: Some("ns/p1".into()), web_url: Some("u".into()), default_branch: None, namespace: None }];
         terminal.draw(|f| render_project_popup(f, &mut app)).unwrap();
 
         // 2. Label Popup
@@ -478,7 +478,10 @@ mod tests {
         terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
 
         app.show_branches_dropdown = true;
-        app.filtered_branches = vec!["b1".into(), "b2".into()];
+        app.filtered_branches = vec![
+            Branch { name: "b1".into(), merged: None, protected: None, default: None, web_url: None },
+            Branch { name: "b2".into(), merged: None, protected: None, default: None, web_url: None },
+        ];
         terminal.draw(|f| render_pipeline_popup(f, &mut app)).unwrap();
 
         // 8. Help Popup
