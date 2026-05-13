@@ -112,7 +112,16 @@ where
             || app.view_mode == ViewMode::JobLog
             || (app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some());
 
-        let refresh_interval = if is_live_view { Duration::from_secs(2) } else { Duration::from_secs(5) };
+        let idle_threshold = Duration::from_secs(60);
+        let is_idle = app.last_input.elapsed() >= idle_threshold;
+
+        let refresh_interval = if is_idle {
+            Duration::from_secs(30) // Back off when idle
+        } else if is_live_view {
+            Duration::from_secs(2) 
+        } else {
+            Duration::from_secs(5)
+        };
 
         if app.last_refresh.elapsed() >= refresh_interval {
             app.refresh().await;
