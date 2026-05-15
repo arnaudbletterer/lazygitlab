@@ -36,10 +36,11 @@ impl App {
             let ep = PagedProjects { membership: true, page: next_page, per_page: 50, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) };
             let res: Result<Result<Vec<Project>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
             match res {
-                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjects(data)); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
+                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjects(data)); } }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Projects fetch failed: {}", e))); }
                 Err(_) => { let _ = tx.send(DataUpdate::Error("Projects fetch timed out".into())); }
             }
+            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }

@@ -564,6 +564,7 @@ pub enum DataUpdate {
     Jobs { project_id: u64, pipeline_id: u64, data: Vec<Job> },
     ProjectVariables { project_id: u64, data: Vec<ProjectVariable> },
     Log { project_id: u64, job_id: u64, data: String },
+    TerminalEscape(String),
     Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
     Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
     MRDetail(MergeRequest),

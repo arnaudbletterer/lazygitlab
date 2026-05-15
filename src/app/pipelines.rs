@@ -44,19 +44,16 @@ impl App {
                     Ok(Ok(data)) => {
                         if !data.is_empty() {
                             let _ = tx.send(DataUpdate::AppendProjectPipelines { project_id: pid, data });
-                        } else {
-                            let _ = tx.send(DataUpdate::Loading(false));
                         }
                     }
                     Ok(Err(e)) => { 
                         let _ = tx.send(DataUpdate::Error(e.to_string())); 
-                        let _ = tx.send(DataUpdate::Loading(false));
                     }
                     Err(_) => {
                         let _ = tx.send(DataUpdate::Error("Pipelines fetch timed out".into()));
-                        let _ = tx.send(DataUpdate::Loading(false));
                     }
                 }
+                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
@@ -272,7 +269,59 @@ impl App {
 }
 
 pub fn parse_job_log(log: &str) -> Vec<LogLine> {
-    log.lines().map(|l| LogLine { timestamp: "".into(), content: l.to_string(), section: None, is_section_start: false, is_section_end: false }).collect()
+    let timestamp_re = regex::Regex::new(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+").unwrap();
+    let section_start_re = regex::Regex::new(r"section_start:(\d+):([^\r\n]+)\r").unwrap();
+    let section_end_re = regex::Regex::new(r"section_end:(\d+):([^\r\n]+)\r").unwrap();
+    let noise_re = regex::Regex::new(r"\x1b\[0K").unwrap(); // Clear line noise
+
+    log.lines().filter_map(|l| {
+        if l.is_empty() { return None; }
+        
+        let mut timestamp = String::new();
+        let mut content = l.to_string();
+        
+        // 1. Extract timestamp
+        if let Some(caps) = timestamp_re.captures(&content) {
+            timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            content = timestamp_re.replace(&content, "").to_string();
+        }
+
+        // 2. Detect section markers
+        let mut is_section_start = false;
+        let mut is_section_end = false;
+        let mut section = None;
+
+        if let Some(caps) = section_start_re.captures(&content) {
+            is_section_start = true;
+            section = caps.get(2).map(|m| m.as_str().to_string());
+            content = section_start_re.replace(&content, "").to_string();
+        } else if let Some(caps) = section_end_re.captures(&content) {
+            is_section_end = true;
+            section = caps.get(2).map(|m| m.as_str().to_string());
+            content = section_end_re.replace(&content, "").to_string();
+        }
+
+        // 3. Remove initial noise characters (like the '00O+' artifacts)
+        content = content.trim_start_matches(|c: char| c.is_digit(10) || c == 'O' || c == '+').trim_start().to_string();
+        
+        // 4. Clean up [0K noise
+        content = noise_re.replace_all(&content, "").to_string();
+
+        if content.is_empty() && !is_section_start && !is_section_end { return None; }
+
+        Some(LogLine {
+            timestamp,
+            content,
+            section,
+            is_section_start,
+            is_section_end,
+        })
+    }).collect()
+}
+
+pub fn strip_ansi(text: &str) -> String {
+    let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[mK]").unwrap();
+    ansi_re.replace_all(text, "").to_string()
 }
 
 #[cfg(test)]

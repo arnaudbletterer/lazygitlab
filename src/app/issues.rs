@@ -51,10 +51,11 @@ impl App {
                 let ep = PagedIssues { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
-                    Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectIssues { project_id: pid, data }); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
+                    Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectIssues { project_id: pid, data }); } }
                     Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issues fetch failed: {}", e))); }
                     Err(_) => { let _ = tx.send(DataUpdate::Error("Issues fetch timed out".into())); }
                 }
+                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())

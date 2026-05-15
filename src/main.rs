@@ -105,7 +105,23 @@ where
     let _ = app.refresh().await;
 
     while !app.should_quit {
-        app.process_updates(rx).await;
+        // Process updates from background tasks
+        let mut got_update = false;
+        while let Ok(update) = rx.try_recv() {
+            got_update = true;
+            if let DataUpdate::TerminalEscape(esc) = update {
+                use std::io::Write;
+                let mut stdout = std::io::stdout();
+                let _ = stdout.write_all(esc.as_bytes());
+                let _ = stdout.flush();
+            } else {
+                app.process_update_single(update).await;
+            }
+        }
+        if got_update {
+            app.update_preview().await;
+        }
+        
         terminal.draw(|f| ui(f, app))?;
 
         let is_live_view = (app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines) 

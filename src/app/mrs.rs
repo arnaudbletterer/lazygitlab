@@ -53,10 +53,11 @@ impl App {
                 let ep = PagedMergeRequests { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
-                    Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectMRs { project_id: pid, data }); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
+                    Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectMRs { project_id: pid, data }); } }
                     Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MRs fetch failed: {}", e))); }
                     Err(_) => { let _ = tx.send(DataUpdate::Error("MRs fetch timed out".into())); }
                 }
+                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
@@ -106,10 +107,11 @@ impl App {
             let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
             let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
             match res {
-                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalMRs(data)); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
+                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalMRs(data)); } }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global MRs fetch failed: {}", e))); }
                 Err(_) => { let _ = tx.send(DataUpdate::Error("Global MRs fetch timed out".into())); }
             }
+            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }

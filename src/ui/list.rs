@@ -283,19 +283,6 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
         }
     }
-
-    if is_main_focused {
-        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-        let mut shortcuts = vec![("j/k", "nav"), ("enter", "detail"), ("esc", "back")];
-        if app.active_selection == MenuSelection::Pipelines {
-            shortcuts = vec![("j/k", "nav"), ("R", "retry"), ("C", "cancel"), ("n", "new"), ("enter", "jobs"), ("esc", "back")];
-        } else if app.active_selection == MenuSelection::MergeRequests {
-            shortcuts = vec![("j/k", "nav"), ("A", "approve"), ("R", "revoke"), ("D", "draft"), ("v", "diff"), ("enter", "detail"), ("esc", "back")];
-        } else if app.active_selection == MenuSelection::Issues {
-            shortcuts = vec![("j/k", "nav"), ("c", "close/open"), ("enter", "detail"), ("esc", "back")];
-        }
-        render_shortcuts(f, help_area, shortcuts, &app.theme);
-    }
 }
 
 fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
@@ -371,11 +358,6 @@ fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(Paragraph::new(" No jobs found for this pipeline.").fg(app.theme.dim).block(block), area);
     } else {
         f.render_stateful_widget(List::new(items).block(block).highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)).highlight_symbol("> "), area, &mut app.jobs_state);
-    }
-
-    if is_jobs_focused {
-        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-        render_shortcuts(f, help_area, vec![("j/k", "nav"), ("r", "retry"), ("c", "cancel"), ("p", "play"), ("enter", "log"), ("esc", "back")], &app.theme);
     }
 }
 

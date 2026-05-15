@@ -194,8 +194,6 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         f.render_widget(Paragraph::new(" No file selected.").fg(app.theme.dim), workspace_chunks[1]);
     }
-
-    render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("h/l", "file/line"), ("c", "comment"), ("r", "reply"), ("s", "resolve"), ("space", "exp/col"), ("ctrl+ent", "save"), ("esc", "back")], &app.theme);
 }
 
 #[cfg(test)]

@@ -42,31 +42,66 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     ];
 
     // 2. Context-Aware Help / Keybindings Bar
-    let mut help_spans = vec![
-        Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Move "),
-        Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Panel "),
-        Span::styled(" Tab ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Next "),
-        Span::styled(" Enter ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
-    ];
+    let help_spans = match app.view_mode {
+        ViewMode::JobLog => vec![
+            Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Nav "),
+            Span::styled(" Shift ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
+            Span::styled(" y ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Copy "),
+            Span::styled(" r ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Retry "),
+            Span::styled(" c ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Cancel "),
+            Span::styled(" p ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Play "),
+            Span::styled(" Esc ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Back "),
+        ],
+        ViewMode::Diff => vec![
+            Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Line "),
+            Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" File "),
+            Span::styled(" c ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Comment "),
+            Span::styled(" r ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Reply "),
+            Span::styled(" s ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Resolve "),
+            Span::styled(" y ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Copy "),
+            Span::styled(" Esc ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Back "),
+        ],
+        _ => {
+            let mut spans = vec![
+                Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Move "),
+                Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Panel "),
+                Span::styled(" Tab ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Next "),
+                Span::styled(" Enter ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
+            ];
 
-    help_spans.push(Span::styled(" / ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Search "));
-    help_spans.push(Span::styled(" g ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Go "));
-
-    if app.active_panel == Panel::MainDetail {
-        help_spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Comment "));
-    }
-
-    help_spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Browser "));
-    help_spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Copy URL "));
-    help_spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); help_spans.push(Span::raw(" Quit "));
+            match app.active_selection {
+                crate::models::MenuSelection::Pipelines => {
+                    spans.push(Span::styled(" R ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Retry "));
+                    spans.push(Span::styled(" C ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Cancel "));
+                    spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" New "));
+                }
+                crate::models::MenuSelection::MergeRequests => {
+                    spans.push(Span::styled(" A ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Apprv "));
+                    spans.push(Span::styled(" R ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Revok "));
+                    spans.push(Span::styled(" D ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Draft "));
+                    spans.push(Span::styled(" v ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Diff "));
+                }
+                crate::models::MenuSelection::Issues => {
+                    spans.push(Span::styled(" c ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Close "));
+                    spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" New "));
+                }
+                _ => {}
+            }
+            
+            spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Browser "));
+            spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Copy "));
+            spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Quit "));
+            spans
+        }
+    };
 
     let mut status_spans = Vec::new();
     if let Some(err) = &app.last_error {
         status_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
     }
-    if app.is_loading {
+    if app.is_loading || app.status_message.is_some() {
         let msg = app.status_message.as_deref().unwrap_or("Loading");
-        status_spans.push(Span::styled(format!(" {}... ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        status_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
     }
 
     let footer_layout = Layout::default()
@@ -76,13 +111,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     f.render_widget(Paragraph::new(Line::from(panel_shortcuts)), footer_layout[0]);
     
-    let footer_line = Line::from(vec![
-        Line::from(help_spans).into_iter().collect::<Vec<_>>(),
-        vec![Span::raw("   ")],
-        status_spans,
-    ].into_iter().flatten().collect::<Vec<_>>());
+    let mut footer_spans = help_spans;
+    footer_spans.push(Span::raw("   "));
+    footer_spans.extend(status_spans);
 
-    f.render_widget(Paragraph::new(footer_line), footer_layout[1]);
+    f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_layout[1]);
 
     // Contextual Popups
     if app.show_project_popup { render_project_popup(f, app); }
@@ -218,22 +251,19 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let mut log_lines = Vec::new();
-    let mut line_num = 1;
-    for line in &app.job_log_lines {
+    for (idx, line) in app.job_log_lines.iter().enumerate() {
         let is_collapsed = line.section.as_ref().map(|s| app.collapsed_sections.contains(s)).unwrap_or(false);
         
         if is_collapsed && !line.is_section_start {
-            line_num += 1;
             continue;
         }
 
         if line.is_section_end && line.content.trim().is_empty() {
-             line_num += 1;
              continue;
         }
 
         let mut spans = vec![
-            Span::styled(format!("{:4} ", line_num), Style::default().fg(app.theme.dim)),
+            Span::styled(format!("{:4} ", idx + 1), Style::default().fg(app.theme.dim)),
         ];
 
         if !line.timestamp.is_empty() {
@@ -250,7 +280,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         let mut line_style = Style::default();
         let is_selected = if let Some(start) = app.job_log_selection_start {
             let (s, e) = if start <= app.job_log_cursor { (start, app.job_log_cursor) } else { (app.job_log_cursor, start) };
-            line_num >= s && line_num <= e
+            idx >= s && idx <= e
         } else {
             false
         };
@@ -258,7 +288,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         if is_selected {
             line_style = line_style.bg(app.theme.highlight_bg);
         }
-        if line_num == app.job_log_cursor {
+        if idx == app.job_log_cursor {
             line_style = line_style.add_modifier(Modifier::UNDERLINED);
         }
 
@@ -271,8 +301,6 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             }
             log_lines.push(Line::from(final_spans));
         }
-
-        line_num += 1;
     }
 
     if let Some(job) = &app.selected_job {
@@ -302,8 +330,6 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title(log_title))
         .scroll((app.job_log_scroll, 0));
     f.render_widget(log, chunks[1]);
-
-    widgets::render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("shift", "select"), ("y", "copy"), ("tab", "toggle section"), ("r", "retry"), ("c", "cancel"), ("p", "play"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
 }
 
 fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
