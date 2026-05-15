@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, InputTarget, SearchResult};
+use crate::models::{App, InputTarget, SearchResult, ProjectVariable};
 use crate::ui::widgets::{centered_rect, render_shortcuts};
 
 pub fn render_project_popup(f: &mut Frame, app: &mut App) {
@@ -247,6 +247,32 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
             .highlight_style(Style::default().bg(app.theme.highlight_bg))
             .highlight_symbol(">> ");
         f.render_stateful_widget(list, dropdown_area, &mut app.branches_state);
+    }
+
+    // Dropdown for variable keys
+    if let InputTarget::PipelineVariableKey = app.input_target {
+        let suggested_vars: Vec<&ProjectVariable> = app.project_variables.iter()
+            .filter(|v| v.key.to_lowercase().contains(&app.pipeline_variable_key_input.to_lowercase()))
+            .collect();
+        
+        if !suggested_vars.is_empty() {
+             let dropdown_area = Rect::new(
+                chunks[1].x + 1,
+                chunks[1].y + 3,
+                chunks[1].width - 2,
+                (suggested_vars.len() as u16).min(10).max(3),
+            );
+            f.render_widget(Clear, dropdown_area);
+            let items: Vec<ListItem> = suggested_vars.iter()
+                .map(|v| ListItem::new(format!("{} ({})", v.key, v.environment_scope)))
+                .collect();
+            let list = List::new(items)
+                .block(Block::default().borders(Borders::ALL).title(" Suggested Keys ").border_style(Style::default().fg(Color::Yellow)))
+                .highlight_style(Style::default().bg(app.theme.highlight_bg))
+                .highlight_symbol(">> ");
+            // Reuse branches_state or add variable_keys_state? Let's add variable_keys_state to App.
+            f.render_stateful_widget(list, dropdown_area, &mut app.label_state); // Reusing label_state for now to avoid model bloat
+        }
     }
 }
 

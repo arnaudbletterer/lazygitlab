@@ -529,6 +529,16 @@ pub enum SearchResult {
     MergeRequest(MergeRequest),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ProjectVariable {
+    pub key: String,
+    pub value: String,
+    pub variable_type: String,
+    pub protected: bool,
+    pub masked: bool,
+    pub environment_scope: String,
+}
+
 #[derive(Debug)]
 pub enum DataUpdate {
     Todos { data: Vec<Todo>, page: u64, has_more: bool },
@@ -552,6 +562,7 @@ pub enum DataUpdate {
     Discussions { project_id: u64, iid: u64, data: Vec<Discussion> },
     IssueDiscussions { project_id: u64, iid: u64, data: Vec<Discussion> },
     Jobs { project_id: u64, pipeline_id: u64, data: Vec<Job> },
+    ProjectVariables { project_id: u64, data: Vec<ProjectVariable> },
     Log { project_id: u64, job_id: u64, data: String },
     Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
     Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
@@ -610,6 +621,8 @@ pub struct App {
     pub job_log_lines: Vec<LogLine>,
     pub collapsed_sections: std::collections::HashSet<String>,
     pub job_log_scroll: u16,
+    pub job_log_cursor: usize,
+    pub job_log_selection_start: Option<usize>,
     pub job_log_viewport_height: u16,
     pub follow_log: bool,
     pub discussions: Vec<Discussion>,
@@ -627,8 +640,10 @@ pub struct App {
     pub project_label_cache: std::collections::HashMap<u64, Vec<Label>>,
     pub project_milestone_cache: std::collections::HashMap<u64, Vec<Milestone>>,
     pub project_member_cache: std::collections::HashMap<u64, Vec<Author>>,
+    pub project_variable_cache: std::collections::HashMap<u64, Vec<ProjectVariable>>,
     pub project_milestones: Vec<Milestone>,
     pub project_members: Vec<Author>,
+    pub project_variables: Vec<ProjectVariable>,
 
     // Popups
     pub show_label_popup: bool,

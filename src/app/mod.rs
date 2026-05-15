@@ -56,6 +56,8 @@ impl App {
             job_log_lines: Vec::new(),
             collapsed_sections: std::collections::HashSet::new(),
             job_log_scroll: 0,
+            job_log_cursor: 0,
+            job_log_selection_start: None,
             job_log_viewport_height: 0,
             follow_log: true,
             discussions: Vec::new(),
@@ -71,8 +73,10 @@ impl App {
             project_label_cache: std::collections::HashMap::new(),
             project_milestone_cache: std::collections::HashMap::new(),
             project_member_cache: std::collections::HashMap::new(),
+            project_variable_cache: std::collections::HashMap::new(),
             project_milestones: Vec::new(),
             project_members: Vec::new(),
+            project_variables: Vec::new(),
             show_label_popup: false,
             label_state: ListState::default(),
             selected_label_ids: Vec::new(),
@@ -290,6 +294,12 @@ impl App {
                     } 
                 }
                 DataUpdate::Jobs { project_id, pipeline_id, data } => { if let Some(selected) = &self.selected_pipeline { if selected.id == pipeline_id && selected.project_id == project_id { self.jobs = data; } } }
+                DataUpdate::ProjectVariables { project_id, data } => {
+                    self.project_variable_cache.insert(project_id, data.clone());
+                    if self.selected_project.as_ref().map_or(false, |p| p.id == project_id) {
+                        self.project_variables = data;
+                    }
+                }
                 DataUpdate::Log { project_id, job_id, data } => { if let Some(selected) = &self.selected_job { if selected.id == job_id && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { self.job_log = data; self.parse_job_log(); } } }
                 DataUpdate::Diffs { project_id, iid, data } => { 
                     if let Some(selected) = &self.selected_mr { 
@@ -844,6 +854,14 @@ impl App {
             self.selected_mr = None; self.selected_issue = None; self.selected_pipeline = None;
             self.discussions.clear(); self.jobs.clear();
         }
+
+        // Stability check: If we are in MainDetail but no item is actually selected (e.g. list empty), move back to Main
+        if self.active_panel == Panel::MainDetail {
+            let is_item_selected = self.selected_mr.is_some() || self.selected_issue.is_some() || self.selected_pipeline.is_some() || self.selected_board.is_some();
+            if !is_item_selected {
+                self.active_panel = Panel::Main;
+            }
+        }
     }
 
     pub fn move_down(&mut self) {
@@ -903,6 +921,13 @@ impl App {
                 let _ = self.tx.send(DataUpdate::CheckPagination);
             }
             Panel::MainDetail => {
+                if self.active_selection == MenuSelection::Pipelines {
+                    if !self.jobs.is_empty() {
+                        let i = (self.jobs_state.selected().unwrap_or(0) + 1) % self.jobs.len();
+                        self.jobs_state.select(Some(i));
+                    }
+                    return;
+                }
                 match self.detail_section {
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
@@ -995,6 +1020,13 @@ impl App {
                 }
             }
             Panel::MainDetail => {
+                if self.active_selection == MenuSelection::Pipelines {
+                    if !self.jobs.is_empty() {
+                        let i = if self.jobs_state.selected().unwrap_or(0) == 0 { self.jobs.len() - 1 } else { self.jobs_state.selected().unwrap() - 1 };
+                        self.jobs_state.select(Some(i));
+                    }
+                    return;
+                }
                 match self.detail_section {
                     DetailSection::Discussions => {
                         let current = self.discussion_state.selected().unwrap_or(0);
@@ -1114,7 +1146,28 @@ impl App {
             match processed_key.code {
                 KeyCode::Char('q') => { self.should_quit = true; return; }
                 KeyCode::Char('o') => { self.open_in_browser(); return; }
-                KeyCode::Char('y') => { self.copy_url(); return; }
+                KeyCode::Char('y') => {
+                if self.active_panel == Panel::MainDetail {
+                    match self.detail_section {
+                        DetailSection::Description | DetailSection::Metadata => {
+                            let text = if let Some(mr) = &self.selected_mr { mr.description.clone() } else if let Some(issue) = &self.selected_issue { issue.description.clone() } else { None };
+                            if let Some(t) = text { self.copy_to_clipboard(t); }
+                        }
+                        DetailSection::Discussions => {
+                            if let Some(idx) = self.discussion_state.selected() {
+                                if let Some(disc) = self.discussions.get(idx) {
+                                    let text = disc.notes.iter().map(|n| format!("@{} says: {}", n.author.username, n.body)).collect::<Vec<_>>().join("\n\n---\n\n");
+                                    self.copy_to_clipboard(text);
+                                }
+                            }
+                        }
+                        _ => { self.copy_url(); }
+                    }
+                    return;
+                }
+                self.copy_url(); 
+                return; 
+            }
                 _ => {}
             }
         }
@@ -1340,6 +1393,108 @@ impl App {
             }
             return;
         }
+        if self.show_pipeline_popup {
+            match processed_key.code {
+                KeyCode::Tab => {
+                    match self.input_target {
+                        InputTarget::PipelineRef => self.input_target = InputTarget::PipelineVariableKey,
+                        InputTarget::PipelineVariableKey => self.input_target = InputTarget::PipelineVariableValue,
+                        InputTarget::PipelineVariableValue => self.input_target = InputTarget::PipelineVariableList,
+                        InputTarget::PipelineVariableList => self.input_target = InputTarget::PipelineRef,
+                        _ => self.input_target = InputTarget::PipelineRef,
+                    }
+                }
+                KeyCode::Char('p') if !self.input_mode => {
+                    let _ = self.submit_pipeline_launch().await;
+                }
+                KeyCode::Enter => {
+                    match self.input_target {
+                        InputTarget::PipelineRef => {
+                             if self.show_branches_dropdown {
+                                if let Some(idx) = self.branches_state.selected() {
+                                    if let Some(b) = self.filtered_branches.get(idx) {
+                                        self.pipeline_ref_input = b.name.clone();
+                                    }
+                                }
+                                self.show_branches_dropdown = false;
+                                self.input_target = InputTarget::PipelineVariableKey;
+                             } else {
+                                self.input_target = InputTarget::PipelineVariableKey;
+                             }
+                             self.label_state.select(Some(0)); // Reset suggestion selection
+                        }
+                        InputTarget::PipelineVariableKey => {
+                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter()
+                                .filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase()))
+                                .collect();
+                            
+                            if !suggested_vars.is_empty() {
+                                if let Some(idx) = self.label_state.selected() {
+                                    if let Some(v) = suggested_vars.get(idx) {
+                                        self.pipeline_variable_key_input = v.key.clone();
+                                    }
+                                }
+                            }
+                            self.input_target = InputTarget::PipelineVariableValue;
+                        }
+                        InputTarget::PipelineVariableValue => {
+                            if !self.pipeline_variable_key_input.is_empty() {
+                                self.pipeline_variables.push(PipelineVariable {
+                                    key: self.pipeline_variable_key_input.clone(),
+                                    value: self.pipeline_variable_value_input.clone(),
+                                });
+                                self.pipeline_variable_key_input.clear();
+                                self.pipeline_variable_value_input.clear();
+                                self.input_target = InputTarget::PipelineVariableKey;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                KeyCode::Delete | KeyCode::Backspace if self.input_target == InputTarget::PipelineVariableList => {
+                    if let Some(idx) = self.pipeline_variables_state.selected() {
+                        if idx < self.pipeline_variables.len() {
+                            self.pipeline_variables.remove(idx);
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    self.show_pipeline_popup = false;
+                    self.input_mode = false;
+                }
+                _ => {
+                    match self.input_target {
+                        InputTarget::PipelineRef => {
+                            match processed_key.code {
+                                KeyCode::Char(c) => { self.pipeline_ref_input.push(c); self.show_branches_dropdown = true; self.filter_branches(); }
+                                KeyCode::Backspace => { self.pipeline_ref_input.pop(); self.filter_branches(); }
+                                KeyCode::Down => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } }
+                                KeyCode::Up => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + self.filtered_branches.len().saturating_sub(1)) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } }
+                                _ => {}
+                            }
+                        }
+                        InputTarget::PipelineVariableKey => {
+                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter()
+                                .filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase()))
+                                .collect();
+                            match processed_key.code {
+                                KeyCode::Char(c) => { self.pipeline_variable_key_input.push(c); self.label_state.select(Some(0)); }
+                                KeyCode::Backspace => { self.pipeline_variable_key_input.pop(); self.label_state.select(Some(0)); }
+                                KeyCode::Down => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % suggested_vars.len(); self.label_state.select(Some(i)); } }
+                                KeyCode::Up => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + suggested_vars.len().saturating_sub(1)) % suggested_vars.len(); self.label_state.select(Some(i)); } }
+                                _ => {}
+                            }
+                        }
+                        InputTarget::PipelineVariableValue => {
+                            if let KeyCode::Char(c) = processed_key.code { self.pipeline_variable_value_input.push(c); }
+                            else if let KeyCode::Backspace = processed_key.code { self.pipeline_variable_value_input.pop(); }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return;
+        }
         if self.show_search && !self.input_mode {
             match processed_key.code {
                 KeyCode::Esc => {
@@ -1455,9 +1610,68 @@ impl App {
         if self.view_mode == ViewMode::JobLog {
             match processed_key.code {
                 KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => { self.toggle_job_section(); let _ = self.update_preview().await; return; }
-                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
-                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                KeyCode::Esc => {
+                    if self.job_log_selection_start.is_some() {
+                        self.job_log_selection_start = None;
+                    } else {
+                        self.view_mode = ViewMode::List;
+                    }
+                    let _ = self.update_preview().await;
+                    return;
+                }
+                KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if !self.job_log_lines.is_empty() {
+                        let current = self.job_log_cursor;
+                        self.job_log_cursor = (self.job_log_cursor + 1).min(self.job_log_lines.len().saturating_sub(1));
+                        
+                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
+                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
+                        } else {
+                            self.job_log_selection_start = None;
+                        }
+
+                        // Auto-scroll
+                        if self.job_log_cursor >= self.job_log_scroll as usize + self.job_log_viewport_height as usize {
+                            self.job_log_scroll = self.job_log_scroll.saturating_add(1);
+                        }
+                    }
+                    let _ = self.update_preview().await; return;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if !self.job_log_lines.is_empty() {
+                        let current = self.job_log_cursor;
+                        self.job_log_cursor = self.job_log_cursor.saturating_sub(1);
+
+                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
+                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
+                        } else {
+                            self.job_log_selection_start = None;
+                        }
+
+                        // Auto-scroll
+                        if (self.job_log_cursor as u16) < self.job_log_scroll {
+                            self.job_log_scroll = self.job_log_cursor as u16;
+                        }
+                    }
+                    let _ = self.update_preview().await; return;
+                }
+                KeyCode::Char('y') => {
+                    let text = if let Some(start) = self.job_log_selection_start {
+                        let (s, e) = if start <= self.job_log_cursor { (start, self.job_log_cursor) } else { (self.job_log_cursor, start) };
+                        self.job_log_lines[s..=e].iter().map(|l| l.content.clone()).collect::<Vec<String>>().join("\n")
+                    } else if !self.job_log_lines.is_empty() {
+                        self.job_log_lines[self.job_log_cursor].content.clone()
+                    } else {
+                        String::new()
+                    };
+                    self.copy_to_clipboard(text);
+                    self.job_log_selection_start = None;
+                    return;
+                }
+                KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } return; }
+                KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } return; }
+                KeyCode::Char('p') | KeyCode::Char('P') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.play_job(p.id, j.id).await; } } return; }
                 _ => {}
             }
         }
@@ -1467,6 +1681,18 @@ impl App {
                 KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
                 KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
                 KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                KeyCode::Char('y') => {
+                    if let Some(file) = &self.selected_file_content {
+                        use base64::{Engine as _, engine::general_purpose};
+                        let clean_content = file.content.replace("\n", "").replace("\r", "");
+                        if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
+                            if let Ok(text) = String::from_utf8(decoded) {
+                                self.copy_to_clipboard(text);
+                            }
+                        }
+                    }
+                    return;
+                }
                 _ => {}
             }
         }
@@ -1612,27 +1838,37 @@ impl App {
             }
         }
 
+        if self.active_panel == Panel::MainDetail && self.active_selection == MenuSelection::Pipelines && !self.input_mode {
+            match processed_key.code {
+                KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(i) = self.jobs_state.selected() { if let Some(j) = self.jobs.get(i).cloned() { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } } return; }
+                KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(i) = self.jobs_state.selected() { if let Some(j) = self.jobs.get(i).cloned() { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } } return; }
+                KeyCode::Char('p') | KeyCode::Char('P') => { if let Some(i) = self.jobs_state.selected() { if let Some(j) = self.jobs.get(i).cloned() { if let Some(p) = &self.selected_project { let _ = self.play_job(p.id, j.id).await; } } } return; }
+                _ => {}
+            }
+        }
+
         match processed_key.code {
             KeyCode::Tab => {
                 self.active_panel = match self.active_panel {
-                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::MainDetail,
-                    Panel::MainDetail => Panel::Main,
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                    Panel::Main => Panel::MainDetail,
+                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project | Panel::Main => Panel::MainDetail,
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                    Panel::Main => Panel::MainDetail,
                     Panel::MainDetail => Panel::MainDetail,
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::BackTab => {
                 self.active_panel = match self.active_panel {
-                    Panel::Main => Panel::MainDetail,
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
-                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::MainDetail,
+                    Panel::MainDetail => Panel::Main,
                 };
                 let _ = self.update_preview().await;
             }
@@ -1670,7 +1906,16 @@ impl App {
                         self.refresh().await;
                     }
                     Panel::Main => {
-                        if self.active_selection == MenuSelection::Projects {
+                        if self.active_selection == MenuSelection::Pipelines {
+                            if let Some(i) = self.pipelines_state.selected() {
+                                if let Some(p) = self.filtered_pipelines.get(i) {
+                                    self.selected_pipeline = Some(p.clone());
+                                    self.active_panel = Panel::MainDetail;
+                                    self.detail_section = DetailSection::Metadata; // Showing jobs in Metadata for now or add Jobs section
+                                    let _ = self.fetch_jobs(p.project_id, p.id).await;
+                                }
+                            }
+                        } else if self.active_selection == MenuSelection::Projects {
                             if let Some(i) = self.projects_state.selected() {
                                 self.selected_project = Some(self.filtered_projects[i].clone());
                                 self.active_panel = Panel::Main;
@@ -1717,6 +1962,15 @@ impl App {
                             self.mr_diff_state.select(Some(0));
                             let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
                             let _ = self.fetch_mr_diffs(pid, iid).await;
+                        } else if self.active_selection == MenuSelection::Pipelines {
+                             if let Some(i) = self.jobs_state.selected() {
+                                if let Some(j) = self.jobs.get(i).cloned() {
+                                    self.selected_job = Some(j.clone());
+                                    self.view_mode = ViewMode::JobLog;
+                                    self.job_log_scroll = 0;
+                                    let _ = self.fetch_job_log(self.selected_project.as_ref().unwrap().id, j.id).await;
+                                }
+                             }
                         } else {
                             self.enter_detail_action().await; 
                         }
@@ -1791,7 +2045,26 @@ impl App {
             }
             KeyCode::Char('c') => { if let Some(_) = &self.selected_issue { let _ = self.toggle_issue_state().await; } else if let Some(_) = &self.selected_mr { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
-            KeyCode::Char('R') => { if self.selected_mr.is_some() { let _ = self.unapprove_mr().await; } }
+            KeyCode::Char('C') => {
+                if self.active_selection == MenuSelection::Pipelines {
+                    if let Some(i) = self.pipelines_state.selected() {
+                        if let Some(p) = self.filtered_pipelines.get(i) {
+                            let _ = self.cancel_pipeline(p.project_id, p.id).await;
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('R') => { 
+                if self.active_selection == MenuSelection::Pipelines {
+                    if let Some(i) = self.pipelines_state.selected() {
+                        if let Some(p) = self.filtered_pipelines.get(i) {
+                            let _ = self.retry_pipeline(p.project_id, p.id).await;
+                        }
+                    }
+                } else if self.selected_mr.is_some() { 
+                    let _ = self.unapprove_mr().await; 
+                } 
+            }
             KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
             KeyCode::Char('s') => {
                 if self.active_selection == MenuSelection::Todos {
@@ -1817,6 +2090,7 @@ impl App {
             }
             KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
             KeyCode::Char('n') => {
+                if self.show_create_issue_popup || self.show_create_mr_popup || self.show_pipeline_popup || self.show_project_popup || self.show_help_popup || self.show_search { return; }
                 match self.active_selection {
                     MenuSelection::Issues => {
                         self.show_create_issue_popup = true;
@@ -1833,6 +2107,20 @@ impl App {
                         self.textarea = ratatui_textarea::TextArea::default();
                         if let Some(p) = &self.selected_project {
                             self.create_mr_target_branch = p.default_branch.clone().unwrap_or_else(|| "main".to_string());
+                        }
+                    }
+                    MenuSelection::Pipelines => {
+                        self.show_pipeline_popup = true;
+                        self.input_mode = true;
+                        self.input_target = InputTarget::PipelineRef;
+                        if let Some(p) = &self.selected_project {
+                            self.pipeline_ref_input = self.selected_pipeline.as_ref().map(|pipe| pipe.ref_name.clone()).unwrap_or_else(|| p.default_branch.clone().unwrap_or_else(|| "main".to_string()));
+                            let pid = p.id;
+                            if self.project_variable_cache.contains_key(&pid) {
+                                self.project_variables = self.project_variable_cache.get(&pid).cloned().unwrap();
+                            } else {
+                                let _ = self.fetch_project_variables(pid).await;
+                            }
                         }
                     }
                     _ => {}
@@ -1903,6 +2191,13 @@ impl App {
         clamp(&mut self.groups_state, self.filtered_groups.len());
         clamp(&mut self.branches_state, self.filtered_branches.len());
         clamp(&mut self.commits_state, self.commits.len());
+        clamp(&mut self.jobs_state, self.jobs.len());
+        clamp(&mut self.discussion_state, self.discussions.len());
+        clamp(&mut self.epics_state, self.epics.len());
+        clamp(&mut self.project_boards_state, self.project_boards.len());
+        clamp(&mut self.search_state, self.search_results.len());
+        clamp(&mut self.mr_diff_state, self.mr_diffs.len());
+        clamp(&mut self.board_lists_state, self.board_lists.len());
 
         if self.dashboard_menu_state.selected().is_none() { self.dashboard_menu_state.select(Some(0)); }
         if self.explore_menu_state.selected().is_none() { self.explore_menu_state.select(Some(0)); }
@@ -1933,6 +2228,39 @@ impl App {
         self.show_help_popup = false;
     }
     pub async fn back(&mut self) { self.view_mode = ViewMode::List; self.active_panel = Panel::Dashboard; }
+
+    pub fn copy_to_clipboard(&mut self, text: String) {
+        if text.is_empty() { return; }
+
+        // 1. Attempt local system clipboard (works on local machine)
+        match arboard::Clipboard::new() {
+            Ok(mut clipboard) => {
+                let _ = clipboard.set_text(text.clone());
+            }
+            Err(_) => {}
+        }
+
+        // 2. OSC 52 sequence (works remotely over SSH if terminal supports it)
+        use base64::{Engine as _, engine::general_purpose};
+        let b64 = general_purpose::STANDARD.encode(&text);
+        
+        // OSC 52 sequence: ESC ] 52 ; c ; [base64] ST
+        // ST (String Terminator) can be BEL (\x07) or ESC \ (\x1b\\)
+        let mut osc52 = format!("\x1b]52;c;{}\x1b\\", b64);
+        
+        // If inside tmux, we need a special escape wrapper to pass through to the outer terminal
+        if std::env::var_os("TMUX").is_some() {
+            osc52 = format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", b64);
+        }
+
+        use std::io::Write;
+        let mut stdout = std::io::stdout();
+        let _ = stdout.write_all(osc52.as_bytes());
+        let _ = stdout.flush();
+
+        self.status_message = Some("Copied to clipboard!".to_string());
+    }
+
     pub fn open_in_browser(&self) {
         let url = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) } else if let Some(pipeline) = &self.selected_pipeline { Some(pipeline.web_url.clone()) } else if let Some(job) = &self.selected_job { Some(job.web_url.clone()) } else if self.active_selection == MenuSelection::Projects { if let Some(idx) = self.projects_state.selected() { self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) } else { self.selected_project.as_ref().and_then(|p| p.web_url.clone()) } } else if self.active_selection == MenuSelection::Groups { if let Some(idx) = self.groups_state.selected() { self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) } else { None } } else if let Some(project) = &self.selected_project { project.web_url.clone() } else { None };
         

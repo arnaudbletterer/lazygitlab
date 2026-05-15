@@ -98,7 +98,20 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_search { render_search_popup(f, app); }
     if app.show_help_popup { render_help_popup(f, app); }
 
-    if app.input_mode && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search) {
+    let is_complex_popup_visible = app.show_pipeline_popup || 
+                                   app.show_create_issue_popup || 
+                                   app.show_create_mr_popup || 
+                                   app.show_search || 
+                                   app.show_snooze_popup || 
+                                   app.show_calendar_popup ||
+                                   app.show_help_popup ||
+                                   app.show_project_popup ||
+                                   app.show_label_popup ||
+                                   app.show_assignee_popup ||
+                                   app.show_milestone_popup ||
+                                   app.show_weight_popup;
+
+    if app.input_mode && !is_complex_popup_visible && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search) {
         let title = match app.input_target {
             crate::models::InputTarget::Reply => " Reply (Ctrl+Enter to send, Esc to cancel) ",
             crate::models::InputTarget::NewComment => " New Comment (Ctrl+Enter to send, Esc to cancel) ",
@@ -234,10 +247,28 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             spans.push(Span::raw("    "));
         }
 
+        let mut line_style = Style::default();
+        let is_selected = if let Some(start) = app.job_log_selection_start {
+            let (s, e) = if start <= app.job_log_cursor { (start, app.job_log_cursor) } else { (app.job_log_cursor, start) };
+            line_num >= s && line_num <= e
+        } else {
+            false
+        };
+
+        if is_selected {
+            line_style = line_style.bg(app.theme.highlight_bg);
+        }
+        if line_num == app.job_log_cursor {
+            line_style = line_style.add_modifier(Modifier::UNDERLINED);
+        }
+
         let content_text = line.content.as_bytes().into_text().unwrap_or_else(|_| Text::from(line.content.as_str()));
         for content_line in content_text.lines {
             let mut final_spans = spans.clone();
-            final_spans.extend(content_line.spans);
+            for mut s in content_line.spans {
+                s.style = s.style.patch(line_style);
+                final_spans.push(s);
+            }
             log_lines.push(Line::from(final_spans));
         }
 
@@ -272,7 +303,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         .scroll((app.job_log_scroll, 0));
     f.render_widget(log, chunks[1]);
 
-    widgets::render_shortcuts(f, chunks[2], vec![("tab", "toggle section"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
+    widgets::render_shortcuts(f, chunks[2], vec![("j/k", "nav"), ("shift", "select"), ("y", "copy"), ("tab", "toggle section"), ("r", "retry"), ("c", "cancel"), ("p", "play"), ("esc", "back"), ("o", "open"), ("q", "quit")], &app.theme);
 }
 
 fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {

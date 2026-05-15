@@ -52,15 +52,25 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let is_item_selected = app.selected_mr.is_some() || app.selected_issue.is_some() || app.selected_pipeline.is_some();
     
     let main_chunks = if is_item_selected {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(35), // Main List (Top)
-                Constraint::Percentage(30), // Detail View (Description)
-                Constraint::Length(6),      // Metadata
-                Constraint::Min(10),        // Discussions (Bottom)
-            ])
-            .split(chunks[1])
+        if app.active_selection == MenuSelection::Pipelines {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(40), // Pipelines List
+                    Constraint::Min(0),        // Jobs List
+                ])
+                .split(chunks[1])
+        } else {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(35), // Main List (Top)
+                    Constraint::Percentage(30), // Detail View (Description)
+                    Constraint::Length(6),      // Metadata
+                    Constraint::Min(10),        // Discussions (Bottom)
+                ])
+                .split(chunks[1])
+        }
     } else {
         Layout::default()
             .direction(Direction::Vertical)
@@ -71,10 +81,15 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if is_item_selected {
-        render_main_list(f, app, main_chunks[0]);
-        render_detail_view(f, app, main_chunks[1]);
-        render_metadata_panel(f, app, main_chunks[2]);
-        render_discussions_panel(f, app, main_chunks[3]);
+        if app.active_selection == MenuSelection::Pipelines {
+            render_main_list(f, app, main_chunks[0]);
+            render_jobs_panel(f, app, main_chunks[1]);
+        } else {
+            render_main_list(f, app, main_chunks[0]);
+            render_detail_view(f, app, main_chunks[1]);
+            render_metadata_panel(f, app, main_chunks[2]);
+            render_discussions_panel(f, app, main_chunks[3]);
+        }
     } else {
         render_main_list(f, app, main_chunks[0]);
     }
@@ -268,6 +283,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
         }
     }
+
+    if is_main_focused {
+        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+        let mut shortcuts = vec![("j/k", "nav"), ("enter", "detail"), ("esc", "back")];
+        if app.active_selection == MenuSelection::Pipelines {
+            shortcuts = vec![("j/k", "nav"), ("R", "retry"), ("C", "cancel"), ("n", "new"), ("enter", "jobs"), ("esc", "back")];
+        } else if app.active_selection == MenuSelection::MergeRequests {
+            shortcuts = vec![("j/k", "nav"), ("A", "approve"), ("R", "revoke"), ("D", "draft"), ("v", "diff"), ("enter", "detail"), ("esc", "back")];
+        } else if app.active_selection == MenuSelection::Issues {
+            shortcuts = vec![("j/k", "nav"), ("c", "close/open"), ("enter", "detail"), ("esc", "back")];
+        }
+        render_shortcuts(f, help_area, shortcuts, &app.theme);
+    }
 }
 
 fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
@@ -321,6 +349,33 @@ fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(Clear, chunks[1]);
         app.textarea.set_block(reply_block);
         f.render_widget(&app.textarea, chunks[1]);
+    }
+}
+
+fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
+    let is_jobs_focused = app.active_panel == Panel::MainDetail;
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Pipeline Jobs ")
+        .border_style(if is_jobs_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+
+    let items: Vec<ListItem> = app.jobs.iter().map(|j| {
+        ListItem::new(Line::from(vec![
+            Span::styled(format!(" {} ", j.status), crate::ui::widgets::get_status_style(&j.status, &app.theme)),
+            Span::raw(format!(" {} ", j.name)),
+            Span::styled(format!("({})", j.stage), Style::default().fg(app.theme.dim)),
+        ]))
+    }).collect();
+
+    if items.is_empty() {
+        f.render_widget(Paragraph::new(" No jobs found for this pipeline.").fg(app.theme.dim).block(block), area);
+    } else {
+        f.render_stateful_widget(List::new(items).block(block).highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)).highlight_symbol("> "), area, &mut app.jobs_state);
+    }
+
+    if is_jobs_focused {
+        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
+        render_shortcuts(f, help_area, vec![("j/k", "nav"), ("r", "retry"), ("c", "cancel"), ("p", "play"), ("enter", "log"), ("esc", "back")], &app.theme);
     }
 }
 
@@ -400,9 +455,4 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(Paragraph::new(lines).block(block), area);
-
-    if is_meta_focused {
-        let help_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-        render_shortcuts(f, help_area, vec![("j/k", "nav"), ("enter", "edit"), ("esc", "back")], &app.theme);
-    }
 }
