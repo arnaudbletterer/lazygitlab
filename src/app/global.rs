@@ -290,19 +290,7 @@ impl App {
         };
 
         if let Some(url) = url {
-            match arboard::Clipboard::new() {
-                Ok(mut clipboard) => {
-                    if let Err(e) = clipboard.set_text(url) {
-                        self.last_error = Some(format!("Failed to copy URL: {}", e));
-                    } else {
-                        self.status_message = Some("URL copied to clipboard!".into());
-                        // Clear message after some time? Not easily done without a timer, but fine for now.
-                    }
-                }
-                Err(e) => {
-                    self.last_error = Some(format!("Clipboard error: {}", e));
-                }
-            }
+            self.copy_to_clipboard(url);
         }
     }
 }
