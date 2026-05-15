@@ -172,6 +172,7 @@ impl App {
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
             theme_set: syntect::highlighting::ThemeSet::load_defaults(),
             pending_g_prefix: false,
+            last_rendered_rects: std::collections::HashMap::new(),
         }
     }
 
@@ -2413,31 +2414,52 @@ impl App {
     }
 
     pub fn clamp_selections(&mut self) {
-        let clamp = |state: &mut ListState, len: usize| {
-            if len == 0 { state.select(None); }
-            else if let Some(i) = state.selected() { if i >= len { state.select(Some(len - 1)); } }
-            else { state.select(Some(0)); }
+        let active_sel = self.active_selection;
+        let is_main_focused = self.active_panel == Panel::Main;
+
+        let clamp = |state: &mut ListState, len: usize, is_active: bool| {
+            if len == 0 {
+                // Proactive selection: if this is the active list, pre-select 0 even if empty
+                // so it's ready when data arrives.
+                if is_active && is_main_focused { state.select(Some(0)); }
+                else { state.select(None); }
+            }
+            else if let Some(i) = state.selected() { 
+                if i >= len { state.select(Some(len.saturating_sub(1))); }
+            }
+            else { 
+                state.select(Some(0)); 
+            }
         };
 
-        clamp(&mut self.todos_state, self.filtered_todos.len());
-        clamp(&mut self.mrs_state, self.filtered_mrs.len());
-        clamp(&mut self.issues_state, self.filtered_issues.len());
-        clamp(&mut self.projects_state, self.filtered_projects.len());
-        clamp(&mut self.pipelines_state, self.filtered_pipelines.len());
-        clamp(&mut self.groups_state, self.filtered_groups.len());
-        clamp(&mut self.branches_state, self.filtered_branches.len());
-        clamp(&mut self.commits_state, self.commits.len());
-        clamp(&mut self.jobs_state, self.jobs.len());
-        clamp(&mut self.discussion_state, self.discussions.len());
-        clamp(&mut self.epics_state, self.epics.len());
-        clamp(&mut self.project_boards_state, self.project_boards.len());
-        clamp(&mut self.search_state, self.search_results.len());
-        clamp(&mut self.mr_diff_state, self.mr_diffs.len());
-        clamp(&mut self.board_lists_state, self.board_lists.len());
+        clamp(&mut self.todos_state, self.filtered_todos.len(), active_sel == MenuSelection::Todos);
+        clamp(&mut self.mrs_state, self.filtered_mrs.len(), active_sel == MenuSelection::MergeRequests);
+        clamp(&mut self.issues_state, self.filtered_issues.len(), active_sel == MenuSelection::Issues);
+        clamp(&mut self.projects_state, self.filtered_projects.len(), active_sel == MenuSelection::Projects);
+        clamp(&mut self.pipelines_state, self.filtered_pipelines.len(), active_sel == MenuSelection::Pipelines);
+        clamp(&mut self.groups_state, self.filtered_groups.len(), active_sel == MenuSelection::Groups);
+        clamp(&mut self.branches_state, self.filtered_branches.len(), active_sel == MenuSelection::Branches);
+        clamp(&mut self.commits_state, self.commits.len(), active_sel == MenuSelection::Commits);
+        clamp(&mut self.jobs_state, self.jobs.len(), self.active_panel == Panel::MainDetail && active_sel == MenuSelection::Pipelines);
+        clamp(&mut self.discussion_state, self.discussions.len(), self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Discussions);
+        clamp(&mut self.epics_state, self.epics.len(), active_sel == MenuSelection::Epics);
+        clamp(&mut self.project_boards_state, self.project_boards.len(), active_sel == MenuSelection::Boards);
+        clamp(&mut self.search_state, self.search_results.len(), self.show_search);
+        clamp(&mut self.mr_diff_state, self.mr_diffs.len(), self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Changes);
+        clamp(&mut self.board_lists_state, self.board_lists.len(), self.view_mode == ViewMode::Board);
 
+        // Navigation state defaults
         if self.dashboard_menu_state.selected().is_none() { self.dashboard_menu_state.select(Some(0)); }
         if self.explore_menu_state.selected().is_none() { self.explore_menu_state.select(Some(0)); }
         if self.project_menu_state.selected().is_none() { self.project_menu_state.select(Some(0)); }
+    }
+
+    pub fn set_rect(&mut self, key: &str, rect: ratatui::layout::Rect) {
+        self.last_rendered_rects.insert(key.to_string(), rect);
+    }
+
+    pub fn get_rect(&self, key: &str) -> Option<ratatui::layout::Rect> {
+        self.last_rendered_rects.get(key).cloned()
     }
 
     pub async fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
@@ -2445,6 +2467,189 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollDown => { self.move_down(); let _ = self.update_preview().await; }
             MouseEventKind::ScrollUp => { self.move_up(); let _ = self.update_preview().await; }
+            MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                let x = mouse.column;
+                let y = mouse.row;
+
+                // 1. Check Navigation Panels
+                if let Some(r) = self.get_rect("nav_dashboard") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::Dashboard;
+                        self.active_context = Context::Dashboard;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1); // subtract border
+                        if inner_y < 3 {
+                            self.dashboard_menu_state.select(Some(inner_y as usize));
+                            let _ = self.update_preview().await;
+                            let _ = self.refresh().await;
+                        }
+                        return;
+                    }
+                }
+                if let Some(r) = self.get_rect("nav_explore") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::Explore;
+                        self.active_context = Context::Explore;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                        if inner_y < 2 {
+                            self.explore_menu_state.select(Some(inner_y as usize));
+                            let _ = self.update_preview().await;
+                            let _ = self.refresh().await;
+                        }
+                        return;
+                    }
+                }
+                if let Some(r) = self.get_rect("nav_project") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::Project;
+                        self.active_context = Context::Project;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                        // Project menu can have up to 8 items
+                        if inner_y < 8 {
+                            self.project_menu_state.select(Some(inner_y as usize));
+                            let _ = self.update_preview().await;
+                            let _ = self.refresh().await;
+                        }
+                        return;
+                    }
+                }
+
+                // 2. Check Main List
+                if let Some(r) = self.get_rect("main_list") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::Main;
+                        
+                        // Check if clicked on Tabs (y = r.y + 1 since border is at r.y)
+                        if y == r.y + 1 {
+                            let rel_x = x.saturating_sub(r.x).saturating_sub(1);
+                            let titles = match self.active_selection {
+                                MenuSelection::MergeRequests => vec!["Opened", "Merged", "Closed", "All"],
+                                MenuSelection::Issues => vec!["Opened", "Closed", "All"],
+                                MenuSelection::Todos => vec!["Pending", "Snoozed", "Done"],
+                                _ => vec!["List"],
+                            };
+
+                            let mut current_x = 0;
+                            for (idx, title) in titles.iter().enumerate() {
+                                let next_x = current_x + title.len() + 3; // padding(2) + divider(1)
+                                if (rel_x as usize) >= current_x && (rel_x as usize) < next_x {
+                                    match self.active_selection {
+                                        MenuSelection::MergeRequests => {
+                                            self.mr_filter = match idx { 0 => MergeRequestFilter::Opened, 1 => MergeRequestFilter::Merged, 2 => MergeRequestFilter::Closed, _ => MergeRequestFilter::All };
+                                        }
+                                        MenuSelection::Issues => {
+                                            self.issue_filter = match idx { 0 => IssueFilter::Opened, 1 => IssueFilter::Closed, _ => IssueFilter::All };
+                                        }
+                                        MenuSelection::Todos => {
+                                            self.todo_filter = match idx { 0 => TodoFilter::Pending, 1 => TodoFilter::Snoozed, _ => TodoFilter::Done };
+                                        }
+                                        _ => {}
+                                    }
+                                    let _ = self.refresh().await;
+                                    break;
+                                }
+                                current_x = next_x;
+                            }
+                        } else if y > r.y + 1 {
+                            // Select item in list
+                            let inner_y = y.saturating_sub(r.y).saturating_sub(2);
+                            let idx = inner_y as usize;
+                            match self.active_selection {
+                                MenuSelection::Todos => { if idx < self.filtered_todos.len() { self.todos_state.select(Some(idx)); } }
+                                MenuSelection::MergeRequests => { if idx < self.filtered_mrs.len() { self.mrs_state.select(Some(idx)); } }
+                                MenuSelection::Issues => { if idx < self.filtered_issues.len() { self.issues_state.select(Some(idx)); } }
+                                MenuSelection::Pipelines => { if idx < self.pipelines.len() { self.pipelines_state.select(Some(idx)); } }
+                                MenuSelection::Projects => { if idx < self.filtered_projects.len() { self.projects_state.select(Some(idx)); } }
+                                MenuSelection::Groups => { if idx < self.filtered_groups.len() { self.groups_state.select(Some(idx)); } }
+                                MenuSelection::Branches => { if idx < self.project_branches.len() { self.branches_state.select(Some(idx)); } }
+                                MenuSelection::Commits => { if idx < self.commits.len() { self.commits_state.select(Some(idx)); } }
+                                MenuSelection::Boards => { 
+                                    if self.view_mode == ViewMode::Board {
+                                        // Handled by kanban_col_N checks below
+                                    } else if idx < self.project_boards.len() { 
+                                        self.project_boards_state.select(Some(idx)); 
+                                    } 
+                                }
+                                MenuSelection::Epics => { if idx < self.epics.len() { self.epics_state.select(Some(idx)); } }
+                                _ => {}
+                            }
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                // 2.1 Check Kanban Columns specifically
+                if self.view_mode == ViewMode::Board {
+                    for i in 0..self.board_lists.len() {
+                        if let Some(r) = self.get_rect(&format!("kanban_col_{}", i)) {
+                            if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                                self.active_panel = Panel::Main;
+                                self.board_lists_state.select(Some(i));
+                                let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                                let list_id = self.board_lists[i].id;
+                                let issues_len = self.board_issues.get(&list_id).map(|v| v.len()).unwrap_or(0);
+                                if issues_len > 0 {
+                                    let state = self.board_issue_states.entry(list_id).or_default();
+                                    // Heuristic: items are ~4 lines high (Title + Meta + Labels + Spacer)
+                                    let item_idx = (inner_y as usize / 4).min(issues_len - 1);
+                                    state.select(Some(item_idx));
+                                }
+                                let _ = self.update_preview().await;
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // 3. Check Detail Panels
+                if let Some(r) = self.get_rect("jobs_panel") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::MainDetail;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                        if (inner_y as usize) < self.jobs.len() {
+                            self.jobs_state.select(Some(inner_y as usize));
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+                if let Some(r) = self.get_rect("metadata_panel") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::MainDetail;
+                        self.detail_section = DetailSection::Metadata;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                        self.selected_metadata_field = match inner_y {
+                            0 => MetadataField::Title,
+                            1 => MetadataField::Labels,
+                            2 => MetadataField::Assignees,
+                            3 => MetadataField::Milestone,
+                            _ => MetadataField::Description,
+                        };
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+                if let Some(r) = self.get_rect("detail_view") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::MainDetail;
+                        self.detail_section = DetailSection::Description;
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+                if let Some(r) = self.get_rect("discussions_panel") {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                        self.active_panel = Panel::MainDetail;
+                        self.detail_section = DetailSection::Discussions;
+                        let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                        if (inner_y as usize) < self.discussions.len() {
+                            self.discussion_state.select(Some(inner_y as usize));
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+            }
             _ => {}
         }
     }
