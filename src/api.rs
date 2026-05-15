@@ -124,6 +124,8 @@ pub struct EditIssue {
     pub description: Option<String>,
     pub state_event: Option<String>,
     pub labels: Option<String>,
+    pub add_labels: Option<String>,
+    pub remove_labels: Option<String>,
     pub assignee_ids: Option<Vec<u64>>,
     pub milestone_id: Option<Option<u64>>,
     pub due_date: Option<Option<String>>,
@@ -147,6 +149,8 @@ impl Endpoint for EditIssue {
             if l.is_empty() { params.push("labels", ""); }
             else { params.push("labels", l); }
         }
+        if let Some(l) = &self.add_labels { params.push("add_labels", l); }
+        if let Some(l) = &self.remove_labels { params.push("remove_labels", l); }
         if let Some(a) = &self.assignee_ids {
             if a.is_empty() { params.push("assignee_ids", "0"); }
             else { for id in a { params.push("assignee_ids[]", *id); } }
@@ -813,6 +817,13 @@ impl Endpoint for JobLog {
 }
 
 #[derive(Debug, Clone)]
+pub struct JobTrace { pub project: u64, pub job: u64 }
+impl Endpoint for JobTrace {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/trace", self.project, self.job).into() }
+}
+
+#[derive(Debug, Clone)]
 pub struct Branches { pub project: u64 }
 impl Endpoint for Branches {
     fn method(&self) -> Method { Method::GET }
@@ -952,6 +963,7 @@ mod tests {
         let edit_issue = EditIssue {
             project: 1, issue: 2, title: Some("t".into()), description: Some("d".into()),
             state_event: Some("close".into()), labels: Some("l".into()),
+            add_labels: None, remove_labels: None,
             assignee_ids: Some(vec![1]), milestone_id: Some(Some(1)),
             due_date: Some(Some("2021-01-01".into())), weight: Some(Some(1)), confidential: Some(true)
         };
@@ -960,7 +972,8 @@ mod tests {
 
         let edit_issue_nulls = EditIssue {
             project: 1, issue: 2, title: None, description: None,
-            state_event: None, labels: None, assignee_ids: Some(vec![]),
+            state_event: None, labels: None, add_labels: None, remove_labels: None,
+            assignee_ids: Some(vec![]),
             milestone_id: Some(None), due_date: Some(None), weight: Some(None), confidential: None
         };
         assert!(edit_issue_nulls.body().is_ok());

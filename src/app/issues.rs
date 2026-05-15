@@ -149,7 +149,7 @@ impl App {
         if let Some(i) = &mut self.selected_issue { i.state = if current_state == "opened" { "closed".to_string() } else { "opened".to_string() }; }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: Some(event.to_string()), labels: None, assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
+            let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: Some(event.to_string()), labels: None, add_labels: None, remove_labels: None, assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
             match res { 
                 Ok(Ok(val)) => { 
@@ -169,7 +169,7 @@ impl App {
     pub async fn update_issue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let (pid, iid) = if let Some(issue) = &self.selected_issue { (issue.project_id, issue.iid) } else { return Ok(()); };
         let client = self.gitlab.clone(); let tx = self.tx.clone();
-        let mut edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
+        let mut edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, add_labels: None, remove_labels: None, assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
         let body = self.textarea.lines().join("\n");
         match self.input_target {
             InputTarget::EditTitle => { edit.title = Some(body.clone()); if let Some(i) = &mut self.selected_issue { i.title = body.clone(); } }
@@ -200,7 +200,7 @@ impl App {
             let labels = self.project_labels.iter().filter(|l| self.selected_label_ids.contains(&l.id())).map(|l| l.name().to_string()).collect::<Vec<_>>().join(",");
             self.show_label_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: Some(labels), assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
+                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: Some(labels), add_labels: None, remove_labels: None, assignee_ids: None, milestone_id: None, weight: None, due_date: None, confidential: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { 
                     Ok(Ok(val)) => { 
@@ -224,7 +224,7 @@ impl App {
             let assignee_ids = self.selected_assignee_ids.clone();
             self.show_assignee_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: Some(assignee_ids), milestone_id: None, weight: None, due_date: None, confidential: None };
+                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, add_labels: None, remove_labels: None, assignee_ids: Some(assignee_ids), milestone_id: None, weight: None, due_date: None, confidential: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { 
                     Ok(Ok(val)) => { 
@@ -248,7 +248,7 @@ impl App {
             let mid = if let Some(i) = self.milestone_state.selected() { if i == 0 { None } else { Some(self.project_milestones[i - 1].id) } } else { None };
             self.show_milestone_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, milestone_id: Some(mid), weight: None, due_date: None, confidential: None };
+                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, add_labels: None, remove_labels: None, assignee_ids: None, milestone_id: Some(mid), weight: None, due_date: None, confidential: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { 
                     Ok(Ok(val)) => { 
@@ -272,7 +272,7 @@ impl App {
             let weight = self.weight_state.selected().unwrap_or(0) as i64;
             self.show_weight_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, milestone_id: None, weight: Some(Some(weight)), due_date: None, confidential: None };
+                let edit = EditIssue { project: pid, issue: iid, title: None, description: None, state_event: None, labels: None, add_labels: None, remove_labels: None, assignee_ids: None, milestone_id: None, weight: Some(Some(weight)), due_date: None, confidential: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { 
                     Ok(Ok(val)) => { 
