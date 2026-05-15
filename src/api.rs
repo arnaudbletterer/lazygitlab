@@ -628,13 +628,6 @@ impl Endpoint for ProjectPipelineJobs {
 impl Pageable for ProjectPipelineJobs {}
 
 #[derive(Debug, Clone)]
-pub struct JobTrace { pub project: u64, pub job: u64 }
-impl Endpoint for JobTrace {
-    fn method(&self) -> Method { Method::GET }
-    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/jobs/{}/trace", self.project, self.job).into() }
-}
-
-#[derive(Debug, Clone)]
 pub struct SearchProjects { pub query: String }
 impl Endpoint for SearchProjects {
     fn method(&self) -> Method { Method::GET }
@@ -911,6 +904,13 @@ impl Endpoint for ProjectBoardListIssues {
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/boards/{}/lists/{}/issues", self.project, self.board, self.list).into() }
 }
 impl Pageable for ProjectBoardListIssues {}
+
+#[derive(Debug, Clone)]
+pub struct ProjectVariables { pub project: u64 }
+impl Endpoint for ProjectVariables {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/variables", self.project).into() }
+}
 
 #[derive(Debug, Clone)]
 pub struct GroupEpics { pub group: u64 }
