@@ -774,7 +774,7 @@ pub struct App {
 
     pub syntax_set: syntect::parsing::SyntaxSet,
     pub theme_set: syntect::highlighting::ThemeSet,
-
     pub pending_g_prefix: bool,
-}
 
+    pub last_rendered_rects: std::collections::HashMap<String, ratatui::layout::Rect>,
+    }
