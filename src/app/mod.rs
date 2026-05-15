@@ -2232,32 +2232,45 @@ impl App {
     pub fn copy_to_clipboard(&mut self, text: String) {
         if text.is_empty() { return; }
 
+        let mut success = false;
+
         // 1. Attempt local system clipboard (works on local machine)
         match arboard::Clipboard::new() {
             Ok(mut clipboard) => {
-                let _ = clipboard.set_text(text.clone());
+                if let Err(e) = clipboard.set_text(text.clone()) {
+                    tracing::error!("Local clipboard (arboard) error: {}", e);
+                } else {
+                    success = true;
+                    tracing::info!("Copied to local clipboard via arboard.");
+                }
             }
-            Err(_) => {}
+            Err(e) => {
+                tracing::error!("Failed to initialize local clipboard: {}", e);
+            }
         }
 
         // 2. OSC 52 sequence (works remotely over SSH if terminal supports it)
+        // We always send this as a fallback for remote users.
         use base64::{Engine as _, engine::general_purpose};
         let b64 = general_purpose::STANDARD.encode(&text);
         
-        // OSC 52 sequence: ESC ] 52 ; c ; [base64] ST
-        // ST (String Terminator) can be BEL (\x07) or ESC \ (\x1b\\)
-        let mut osc52 = format!("\x1b]52;c;{}\x1b\\", b64);
+        // OSC 52 sequence: ESC ] 52 ; c ; [base64] BEL
+        // We use BEL (\x07) as it's more widely supported in older Windows environments than ST.
+        let mut osc52 = format!("\x1b]52;c;{}\x07", b64);
         
         // If inside tmux, we need a special escape wrapper to pass through to the outer terminal
         if std::env::var_os("TMUX").is_some() {
             osc52 = format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", b64);
         }
 
+        // We write to stderr to avoid interfering with stdout which might be captured/buffered by ratatui
         use std::io::Write;
-        let mut stdout = std::io::stdout();
-        let _ = stdout.write_all(osc52.as_bytes());
-        let _ = stdout.flush();
-
+        let mut stderr = std::io::stderr();
+        let _ = stderr.write_all(osc52.as_bytes());
+        let _ = stderr.flush();
+        
+        // Even if arboard failed, if we sent the escape sequence, we consider it a "success" 
+        // attempt for the UI, but we log the actual status.
         self.status_message = Some("Copied to clipboard!".to_string());
     }
 
