@@ -264,34 +264,44 @@ impl App {
         Ok(())
     }
     pub fn copy_url(&mut self) {
-        let url = if let Some(mr) = &self.selected_mr { 
-            Some(mr.web_url.clone()) 
-        } else if let Some(issue) = &self.selected_issue { 
-            Some(issue.web_url.clone()) 
-        } else if let Some(pipeline) = &self.selected_pipeline { 
-            Some(pipeline.web_url.clone()) 
-        } else if let Some(job) = &self.selected_job { 
-            Some(job.web_url.clone()) 
-        } else if self.active_selection == MenuSelection::Projects { 
-            if let Some(idx) = self.projects_state.selected() { 
-                self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) 
-            } else { 
-                self.selected_project.as_ref().and_then(|p| p.web_url.clone()) 
-            } 
-        } else if self.active_selection == MenuSelection::Groups { 
-            if let Some(idx) = self.groups_state.selected() { 
-                self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) 
-            } else { 
-                None 
-            } 
-        } else if let Some(project) = &self.selected_project { 
-            project.web_url.clone() 
-        } else { 
-            None 
-        };
+        let url = if self.view_mode == ViewMode::Board { self.get_current_board_item_url() }
+                  else if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } 
+                  else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) } 
+                  else if let Some(pipeline) = &self.selected_pipeline { Some(pipeline.web_url.clone()) } 
+                  else if let Some(job) = &self.selected_job { Some(job.web_url.clone()) } 
+                  else if self.active_selection == MenuSelection::Projects { if let Some(idx) = self.projects_state.selected() { self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) } else { self.selected_project.as_ref().and_then(|p| p.web_url.clone()) } } 
+                  else if self.active_selection == MenuSelection::Groups { if let Some(idx) = self.groups_state.selected() { self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) } else { None } } 
+                  else if let Some(project) = &self.selected_project { project.web_url.clone() } 
+                  else { None };
 
+        if let Some(u) = url { self.copy_to_clipboard(u); }
+    }
+
+    pub fn open_in_browser(&self) {
+        let url = if self.view_mode == ViewMode::Board { self.get_current_board_item_url() }
+                  else if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } 
+                  else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) } 
+                  else if let Some(pipeline) = &self.selected_pipeline { Some(pipeline.web_url.clone()) } 
+                  else if let Some(job) = &self.selected_job { Some(job.web_url.clone()) } 
+                  else if self.active_selection == MenuSelection::Projects { if let Some(idx) = self.projects_state.selected() { self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) } else { self.selected_project.as_ref().and_then(|p| p.web_url.clone()) } } 
+                  else if self.active_selection == MenuSelection::Groups { if let Some(idx) = self.groups_state.selected() { self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) } else { None } } 
+                  else if let Some(project) = &self.selected_project { project.web_url.clone() } 
+                  else { None };
+        
+        #[cfg(test)] {
+            let _ = url;
+            return;
+        }
+
+        #[cfg(not(test))]
         if let Some(url) = url {
-            self.copy_to_clipboard(url);
+            if url == "u" { return; }
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                if !url.starts_with('/') { return; }
+            }
+            #[cfg(target_os = "windows")] let _ = std::process::Command::new("cmd").arg("/c").arg("start").arg(&url).spawn();
+            #[cfg(target_os = "macos")] let _ = std::process::Command::new("open").arg(&url).spawn();
+            #[cfg(target_os = "linux")] let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
         }
     }
 }
