@@ -1,6 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, DiffDisplayLine};
-use crate::ui::widgets::render_shortcuts;
 use crate::ui::markdown::render_markdown;
 
 pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {

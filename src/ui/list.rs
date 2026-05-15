@@ -1,7 +1,6 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, DetailSection};
 use crate::ui::detail::render_detail_view;
-use crate::ui::widgets::render_shortcuts;
 
 pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -33,10 +32,14 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Paragraph::new(status_text).block(status_block), side_chunks[0]);
 
     // 2. Navigation Panels (Filling space)
+    app.set_rect("nav_dashboard", side_chunks[1]);
     render_nav_panel(f, app.active_panel, &app.theme, side_chunks[1], Panel::Dashboard, " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues"]);
+    
+    app.set_rect("nav_explore", side_chunks[2]);
     render_nav_panel(f, app.active_panel, &app.theme, side_chunks[2], Panel::Explore, " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
     
     if app.selected_project.is_some() {
+        app.set_rect("nav_project", side_chunks[3]);
         let mut project_items = vec!["  Merge Requests", "  Issues", "  Pipelines", "  Repository", "  Branches", "  Commits", "  Boards"];
         if let Some(project) = &app.selected_project {
             if let Some(namespace) = &project.namespace {
@@ -82,15 +85,22 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
 
     if is_item_selected {
         if app.active_selection == MenuSelection::Pipelines {
+            app.set_rect("main_list", main_chunks[0]);
             render_main_list(f, app, main_chunks[0]);
+            app.set_rect("jobs_panel", main_chunks[1]);
             render_jobs_panel(f, app, main_chunks[1]);
         } else {
+            app.set_rect("main_list", main_chunks[0]);
             render_main_list(f, app, main_chunks[0]);
+            app.set_rect("detail_view", main_chunks[1]);
             render_detail_view(f, app, main_chunks[1]);
+            app.set_rect("metadata_panel", main_chunks[2]);
             render_metadata_panel(f, app, main_chunks[2]);
+            app.set_rect("discussions_panel", main_chunks[3]);
             render_discussions_panel(f, app, main_chunks[3]);
         }
     } else {
+        app.set_rect("main_list", main_chunks[0]);
         render_main_list(f, app, main_chunks[0]);
     }
 }
@@ -357,7 +367,14 @@ fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
     if items.is_empty() {
         f.render_widget(Paragraph::new(" No jobs found for this pipeline.").fg(app.theme.dim).block(block), area);
     } else {
-        f.render_stateful_widget(List::new(items).block(block).highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)).highlight_symbol("> "), area, &mut app.jobs_state);
+        f.render_stateful_widget(
+            List::new(items)
+                .block(block)
+                .highlight_style(if is_jobs_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
+                .highlight_symbol(if is_jobs_focused { "> " } else { "  " }), 
+            area, 
+            &mut app.jobs_state
+        );
     }
 }
 

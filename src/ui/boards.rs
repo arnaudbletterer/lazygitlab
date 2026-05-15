@@ -10,6 +10,7 @@ pub fn render_boards_view(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_board_list(f: &mut Frame, app: &mut App, area: Rect) {
+    app.set_rect("main_list", area);
     let is_main_focused = app.active_panel == crate::models::Panel::Main;
     let block = Block::default()
         .borders(Borders::ALL)
@@ -23,12 +24,19 @@ fn render_board_list(f: &mut Frame, app: &mut App, area: Rect) {
     if items.is_empty() {
         f.render_widget(Paragraph::new(" No boards found for this project.").fg(app.theme.dim).block(block), area);
     } else {
-        f.render_stateful_widget(List::new(items).block(block).highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)).highlight_symbol("> "), area, &mut app.project_boards_state);
+        f.render_stateful_widget(
+            List::new(items)
+                .block(block)
+                .highlight_style(if is_main_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
+                .highlight_symbol(if is_main_focused { "> " } else { "  " }), 
+            area, 
+            &mut app.project_boards_state
+        );
     }
 }
 
 fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
-    let lists = &app.board_lists;
+    let lists = app.board_lists.clone();
     
     if lists.is_empty() {
         if app.is_loading {
@@ -67,6 +75,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
         };
 
         let list_idx = start_col + i;
+        app.set_rect(&format!("kanban_col_{}", list_idx), chunks[i]);
         let is_column_focused = app.active_panel == crate::models::Panel::Main && app.board_lists_state.selected() == Some(list_idx);
         
         let issues = app.board_issues.get(&list.id).map(|v| v.as_slice()).unwrap_or(&[]);
@@ -153,8 +162,8 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_stateful_widget(
             List::new(list_items)
                 .block(block)
-                .highlight_style(Style::default().bg(app.theme.highlight_bg))
-                .highlight_symbol("> "), 
+                .highlight_style(if is_column_focused { Style::default().bg(app.theme.highlight_bg) } else { Style::default() })
+                .highlight_symbol(if is_column_focused { "> " } else { "  " }), 
             chunks[i], 
             state_ref
         );
@@ -162,6 +171,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 pub fn render_epics_view(f: &mut Frame, app: &mut App, area: Rect) {
+    app.set_rect("main_list", area);
     let is_main_focused = app.active_panel == crate::models::Panel::Main;
     let block = Block::default()
         .borders(Borders::ALL)
@@ -180,6 +190,13 @@ pub fn render_epics_view(f: &mut Frame, app: &mut App, area: Rect) {
     if items.is_empty() {
         f.render_widget(Paragraph::new(" No epics found for this group.").fg(app.theme.dim).block(block), area);
     } else {
-        f.render_stateful_widget(List::new(items).block(block).highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)).highlight_symbol("> "), area, &mut app.epics_state);
+        f.render_stateful_widget(
+            List::new(items)
+                .block(block)
+                .highlight_style(if is_main_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
+                .highlight_symbol(if is_main_focused { "> " } else { "  " }), 
+            area, 
+            &mut app.epics_state
+        );
     }
 }

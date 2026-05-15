@@ -30,7 +30,13 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::raw(format!(" {} -> {}", d.old_path, d.new_path)),
                 ]))
             }).collect();
-            f.render_widget(List::new(files).highlight_symbol("> "), inner);
+            f.render_stateful_widget(
+                List::new(files)
+                    .highlight_style(if is_changes_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
+                    .highlight_symbol(if is_changes_focused { "> " } else { "  " }), 
+                inner,
+                &mut app.mr_diff_state
+            );
             
             // Helpful hint at the bottom
             let hint_area = Rect::new(inner.x, inner.y + inner.height.saturating_sub(1), inner.width, 1);
