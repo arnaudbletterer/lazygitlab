@@ -1040,6 +1040,95 @@ impl App {
         }
     }
 
+    pub async fn go_forward(&mut self) {
+        match self.active_panel {
+            Panel::Dashboard | Panel::Explore | Panel::Project => {
+                self.active_panel = Panel::Main;
+            }
+            Panel::Main => {
+                // Determine if we should enter a specialized view or just focus detail
+                match self.active_selection {
+                    MenuSelection::Projects => {
+                        if let Some(i) = self.projects_state.selected() {
+                            self.selected_project = Some(self.filtered_projects[i].clone());
+                            self.active_panel = Panel::Main;
+                            self.active_context = Context::Project;
+                            self.project_menu_state.select(Some(0));
+                            self.active_selection = MenuSelection::MergeRequests;
+                            let _ = self.refresh().await;
+                        }
+                    }
+                    MenuSelection::Repository => {
+                        if let Some(selected_path) = self.repository_tree_state.selected().last() {
+                            if let Some(item) = self.repository_tree.iter().find(|i| &i.path == selected_path) {
+                                if item.r#type == "blob" {
+                                    self.view_mode = ViewMode::Tree;
+                                    let _ = self.fetch_repository_file(selected_path.clone()).await;
+                                } else {
+                                    self.repository_tree_state.toggle_selected();
+                                }
+                            }
+                        }
+                    }
+                    MenuSelection::Boards => {
+                        if let Some(i) = self.project_boards_state.selected() {
+                            if let Some(board) = self.project_boards.get(i).cloned() {
+                                self.selected_board = Some(board.clone());
+                                self.view_mode = ViewMode::Board;
+                                self.board_lists.clear();
+                                self.board_issues.clear();
+                                let _ = self.fetch_board_lists(board.id).await;
+                            }
+                        }
+                    }
+                    _ => {
+                        self.active_panel = Panel::MainDetail;
+                        self.detail_section = DetailSection::Metadata;
+                        self.selected_metadata_field = MetadataField::Title;
+                    }
+                }
+            }
+            Panel::MainDetail => {
+                // Enter specialized views from Detail
+                if self.detail_section == DetailSection::Changes && self.selected_mr.is_some() {
+                    self.view_mode = ViewMode::Diff;
+                    self.mr_diff_state.select(Some(0));
+                    let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
+                    let _ = self.fetch_mr_diffs(pid, iid).await;
+                } else if self.active_selection == MenuSelection::Pipelines {
+                    if let Some(i) = self.jobs_state.selected() {
+                        if let Some(j) = self.jobs.get(i).cloned() {
+                            self.selected_job = Some(j.clone());
+                            self.view_mode = ViewMode::JobLog;
+                            self.job_log_scroll = 0;
+                            let _ = self.fetch_job_log(self.selected_project.as_ref().unwrap().id, j.id).await;
+                        }
+                    }
+                } else {
+                    self.enter_detail_action().await;
+                }
+            }
+        }
+        let _ = self.update_preview().await;
+    }
+
+    pub async fn go_back(&mut self) {
+        match self.active_panel {
+            Panel::MainDetail => {
+                self.active_panel = Panel::Main;
+            }
+            Panel::Main => {
+                self.active_panel = match self.active_context {
+                    Context::Dashboard => Panel::Dashboard,
+                    Context::Explore => Panel::Explore,
+                    Context::Project => Panel::Project,
+                };
+            }
+            _ => {}
+        }
+        let _ = self.update_preview().await;
+    }
+
     pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
         use chrono::Timelike;
@@ -1372,6 +1461,34 @@ impl App {
                         }
                     }
                 }
+                KeyCode::Char('n') => {
+                    if let Some(selected_idx) = self.mr_diff_state.selected() {
+                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
+                            let current = self.diff_line_state.selected().unwrap_or(0);
+                            for i in (current + 1)..mr_diff.display_lines.len() {
+                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
+                                    self.diff_line_state.select(Some(i));
+                                    let _ = self.update_preview().await;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                KeyCode::Char('p') => {
+                    if let Some(selected_idx) = self.mr_diff_state.selected() {
+                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
+                            let current = self.diff_line_state.selected().unwrap_or(0);
+                            for i in (0..current).rev() {
+                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
+                                    self.diff_line_state.select(Some(i));
+                                    let _ = self.update_preview().await;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
             return;
@@ -1396,6 +1513,8 @@ impl App {
                     self.board_lists_state.select(Some(next));
                     return;
                 }
+                KeyCode::Char('H') => { let _ = self.move_board_issue(-1).await; return; }
+                KeyCode::Char('L') => { let _ = self.move_board_issue(1).await; return; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if let Some(list_idx) = self.board_lists_state.selected() {
                         if let Some(list) = self.board_lists.get(list_idx) {
@@ -2654,6 +2773,74 @@ impl App {
         }
     }
 
+    pub async fn move_board_issue(&mut self, direction: i32) -> Result<(), Box<dyn std::error::Error>> {
+        if self.view_mode != ViewMode::Board { return Ok(()); }
+        let current_list_idx = if let Some(i) = self.board_lists_state.selected() { i } else { return Ok(()); };
+        let target_list_idx = if direction > 0 { current_list_idx + 1 } else { current_list_idx.saturating_sub(1) };
+        
+        if target_list_idx >= self.board_lists.len() || target_list_idx == current_list_idx { return Ok(()); }
+        
+        let from_list = self.board_lists[current_list_idx].clone();
+        let to_list = self.board_lists[target_list_idx].clone();
+        
+        let issue_idx = if let Some(state) = self.board_issue_states.get(&from_list.id) {
+            if let Some(i) = state.selected() { i } else { return Ok(()); }
+        } else { return Ok(()); };
+        
+        let issue = if let Some(issues) = self.board_issues.get(&from_list.id) {
+            if let Some(i) = issues.get(issue_idx) { i.clone() } else { return Ok(()); }
+        } else { return Ok(()); };
+        
+        let project_id = issue.project_id;
+        let issue_iid = issue.iid;
+        
+        let mut add_labels = Vec::new();
+        let mut remove_labels = Vec::new();
+        let mut state_event = None;
+        
+        if let Some(l) = &from_list.label { remove_labels.push(l.name.clone()); }
+        if from_list.list_type == "closed" { state_event = Some("reopen".to_string()); }
+        
+        if let Some(l) = &to_list.label { add_labels.push(l.name.clone()); }
+        if to_list.list_type == "closed" { state_event = Some("close".to_string()); }
+        
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        
+        let add_l_str = if add_labels.is_empty() { None } else { Some(add_labels.join(",")) };
+        let rem_l_str = if remove_labels.is_empty() { None } else { Some(remove_labels.join(",")) };
+
+        tokio::spawn(async move {
+            let endpoint = crate::api::EditIssue {
+                project: project_id,
+                issue: issue_iid,
+                title: None,
+                description: None,
+                state_event,
+                labels: None,
+                add_labels: add_l_str,
+                remove_labels: rem_l_str,
+                assignee_ids: None,
+                milestone_id: None,
+                due_date: None,
+                weight: None,
+                confidential: None,
+            };
+            
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+            match res {
+                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Move issue failed: {}", e))); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Move issue timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        
+        self.board_lists_state.select(Some(target_list_idx));
+        Ok(())
+    }
+
     pub async fn execute_help_action(&mut self, action: HelpAction) {
         match action {
             HelpAction::Quit => self.should_quit = true,
@@ -2706,31 +2893,20 @@ impl App {
         }
     }
 
-    pub fn open_in_browser(&self) {
-        let url = if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } else if let Some(issue) = &self.selected_issue { Some(issue.web_url.clone()) } else if let Some(pipeline) = &self.selected_pipeline { Some(pipeline.web_url.clone()) } else if let Some(job) = &self.selected_job { Some(job.web_url.clone()) } else if self.active_selection == MenuSelection::Projects { if let Some(idx) = self.projects_state.selected() { self.filtered_projects.get(idx).and_then(|p| p.web_url.clone()) } else { self.selected_project.as_ref().and_then(|p| p.web_url.clone()) } } else if self.active_selection == MenuSelection::Groups { if let Some(idx) = self.groups_state.selected() { self.filtered_groups.get(idx).and_then(|g| g.web_url.clone()) } else { None } } else if let Some(project) = &self.selected_project { project.web_url.clone() } else { None };
-        
-        #[cfg(test)] {
-            let _ = url;
-            return;
-        }
-
-        #[cfg(not(test))]
-        if let Some(url) = url {
-            if url == "u" { return; }
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                // Try to prepend instance URL if it looks like a relative path
-                if url.starts_with('/') {
-                    // We don't easily have the base URL here without more changes, 
-                    // but we can at least skip clearly invalid ones like "u"
-                } else {
-                    return;
+    pub fn get_current_board_item_url(&self) -> Option<String> {
+        if self.view_mode != ViewMode::Board { return None; }
+        if let Some(list_idx) = self.board_lists_state.selected() {
+            if let Some(list) = self.board_lists.get(list_idx) {
+                if let Some(state) = self.board_issue_states.get(&list.id) {
+                    if let Some(issue_idx) = state.selected() {
+                        return self.board_issues.get(&list.id).and_then(|v| v.get(issue_idx)).map(|i| i.web_url.clone());
+                    }
                 }
             }
-            #[cfg(target_os = "windows")] let _ = std::process::Command::new("cmd").arg("/c").arg("start").arg(&url).spawn();
-            #[cfg(target_os = "macos")] let _ = std::process::Command::new("open").arg(&url).spawn();
-            #[cfg(target_os = "linux")] let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
         }
+        None
     }
+
     pub fn parse_job_log(&mut self) { self.job_log_lines = pipelines::parse_job_log(&self.job_log); }
     pub fn update_tree_state(&mut self) {
         // Build items for tui_tree_widget
