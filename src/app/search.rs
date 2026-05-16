@@ -83,11 +83,11 @@ impl App {
                             tokio::time::timeout(timeout, ep.query_async(&s2_client)).await.map_err(|_| "T".into()).and_then(|r| r.map_err(|e| e.to_string()))
                         }
                         "issues" => {
-                            let ep = GlobalIssues { scope: None, state: None, membership: Some(true), search: Some(s2_query), page: None, per_page: Some(50), order_by: None, sort: None, with_labels_details: Some(true) };
+                            let ep = GlobalIssues { scope: None, state: None, membership: Some(true), search: Some(s2_query), page: None, per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                             tokio::time::timeout(timeout, ep.query_async(&s2_client)).await.map_err(|_| "T".into()).and_then(|r| r.map_err(|e| e.to_string()))
                         }
                         "merge_requests" => {
-                            let ep = GlobalMergeRequests { scope: None, state: None, membership: Some(true), search: Some(s2_query), page: None, per_page: Some(50), order_by: None, sort: None, with_labels_details: Some(true) };
+                            let ep = GlobalMergeRequests { scope: None, state: None, membership: Some(true), search: Some(s2_query), page: None, per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                             tokio::time::timeout(timeout, ep.query_async(&s2_client)).await.map_err(|_| "T".into()).and_then(|r| r.map_err(|e| e.to_string()))
                         }
                         _ => return,

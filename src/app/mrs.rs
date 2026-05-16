@@ -76,11 +76,11 @@ impl App {
         };
 
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(30), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
             let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { 
-                    let has_more = data.len() == 50;
+                    let has_more = data.len() == 30;
                     let _ = tx.send(DataUpdate::GlobalMRs { data, page: 1, has_more }); 
                 }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global MRs fetch failed: {}", e))); }
@@ -104,7 +104,7 @@ impl App {
             MergeRequestFilter::All => "all".to_string(),
         };
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(30), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
             let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalMRs(data)); } }

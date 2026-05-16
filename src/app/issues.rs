@@ -16,7 +16,7 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(true));
             self.status_message = Some("Fetching Issues...".into());
             tokio::spawn(async move {
-                let ep = PagedIssues { project: pid, state: Some(state_str), page: 1, per_page: 50, order_by: None, sort: None, with_labels_details: Some(true) };
+                let ep = PagedIssues { project: pid, state: Some(state_str), page: 1, per_page: 50, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
                 match res {
                     Ok(Ok(data)) => { 
@@ -46,7 +46,7 @@ impl App {
             };
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let ep = PagedIssues { project: pid, state: Some(state_str), page: next_page, per_page: 50, order_by: None, sort: None, with_labels_details: Some(true) };
+                let ep = PagedIssues { project: pid, state: Some(state_str), page: next_page, per_page: 50, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
                 match res {
                     Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectIssues { project_id: pid, data }); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
@@ -69,11 +69,11 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
         self.status_message = Some("Fetching Global Issues...".into());
         tokio::spawn(async move {
-            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(50), order_by: None, sort: None, with_labels_details: Some(true) };
+            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(30), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
             let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
             match res {
                 Ok(Ok(data)) => { 
-                    let has_more = data.len() == 50;
+                    let has_more = data.len() == 30;
                     let _ = tx.send(DataUpdate::GlobalIssues { data, page: 1, has_more }); 
                 }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global issues fetch failed: {}", e))); }
@@ -96,7 +96,7 @@ impl App {
         };
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(50), order_by: None, sort: None, with_labels_details: Some(true) };
+            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(30), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
             let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
             match res {
                 Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalIssues(data)); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
