@@ -63,7 +63,6 @@ pub fn format_time_only(datetime_str: &str) -> String {
 }
 
 use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Theme {
     pub border: Color,
@@ -90,7 +89,6 @@ pub struct Theme {
     pub code_bg: Color,
     pub range_highlight: Color,
 }
-
 impl Theme {
     pub fn default() -> Self {
         Self {

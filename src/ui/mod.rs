@@ -132,7 +132,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         if job.status == "running" {
             if let Some(started) = &job.started_at {
                 status_line.push(Span::raw(" | Elapsed: "));
-                status_line.push(Span::styled(crate::ui::widgets::get_elapsed_time(started), Style::default().fg(Color::Yellow)));
+                status_line.push(Span::styled(crate::ui::widgets::get_elapsed_time(started), Style::default().fg(app.theme.pending)));
             }
         } else if let Some(duration) = job.duration {
             status_line.push(Span::raw(" | Duration: "));
@@ -327,7 +327,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        (server, App::new(client, tx))
     }
 
     #[test]
