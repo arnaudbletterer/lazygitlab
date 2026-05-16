@@ -76,7 +76,7 @@ impl App {
         };
 
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
             let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { 
@@ -104,7 +104,7 @@ impl App {
             MergeRequestFilter::All => "all".to_string(),
         };
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
             let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalMRs(data)); } }

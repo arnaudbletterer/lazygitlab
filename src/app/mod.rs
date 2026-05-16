@@ -14,8 +14,7 @@ use chrono::{Local, Timelike};
 use regex::Regex;
 
 impl App {
-    pub fn new(gitlab: AsyncGitlab) -> Self {
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    pub fn new(gitlab: AsyncGitlab, tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
         let mut dashboard_menu_state = ListState::default(); dashboard_menu_state.select(Some(0));
         let mut explore_menu_state = ListState::default(); explore_menu_state.select(Some(0));
         let mut project_menu_state = ListState::default(); project_menu_state.select(Some(0));
@@ -169,6 +168,9 @@ impl App {
             search_query: String::new(),
             search_results: Vec::new(),
             search_state: ListState::default(),
+            search_id: 0,
+            member_project_ids: std::collections::HashSet::new(),
+            is_syncing_membership: false,
             last_input: std::time::Instant::now(),
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
             theme_set: syntect::highlighting::ThemeSet::load_defaults(),
@@ -179,9 +181,35 @@ impl App {
 
     pub async fn process_update_single(&mut self, update: DataUpdate) {
         match update {
-            DataUpdate::SearchResults { data } => {
-                self.search_results = data;
-                self.search_state.select(if self.search_results.is_empty() { None } else { Some(0) });
+            DataUpdate::TriggerSearch(search_id) => {
+                if search_id == self.search_id {
+                    let _ = self.trigger_global_search().await;
+                }
+            }
+            DataUpdate::MemberProjectIds(ids) => {
+                self.member_project_ids = ids;
+                self.is_syncing_membership = false;
+            }
+            DataUpdate::SearchResults { data, search_id } => {
+                if search_id == self.search_id {
+                    self.search_results = data;
+                    self.search_state.select(if self.search_results.is_empty() { None } else { Some(0) });
+                }
+            }
+            DataUpdate::AppendSearchResults { data, search_id } => {
+                if search_id == self.search_id {
+                    let mut existing_keys: std::collections::HashSet<String> = self.search_results.iter().map(|r| r.key()).collect();
+                    for item in data {
+                        let key = item.key();
+                        if !existing_keys.contains(&key) {
+                            existing_keys.insert(key);
+                            self.search_results.push(item);
+                        }
+                    }
+                    if self.search_state.selected().is_none() && !self.search_results.is_empty() {
+                        self.search_state.select(Some(0));
+                    }
+                }
             }
             DataUpdate::Todos { data, page, has_more } => { self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); }
             DataUpdate::AppendTodos(mut data) => { self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); }
@@ -368,7 +396,13 @@ impl App {
                 self.is_loading = self.loading_tasks > 0;
                 if !self.is_loading {
                     if let Some(msg) = &self.status_message {
-                        if msg.starts_with("Fetching") || msg.starts_with("Loading") || msg.starts_with("Updating") {
+                        if msg.starts_with("Searching") {
+                            if self.search_results.is_empty() && self.show_search {
+                                self.status_message = Some("No results found.".into());
+                            } else {
+                                self.status_message = None;
+                            }
+                        } else if msg.starts_with("Fetching") || msg.starts_with("Loading") || msg.starts_with("Updating") {
                             self.status_message = None;
                         }
                     }
@@ -380,7 +414,7 @@ impl App {
                 self.is_loading = self.loading_tasks > 0;
                 if !self.is_loading {
                     if let Some(msg) = &self.status_message {
-                        if msg.starts_with("Fetching") || msg.starts_with("Loading") || msg.starts_with("Updating") {
+                        if msg.starts_with("Fetching") || msg.starts_with("Loading") || msg.starts_with("Updating") || msg.starts_with("Searching") {
                             self.status_message = None;
                         }
                     }
@@ -573,7 +607,7 @@ impl App {
         });
         let t2 = tx.clone(); let c2 = c.clone(); 
         tokio::spawn(async move { 
-            let ep = PagedProjects { membership: true, page: 1, per_page: 100, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) }; 
+            let ep = PagedProjects { membership: true, search: None, page: 1, per_page: 100, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) }; 
             let res: Result<Result<Vec<Project>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c2)).await;
             match res {
                 Ok(Ok(data)) => { 
@@ -638,6 +672,10 @@ impl App {
                 let res: Result<Author, _> = ep.query_async(&c).await;
                 if let Ok(user) = res { let _ = tx.send(DataUpdate::CurrentUser(user)); }
             });
+        }
+
+        if self.member_project_ids.is_empty() && !self.is_syncing_membership {
+            let _ = self.fetch_membership_project_ids().await;
         }
 
         match self.active_context {
@@ -749,13 +787,13 @@ impl App {
                                 if todo.target_type == "MergeRequest" {
                                     if self.selected_mr.as_ref().map_or(true, |m| m.iid != iid || m.project_id != todo.project.id) {
                                         self.selected_issue = None; self.discussions.clear();
-                                        self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author { id: 0, username: "".into() }, web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
+                                        self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
                                         let _ = self.fetch_discussions(todo.project.id, iid).await;
                                     }
                                 } else if todo.target_type == "Issue" {
                                     if self.selected_issue.as_ref().map_or(true, |iss| iss.iid != iid || iss.project_id != todo.project.id) {
                                         self.selected_mr = None; self.discussions.clear();
-                                        self.selected_issue = Some(Issue { iid, project_id: todo.project.id, title: todo.body.clone(), description: None, author: Author { id: 0, username: "".into() }, assignees: Vec::new(), state: "opened".into(), web_url: todo.target_url.clone(), references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
+                                        self.selected_issue = Some(Issue { iid, project_id: todo.project.id, title: todo.body.clone(), description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: todo.target_url.clone(), references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
                                         let _ = self.fetch_issue_discussions(todo.project.id, iid).await;
                                     }
                                 }
@@ -2051,9 +2089,9 @@ impl App {
                     KeyCode::Enter => { 
                         self.input_mode = false; 
                         self.show_filter_input = false;
+                        let _ = self.go_forward().await; 
                         self.filter_input.clear();
                         self.filter_lists();
-                        let _ = self.go_forward().await; 
                     }
                     KeyCode::Char(c) if c != '/' => { self.filter_input.push(c); self.filter_lists(); }
                     KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
@@ -2109,11 +2147,23 @@ impl App {
                     }
                     KeyCode::Char(c) if c != '/' => {
                         self.search_query.push(c);
-                        let _ = self.trigger_global_search().await;
+                        self.search_id += 1;
+                        let sid = self.search_id;
+                        let tx = self.tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                            let _ = tx.send(DataUpdate::TriggerSearch(sid));
+                        });
                     }
                     KeyCode::Backspace => {
                         self.search_query.pop();
-                        let _ = self.trigger_global_search().await;
+                        self.search_id += 1;
+                        let sid = self.search_id;
+                        let tx = self.tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                            let _ = tx.send(DataUpdate::TriggerSearch(sid));
+                        });
                     }
                     _ => {}
                 }
@@ -2615,12 +2665,11 @@ impl App {
                                 disc.collapsed = true;
                             }
                         }
-                        let _ = self.resolve_issue_discussion().await; 
-                    }
-                }
-            }
-            KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
-            KeyCode::Char('n') => {
+                        let _ = self.resolve_discussion().await; 
+                        }
+                        }
+                        }
+                        KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }            KeyCode::Char('n') => {
                 if self.show_create_issue_popup || self.show_create_mr_popup || self.show_pipeline_popup || self.show_project_popup || self.show_help_popup || self.show_search { return; }
                 match self.active_selection {
                     MenuSelection::Issues => {
@@ -2712,21 +2761,17 @@ impl App {
             self.filtered_board_issues.insert(*list_id, filtered);
         }
 
-        // Reset selections to 0 when filter changes to ensure "first element is always selected"
-        if !filter.is_empty() {
-            if !self.filtered_todos.is_empty() { self.todos_state.select(Some(0)); }
-            if !self.filtered_mrs.is_empty() { self.mrs_state.select(Some(0)); }
-            if !self.filtered_issues.is_empty() { self.issues_state.select(Some(0)); }
-            if !self.filtered_projects.is_empty() { self.projects_state.select(Some(0)); }
-            if !self.filtered_pipelines.is_empty() { self.pipelines_state.select(Some(0)); }
-            
-            for list in &self.board_lists {
-                if let Some(issues) = self.filtered_board_issues.get(&list.id) {
-                    if !issues.is_empty() {
-                        self.board_issue_states.entry(list.id).or_default().select(Some(0));
-                    }
-                }
-            }
+        // Always reset selections to 0 when filter query exists or was just cleared
+        // to ensure "first element is always selected" as the user types.
+        self.todos_state.select(Some(0));
+        self.mrs_state.select(Some(0));
+        self.issues_state.select(Some(0));
+        self.projects_state.select(Some(0));
+        self.pipelines_state.select(Some(0));
+        self.branches_state.select(Some(0));
+        
+        for list in &self.board_lists {
+            self.board_issue_states.entry(list.id).or_default().select(Some(0));
         }
 
         self.clamp_selections();
@@ -2806,6 +2851,110 @@ impl App {
             MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                 let x = mouse.column;
                 let y = mouse.row;
+
+                // 0. Handle Popups First (Highest Priority)
+                if self.show_help_popup {
+                    if let Some(r) = self.get_rect("popup_help") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             // Help results usually start after search box
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(if self.show_help_filter { 5 } else { 2 });
+                             if !self.filtered_help.is_empty() {
+                                 let idx = (self.help_state.offset() + inner_y as usize).min(self.filtered_help.len() - 1);
+                                 self.help_state.select(Some(idx));
+                             }
+                        } else {
+                            self.show_help_popup = false;
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_search {
+                    if let Some(r) = self.get_rect("popup_search") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(5); // search box(3) + margin(2)
+                             if !self.search_results.is_empty() {
+                                 let idx = (self.search_state.offset() + inner_y as usize).min(self.search_results.len() - 1);
+                                 self.search_state.select(Some(idx));
+                             }
+                        } else {
+                            self.show_search = false;
+                            self.input_mode = false;
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_project_popup {
+                    if let Some(r) = self.get_rect("popup_project") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                             if !self.projects.is_empty() {
+                                 let idx = (self.projects_state.offset() + inner_y as usize).min(self.projects.len() - 1);
+                                 self.projects_state.select(Some(idx));
+                             }
+                        } else {
+                            self.show_project_popup = false;
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_label_popup {
+                    if let Some(r) = self.get_rect("popup_label") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                             if !self.project_labels.is_empty() {
+                                 let idx = (self.label_state.offset() + inner_y as usize).min(self.project_labels.len() - 1);
+                                 self.label_state.select(Some(idx));
+                             }
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_assignee_popup {
+                    if let Some(r) = self.get_rect("popup_assignee") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                             if !self.project_members.is_empty() {
+                                 let idx = (self.assignee_state.offset() + inner_y as usize).min(self.project_members.len() - 1);
+                                 self.assignee_state.select(Some(idx));
+                             }
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_milestone_popup {
+                    if let Some(r) = self.get_rect("popup_milestone") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                             let len = self.project_milestones.len() + 1;
+                             let idx = (self.milestone_state.offset() + inner_y as usize).min(len - 1);
+                             self.milestone_state.select(Some(idx));
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
+
+                if self.show_snooze_popup {
+                    if let Some(r) = self.get_rect("popup_snooze") {
+                        if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                             let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                             let idx = (inner_y as usize).min(4);
+                             self.snooze_state.select(Some(idx));
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                }
 
                 // 1. Check Navigation Panels
                 if let Some(r) = self.get_rect("nav_dashboard") {

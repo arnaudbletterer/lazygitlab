@@ -2,36 +2,57 @@ use lazygitlab::models::{App, SearchResult};
 use gitlab::GitlabBuilder;
 use tokio::sync::mpsc;
 use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{path, method, query_param};
+use wiremock::matchers::{path, method, query_param, query_param_is_missing};
 
 #[tokio::test]
-async fn test_global_search_logic() {
+async fn test_hybrid_search_logic() {
     let server = MockServer::start().await;
-
-    // Mock for user (required by App::new logic usually)
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    
+    // Mock for version check (often used by Gitlab client)
     Mock::given(method("GET"))
-        .and(path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "id": 1, "username": "abletterer" })))
+        .and(path("/api/v4/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "version": "15.0.0", "revision": "rev" })))
         .mount(&server)
         .await;
-    
-    // Mock for projects search
+
+    // Mock for current user
     Mock::given(method("GET"))
-        .and(path("/api/v4/search"))
-        .and(query_param("scope", "projects"))
+        .and(path("/api/v4/user"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "id": 1, "username": "u" })))
+        .mount(&server)
+        .await;
+
+    // Mock for projects membership sync
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects"))
+        .and(query_param("membership", "true"))
+        .and(query_param_is_missing("search"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            { "id": 1, "name": "Test Project", "path_with_namespace": "ns/test-proj" }
+            { "id": 1, "name": "Project 1" },
+            { "id": 2, "name": "Project 2" }
         ])))
         .mount(&server)
         .await;
 
-    // Mock for issues search
+    // Mock for global search - projects
+    Mock::given(method("GET"))
+        .and(path("/api/v4/search"))
+        .and(query_param("scope", "projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            { "id": 1, "name": "Project 1" },
+            { "id": 999, "name": "Other" }
+        ])))
+        .mount(&server)
+        .await;
+
+    // Mock for global search - issues
     Mock::given(method("GET"))
         .and(path("/api/v4/search"))
         .and(query_param("scope", "issues"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             { 
-                "id": 10, "iid": 1, "project_id": 1, "title": "Test Issue", 
+                "id": 10, "iid": 1, "project_id": 1, "title": "Member Issue", 
                 "state": "opened", "web_url": "http://url", "author": { "id": 1, "username": "u" },
                 "assignees": [], "labels": []
             }
@@ -39,19 +60,37 @@ async fn test_global_search_logic() {
         .mount(&server)
         .await;
 
-    // Mock for MRs search
+    // Mock for global search - merge_requests
     Mock::given(method("GET"))
         .and(path("/api/v4/search"))
         .and(query_param("scope", "merge_requests"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             { 
-                "id": 20, "iid": 2, "project_id": 1, "title": "Test MR", 
-                "state": "opened", "web_url": "http://url", "author": { "id": 1, "username": "u" },
-                "target_branch": "main", "source_branch": "feat", "draft": false, "labels": [],
-                "created_at": "2023-01-01T00:00:00Z", "updated_at": "2023-01-01T00:00:00Z",
-                "assignees": []
+                "id": 20, "iid": 1, "project_id": 1, "title": "Member MR", 
+                "state": "merged", "web_url": "http://url", "author": { "id": 1, "username": "u" },
+                "assignees": [], "labels": []
             }
         ])))
+        .mount(&server)
+        .await;
+
+    // Mock for direct scoped search (should return empty to not double results in this test)
+    Mock::given(method("GET"))
+        .and(path("/api/v4/issues"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/merge_requests"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+        .mount(&server)
+        .await;
+    // Mock for direct projects search
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects"))
+        .and(query_param("membership", "true"))
+        .and(query_param("search", "test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
         .mount(&server)
         .await;
 
@@ -61,32 +100,43 @@ async fn test_global_search_logic() {
         .await
         .unwrap();
 
-    let mut app = App::new(client);
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx);
 
+    // 1. Trigger membership sync
+    app.refresh().await;
+    let start = std::time::Instant::now();
+    while app.member_project_ids.is_empty() && start.elapsed().as_secs() < 5 {
+        app.process_updates(&mut rx).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(app.member_project_ids.contains(&1));
+
+    // 2. Trigger search
     app.search_query = "test".to_string();
     app.trigger_global_search().await.unwrap();
 
-    // Process updates
     let start = std::time::Instant::now();
-    while app.search_results.len() < 3 && start.elapsed().as_secs() < 10 {
+    while app.search_results.is_empty() && start.elapsed().as_secs() < 5 {
         app.process_updates(&mut rx).await;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    println!("Results found: {}", app.search_results.len());
-    for (i, res) in app.search_results.iter().enumerate() {
-        println!("Result {}: {:?}", i, res);
-    }
-
+    // 3. Verify results (should only contain the one in member projects)
     assert_eq!(app.search_results.len(), 3);
     
-    let has_project = app.search_results.iter().any(|r| matches!(r, SearchResult::Project(_)));
-    let has_issue = app.search_results.iter().any(|r| matches!(r, SearchResult::Issue(_)));
-    let has_mr = app.search_results.iter().any(|r| matches!(r, SearchResult::MergeRequest(_)));
+    let mut found_issue = false;
+    let mut found_project = false;
+    let mut found_mr = false;
 
-    assert!(has_project);
-    assert!(has_issue);
-    assert!(has_mr);
+    for res in &app.search_results {
+        match res {
+            SearchResult::Project(p) => { if p.id == 1 { found_project = true; } }
+            SearchResult::Issue(i) => { if i.project_id == 1 { found_issue = true; } }
+            SearchResult::MergeRequest(m) => { if m.project_id == 1 { found_mr = true; } }
+        }
+    }
+
+    assert!(found_issue);
+    assert!(found_project);
+    assert!(found_mr);
 }

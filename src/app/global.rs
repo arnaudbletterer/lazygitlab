@@ -10,7 +10,7 @@ impl App {
         self.status_message = Some("Fetching Projects...".into());
 
         tokio::spawn(async move {
-            let ep = PagedProjects { membership: true, page: 1, per_page: 50, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) };
+            let ep = PagedProjects { membership: true, search: None, page: 1, per_page: 50, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) };
             let res: Result<Result<Vec<Project>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { 
@@ -33,7 +33,7 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
 
         tokio::spawn(async move {
-            let ep = PagedProjects { membership: true, page: next_page, per_page: 50, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) };
+            let ep = PagedProjects { membership: true, search: None, page: next_page, per_page: 50, simple: Some(true), archived: Some(false), order_by: Some("last_activity_at".into()) };
             let res: Result<Result<Vec<Project>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
             match res {
                 Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjects(data)); } }
@@ -263,6 +263,32 @@ impl App {
         });
         Ok(())
     }
+    pub async fn fetch_membership_project_ids(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.is_syncing_membership = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let ep = PagedProjects { membership: true, search: None, page: 1, per_page: 100, simple: Some(true), archived: Some(false), order_by: None };
+            let res: Result<Vec<serde_json::Value>, _> = gitlab::api::paged(ep, gitlab::api::Pagination::All).query_async(&client).await;
+            match res {
+                Ok(data) => {
+                    let mut ids = std::collections::HashSet::new();
+                    for val in data {
+                        if let Some(id) = val.get("id").and_then(|v| v.as_u64()) {
+                            ids.insert(id);
+                        }
+                    }
+                    tracing::info!("Membership sync complete: {} projects found", ids.len());
+                    let _ = tx.send(DataUpdate::MemberProjectIds(ids));
+                }
+                Err(e) => {
+                    tracing::error!("Membership sync failed: {}", e);
+                }
+            }
+        });
+        Ok(())
+    }
+
     pub fn copy_url(&mut self) {
         let url = if self.view_mode == ViewMode::Board { self.get_current_board_item_url() }
                   else if let Some(mr) = &self.selected_mr { Some(mr.web_url.clone()) } 

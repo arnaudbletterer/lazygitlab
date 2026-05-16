@@ -21,10 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.insecure();
     }
     let client = builder.build_async().await?;
-    let mut app = App::new(client);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(client, tx);
     
     // Start TUI first
-    run_with_terminal(&mut app).await
+    run_with_terminal(&mut app, &mut rx).await
 }
 
 struct Config { url: String, token: String, insecure: bool }
@@ -71,7 +72,7 @@ impl EventSource for RealEventSource {
 }
 
 #[cfg(not(tarpaulin_include))]
-pub async fn run_with_terminal(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_with_terminal(app: &mut App, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, event::EnableMouseCapture, event::EnableFocusChange)?;
@@ -79,10 +80,8 @@ pub async fn run_with_terminal(app: &mut App) -> Result<(), Box<dyn std::error::
     let mut terminal = Terminal::new(backend)?;
 
     let event_source = RealEventSource;
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    app.tx = tx;
 
-    let res = run_app(&mut terminal, app, &event_source, &mut rx).await;
+    let res = run_app(&mut terminal, app, &event_source, rx).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, event::DisableMouseCapture, event::DisableFocusChange)?;
@@ -190,7 +189,8 @@ mod tests {
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        let mut app = App::new(client);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(client, tx);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
@@ -200,7 +200,6 @@ mod tests {
             ]),
         };
 
-        let (_tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
     }
 
@@ -210,7 +209,8 @@ mod tests {
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        let mut app = App::new(client);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(client, tx);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
@@ -228,7 +228,6 @@ mod tests {
             ]),
         };
 
-        let (_tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
     }
 

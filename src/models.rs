@@ -55,18 +55,30 @@ pub struct MergeRequest {
     pub iid: u64,
     pub project_id: u64,
     pub title: String,
+    #[serde(default)]
     pub description: Option<String>,
     pub author: Author,
+    #[serde(default)]
     pub web_url: String,
+    #[serde(default)]
     pub state: String,
-    pub references: Option<References>,
-    pub upvotes: Option<u64>,
-    pub downvotes: Option<u64>,
-    pub labels: Vec<Label>,
-    pub milestone: Option<Milestone>,
-    pub assignees: Vec<Author>,
-    pub created_at: Option<String>,
+    #[serde(default)]
     pub draft: Option<bool>,
+    #[serde(default)]
+    pub references: Option<References>,
+    #[serde(default)]
+    pub upvotes: Option<u64>,
+    #[serde(default)]
+    pub downvotes: Option<u64>,
+    #[serde(default)]
+    pub labels: Vec<Label>,
+    #[serde(default)]
+    pub milestone: Option<Milestone>,
+    #[serde(default)]
+    pub assignees: Vec<Author>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
     pub diff_refs: Option<DiffRefs>,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
@@ -155,7 +167,29 @@ pub struct References {
 pub struct Author {
     pub id: u64,
     pub username: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub web_url: Option<String>,
 }
+
+impl Author {
+    pub fn new(id: u64, username: String) -> Self {
+        Self {
+            id,
+            username,
+            name: None,
+            state: None,
+            avatar_url: None,
+            web_url: None,
+        }
+    }
+}
+
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Group {
@@ -369,24 +403,38 @@ pub struct Issue {
     pub iid: u64,
     pub project_id: u64,
     pub title: String,
+    #[serde(default)]
     pub description: Option<String>,
     pub author: Author,
-    pub assignees: Vec<Author>,
-    pub state: String,
-    pub web_url: String,
-    pub references: Option<References>,
-    pub issue_type: Option<String>,
+    #[serde(default)]
     pub labels: Vec<Label>,
+    #[serde(default)]
+    pub assignees: Vec<Author>,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub web_url: String,
+    #[serde(default)]
+    pub references: Option<References>,
+    #[serde(default)]
+    pub issue_type: Option<String>,
+    #[serde(default)]
     pub milestone: Option<Milestone>,
+    #[serde(default)]
     pub due_date: Option<String>,
+    #[serde(default)]
     pub weight: Option<i64>,
+    #[serde(default)]
     pub task_completion_status: Option<TaskCompletionStatus>,
     #[serde(default)]
     pub confidential: bool,
+    #[serde(default)]
     pub created_at: Option<String>,
+    #[serde(default)]
     pub upvotes: Option<u64>,
+    #[serde(default)]
     pub downvotes: Option<u64>,
-    #[serde(skip)]
+    #[serde(default)]
     pub reactions: Vec<AwardEmoji>,
 }
 
@@ -556,6 +604,16 @@ pub enum SearchResult {
     MergeRequest(MergeRequest),
 }
 
+impl SearchResult {
+    pub fn key(&self) -> String {
+        match self {
+            SearchResult::Project(p) => format!("p:{}", p.id),
+            SearchResult::Issue(i) => format!("i:{}:{}", i.project_id, i.iid),
+            SearchResult::MergeRequest(m) => format!("m:{}:{}", m.project_id, m.iid),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ProjectVariable {
     pub key: String,
@@ -594,6 +652,7 @@ pub enum DataUpdate {
     TerminalEscape(String),
     Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
     Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
+    MemberProjectIds(std::collections::HashSet<u64>),
     MRDetail(MergeRequest),
     IssueDetail(Issue),
     CurrentUser(Author),
@@ -606,7 +665,9 @@ pub enum DataUpdate {
     BoardLists { project_id: u64, board_id: u64, data: Vec<BoardList> },
     BoardIssues { project_id: u64, board_id: u64, list_id: u64, data: Vec<Issue> },
     Epics { group_id: u64, data: Vec<Epic> },
-    SearchResults { data: Vec<SearchResult> },
+    SearchResults { data: Vec<SearchResult>, search_id: u64 },
+    AppendSearchResults { data: Vec<SearchResult>, search_id: u64 },
+    TriggerSearch(u64),
     Loading(bool),
     Error(String),
     TriggerRefresh,
@@ -798,6 +859,9 @@ pub struct App {
     pub search_query: String,
     pub search_results: Vec<SearchResult>,
     pub search_state: ListState,
+    pub search_id: u64,
+    pub member_project_ids: std::collections::HashSet<u64>,
+    pub is_syncing_membership: bool,
     pub last_input: std::time::Instant,
 
     pub syntax_set: syntect::parsing::SyntaxSet,

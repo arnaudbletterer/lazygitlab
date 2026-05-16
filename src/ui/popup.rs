@@ -4,6 +4,7 @@ use crate::ui::widgets::{centered_rect, render_shortcuts};
 
 pub fn render_project_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(60, 40, f.area());
+    app.set_rect("popup_project", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
@@ -22,6 +23,7 @@ pub fn render_project_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_label_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 60, f.area());
+    app.set_rect("popup_label", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
@@ -56,6 +58,7 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 60, f.area());
+    app.set_rect("popup_assignee", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
@@ -82,6 +85,7 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 40, f.area());
+    app.set_rect("popup_milestone", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
@@ -104,8 +108,10 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
 
     f.render_stateful_widget(list, area, &mut app.milestone_state);
 }
+
 pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(30, 40, f.area());
+    app.set_rect("popup_weight", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black), area);
 
@@ -124,6 +130,7 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     use chrono::{Datelike, NaiveDate};
     
     let area = centered_rect(40, 15, f.area());
+    app.set_rect("popup_calendar", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(format!(" Due Date: {} ", app.calendar_date.format("%B %Y"))), area);
 
@@ -166,13 +173,11 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     }
 
     f.render_widget(Table::new(rows, cols), days_area);
-    
-    let footer_area = Rect::new(area.x, area.y + area.height, area.width, 1);
-    render_shortcuts(f, footer_area, vec![("arrows", "nav"), ("enter", "save"), ("del", "clear"), ("esc", "back")], &app.theme);
 }
 
 pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(60, 60, f.area());
+    app.set_rect("popup_pipeline", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(" Launch Pipeline ").border_style(Style::default().fg(app.theme.border)), area);
 
@@ -270,14 +275,14 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
                 .block(Block::default().borders(Borders::ALL).title(" Suggested Keys ").border_style(Style::default().fg(Color::Yellow)))
                 .highlight_style(Style::default().bg(app.theme.highlight_bg))
                 .highlight_symbol(">> ");
-            // Reuse branches_state or add variable_keys_state? Let's add variable_keys_state to App.
-            f.render_stateful_widget(list, dropdown_area, &mut app.label_state); // Reusing label_state for now to avoid model bloat
+            f.render_stateful_widget(list, dropdown_area, &mut app.label_state); 
         }
     }
 }
 
 pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(65, 75, f.area());
+    app.set_rect("popup_help", area);
     f.render_widget(Clear, area);
     
     let block = Block::default()
@@ -330,6 +335,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_create_issue_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(60, 40, f.area());
+    app.set_rect("popup_create_issue", area);
     f.render_widget(Clear, area);
     let block = Block::default().borders(Borders::ALL).title(" Create New Issue ").border_style(Style::default().fg(app.theme.border));
     f.render_widget(block, area);
@@ -371,6 +377,7 @@ pub fn render_create_issue_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(70, 60, f.area());
+    app.set_rect("popup_create_mr", area);
     f.render_widget(Clear, area);
     let block = Block::default().borders(Borders::ALL).title(" Create New Merge Request ").border_style(Style::default().fg(app.theme.border));
     f.render_widget(block, area);
@@ -411,6 +418,7 @@ pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(40, 30, f.area());
+    app.set_rect("popup_snooze", area);
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(" Snooze Todo ").border_style(Style::default().fg(app.theme.border)), area);
 
@@ -433,8 +441,10 @@ pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
 
 pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(70, 80, f.area());
+    app.set_rect("popup_search", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(" Global Search ").border_style(Style::default().fg(app.theme.border)), area);
+    let title = if app.is_loading { " Global Search (Searching...) " } else { " Global Search " };
+    f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(title).border_style(Style::default().fg(app.theme.border)), area);
 
     let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
     let chunks = Layout::default()
@@ -448,7 +458,7 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
 
     // Search Input
     let search_style = if app.input_target == InputTarget::Search { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
-    let search_block = Block::default().borders(Borders::ALL).title(" Search Query (Enter to search, Esc to close) ").border_style(search_style);
+    let search_block = Block::default().borders(Borders::ALL).title(" Search Query (Esc to close) ").border_style(search_style);
     let search_para = Paragraph::new(app.search_query.as_str()).block(search_block);
     f.render_widget(search_para, chunks[0]);
 

@@ -117,6 +117,7 @@ impl Endpoint for AddIssueDiscussionNote {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct EditIssue {
     pub project: u64,
     pub issue: u64,
@@ -131,6 +132,14 @@ pub struct EditIssue {
     pub due_date: Option<Option<String>>,
     pub weight: Option<Option<i64>>,
     pub confidential: Option<bool>,
+}
+impl EditIssue {
+    pub fn builder() -> Self { Self::default() }
+    pub fn project(&mut self, p: u64) -> &mut Self { self.project = p; self }
+    pub fn issue(&mut self, i: u64) -> &mut Self { self.issue = i; self }
+    pub fn title(&mut self, t: String) -> &mut Self { self.title = Some(t); self }
+    pub fn description(&mut self, d: String) -> &mut Self { self.description = Some(d); self }
+    pub fn build(&mut self) -> Result<Self, String> { Ok(std::mem::take(self)) }
 }
 impl Endpoint for EditIssue {
     fn method(&self) -> Method { Method::PUT }
@@ -190,6 +199,7 @@ impl Endpoint for IssueDiscussions {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}/discussions", self.project, self.issue).into() }
 }
+impl Pageable for IssueDiscussions {}
 
 #[derive(Debug, Clone)]
 pub struct AddIssueNote { pub project: u64, pub issue: u64, pub body: String }
@@ -380,6 +390,7 @@ impl Pageable for PagedMergeRequests {}
 #[derive(Debug, Clone)]
 pub struct PagedProjects { 
     pub membership: bool, 
+    pub search: Option<String>,
     pub page: u64, 
     pub per_page: u64,
     pub simple: Option<bool>,
@@ -392,6 +403,7 @@ impl Endpoint for PagedProjects {
     fn parameters(&self) -> gitlab::api::QueryParams<'_> {
         let mut params = gitlab::api::QueryParams::default();
         params.push("membership", self.membership);
+        if let Some(s) = &self.search { params.push("search", s); }
         params.push("page", self.page);
         params.push("per_page", self.per_page);
         if let Some(s) = self.simple { params.push("simple", s); }
@@ -419,6 +431,7 @@ pub struct GlobalIssues {
     pub scope: Option<String>, 
     pub state: Option<String>, 
     pub membership: Option<bool>, 
+    pub search: Option<String>,
     pub page: Option<u64>, 
     pub per_page: Option<u64>, 
     pub order_by: Option<String>, 
@@ -433,6 +446,7 @@ impl Endpoint for GlobalIssues {
         if let Some(s) = &self.scope { params.push("scope", s); }
         if let Some(s) = &self.state { params.push("state", s); }
         if let Some(m) = self.membership { params.push("membership", m); }
+        if let Some(s) = &self.search { params.push("search", s); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
         if let Some(o) = &self.order_by { params.push("order_by", o); }
@@ -448,6 +462,7 @@ pub struct GlobalMergeRequests {
     pub scope: Option<String>, 
     pub state: Option<String>, 
     pub membership: Option<bool>, 
+    pub search: Option<String>,
     pub page: Option<u64>, 
     pub per_page: Option<u64>, 
     pub order_by: Option<String>, 
@@ -462,6 +477,7 @@ impl Endpoint for GlobalMergeRequests {
         if let Some(s) = &self.scope { params.push("scope", s); }
         if let Some(s) = &self.state { params.push("state", s); }
         if let Some(m) = self.membership { params.push("membership", m); }
+        if let Some(s) = &self.search { params.push("search", s); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
         if let Some(o) = &self.order_by { params.push("order_by", o); }
@@ -872,7 +888,12 @@ impl Endpoint for RawFile {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalSearch { pub scope: String, pub search: String }
+pub struct GlobalSearch { 
+    pub scope: String, 
+    pub search: String,
+    pub per_page: Option<u64>,
+    pub page: Option<u64>,
+}
 impl Endpoint for GlobalSearch {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { "search".into() }
@@ -880,6 +901,8 @@ impl Endpoint for GlobalSearch {
         let mut params = gitlab::api::QueryParams::default();
         params.push("scope", &self.scope);
         params.push("search", &self.search);
+        if let Some(pp) = self.per_page { params.push("per_page", pp); }
+        if let Some(p) = self.page { params.push("page", p); }
         params
     }
 }

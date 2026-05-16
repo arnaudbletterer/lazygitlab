@@ -196,6 +196,8 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(header, chunks[0]);
     }
 
+    app.set_rect("job_log", chunks[1]);
+
     let mut log_lines = Vec::new();
     for (idx, line) in app.job_log_lines.iter().enumerate() {
         let is_collapsed = line.section.as_ref().map(|s| app.collapsed_sections.contains(s)).unwrap_or(false);
