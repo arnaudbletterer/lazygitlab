@@ -277,13 +277,13 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
 }
 
 pub fn render_help_popup(f: &mut Frame, app: &mut App) {
-    let area = centered_rect(60, 70, f.area());
+    let area = centered_rect(65, 75, f.area());
     f.render_widget(Clear, area);
     
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
-        .title(" Help & Shortcuts (Esc to close, / to search) ")
+        .title(" Help & Shortcuts (?: close, /: search, Enter: run) ")
         .border_style(Style::default().fg(app.theme.border));
     f.render_widget(block, area);
 
@@ -314,8 +314,9 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     let items: Vec<ListItem> = app.filtered_help.iter()
         .map(|h| {
             let line = Line::from(vec![
-                Span::styled(format!("{:<20}", h.shortcut), Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
-                Span::styled(&h.description, Style::default().fg(app.theme.shortcut_desc)),
+                Span::styled(format!("{:<15}", h.shortcut), Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{:<35}", h.description), Style::default().fg(app.theme.shortcut_desc)),
+                Span::styled(format!("[{}]", h.category), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
             ]);
             ListItem::new(line)
         })

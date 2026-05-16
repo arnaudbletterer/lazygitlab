@@ -161,6 +161,7 @@ impl App {
             board_lists: Vec::new(),
             board_lists_state: ListState::default(),
             board_issues: std::collections::HashMap::new(),
+            filtered_board_issues: std::collections::HashMap::new(),
             board_issue_states: std::collections::HashMap::new(),
             epics: Vec::new(),
             epics_state: ListState::default(),
@@ -1197,7 +1198,11 @@ impl App {
             let filter = self.help_filter_input.to_lowercase();
             self.filtered_help = all.into_iter().filter(|item| item.description.to_lowercase().contains(&filter) || item.shortcut.to_lowercase().contains(&filter) || item.category.to_lowercase().contains(&filter)).collect();
         }
-        if self.help_state.selected().unwrap_or(0) >= self.filtered_help.len() { self.help_state.select(if self.filtered_help.is_empty() { None } else { Some(0) }); }
+        if self.filtered_help.is_empty() {
+            self.help_state.select(None);
+        } else if self.help_state.selected().is_none() || self.help_state.selected().unwrap() >= self.filtered_help.len() {
+            self.help_state.select(Some(0));
+        }
     }
 
     pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -1209,9 +1214,18 @@ impl App {
         if self.show_help_popup {
             if self.show_help_filter {
                 match key.code {
-                    KeyCode::Esc | KeyCode::Enter => { self.show_help_filter = false; }
+                    KeyCode::Esc | KeyCode::Char('/') => { self.show_help_filter = false; }
+                    KeyCode::Enter => {
+                        if let Some(i) = self.help_state.selected() {
+                            if let Some(item) = self.filtered_help.get(i).cloned() {
+                                self.execute_help_action(item.action).await;
+                            }
+                        }
+                    }
+                    KeyCode::Down => { if !self.filtered_help.is_empty() { let i = (self.help_state.selected().unwrap_or(0) + 1) % self.filtered_help.len(); self.help_state.select(Some(i)); } }
+                    KeyCode::Up => { if !self.filtered_help.is_empty() { let i = if self.help_state.selected().unwrap_or(0) == 0 { self.filtered_help.len() - 1 } else { self.help_state.selected().unwrap() - 1 }; self.help_state.select(Some(i)); } }
                     KeyCode::Backspace => { self.help_filter_input.pop(); self.filter_help(); }
-                    KeyCode::Char(c) => { self.help_filter_input.push(c); self.filter_help(); }
+                    KeyCode::Char(c) if c != '/' => { self.help_filter_input.push(c); self.filter_help(); }
                     _ => {}
                 }
                 return;
@@ -2031,29 +2045,75 @@ impl App {
         if self.input_mode {
             if self.input_target == InputTarget::Filter {
                 match processed_key.code {
-                    KeyCode::Enter => self.input_mode = false,
-                    KeyCode::Esc => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
-                    KeyCode::Char(c) => { self.filter_input.push(c); self.filter_lists(); }
+                    KeyCode::Esc | KeyCode::Char('/') => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
+                    KeyCode::Down | KeyCode::Char('j') => { self.move_down(); }
+                    KeyCode::Up | KeyCode::Char('k') => { self.move_up(); }
+                    KeyCode::Enter => { 
+                        self.input_mode = false; 
+                        self.show_filter_input = false;
+                        self.filter_input.clear();
+                        self.filter_lists();
+                        let _ = self.go_forward().await; 
+                    }
+                    KeyCode::Char(c) if c != '/' => { self.filter_input.push(c); self.filter_lists(); }
                     KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
                     _ => {}
                 }
             } else if self.input_target == InputTarget::Search {
                 match processed_key.code {
-                    KeyCode::Enter => {
-                        self.input_mode = false;
-                        let _ = self.trigger_global_search().await;
-                    }
-                    KeyCode::Esc => {
+                    KeyCode::Esc | KeyCode::Char('/') => {
                         self.input_mode = false;
                         self.show_search = false;
                         self.search_query.clear();
                         self.search_results.clear();
                     }
-                    KeyCode::Char(c) => {
+                    KeyCode::Down => {
+                        if !self.search_results.is_empty() {
+                            let i = (self.search_state.selected().unwrap_or(0) + 1) % self.search_results.len();
+                            self.search_state.select(Some(i));
+                        }
+                    }
+                    KeyCode::Up => {
+                        if !self.search_results.is_empty() {
+                            let i = if self.search_state.selected().unwrap_or(0) == 0 { self.search_results.len() - 1 } else { self.search_state.selected().unwrap() - 1 };
+                            self.search_state.select(Some(i));
+                        }
+                    }
+                    KeyCode::Enter => {
+                        if let Some(idx) = self.search_state.selected() {
+                            if let Some(res) = self.search_results.get(idx).cloned() {
+                                match res {
+                                    SearchResult::Project(p) => {
+                                        self.selected_project = Some(p);
+                                        self.active_context = Context::Project;
+                                        self.active_panel = Panel::Project;
+                                        self.show_search = false;
+                                        self.input_mode = false;
+                                        let _ = self.refresh().await;
+                                    }
+                                    SearchResult::Issue(i) => {
+                                        self.selected_issue = Some(i);
+                                        self.view_mode = ViewMode::Detail;
+                                        self.show_search = false;
+                                        self.input_mode = false;
+                                    }
+                                    SearchResult::MergeRequest(m) => {
+                                        self.selected_mr = Some(m);
+                                        self.view_mode = ViewMode::Detail;
+                                        self.show_search = false;
+                                        self.input_mode = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char(c) if c != '/' => {
                         self.search_query.push(c);
+                        let _ = self.trigger_global_search().await;
                     }
                     KeyCode::Backspace => {
                         self.search_query.pop();
+                        let _ = self.trigger_global_search().await;
                     }
                     _ => {}
                 }
@@ -2644,6 +2704,31 @@ impl App {
         self.filtered_projects = self.projects.iter().filter(|p| p.name.to_lowercase().contains(&filter)).cloned().collect();
         self.filtered_pipelines = self.pipelines.iter().filter(|p| p.ref_name.to_lowercase().contains(&filter)).cloned().collect();
         self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
+        
+        // Filter Board Issues
+        self.filtered_board_issues.clear();
+        for (list_id, issues) in &self.board_issues {
+            let filtered: Vec<_> = issues.iter().filter(|i| i.title.to_lowercase().contains(&filter) || i.iid.to_string().contains(&filter)).cloned().collect();
+            self.filtered_board_issues.insert(*list_id, filtered);
+        }
+
+        // Reset selections to 0 when filter changes to ensure "first element is always selected"
+        if !filter.is_empty() {
+            if !self.filtered_todos.is_empty() { self.todos_state.select(Some(0)); }
+            if !self.filtered_mrs.is_empty() { self.mrs_state.select(Some(0)); }
+            if !self.filtered_issues.is_empty() { self.issues_state.select(Some(0)); }
+            if !self.filtered_projects.is_empty() { self.projects_state.select(Some(0)); }
+            if !self.filtered_pipelines.is_empty() { self.pipelines_state.select(Some(0)); }
+            
+            for list in &self.board_lists {
+                if let Some(issues) = self.filtered_board_issues.get(&list.id) {
+                    if !issues.is_empty() {
+                        self.board_issue_states.entry(list.id).or_default().select(Some(0));
+                    }
+                }
+            }
+        }
+
         self.clamp_selections();
     }
 
@@ -2681,6 +2766,23 @@ impl App {
         clamp(&mut self.search_state, self.search_results.len(), self.show_search);
         clamp(&mut self.mr_diff_state, self.mr_diffs.len(), self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Changes);
         clamp(&mut self.board_lists_state, self.board_lists.len(), self.view_mode == ViewMode::Board);
+
+        // Clamp board issues
+        for list in &self.board_lists {
+            let len = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+            let state = self.board_issue_states.entry(list.id).or_default();
+            if len == 0 {
+                 if self.view_mode == ViewMode::Board && self.board_lists_state.selected() == self.board_lists.iter().position(|l| l.id == list.id) {
+                     state.select(Some(0));
+                 } else {
+                     state.select(None);
+                 }
+            } else if let Some(i) = state.selected() {
+                if i >= len { state.select(Some(len.saturating_sub(1))); }
+            } else {
+                state.select(Some(0));
+            }
+        }
 
         // Navigation state defaults
         if self.dashboard_menu_state.selected().is_none() { self.dashboard_menu_state.select(Some(0)); }
@@ -2785,25 +2887,26 @@ impl App {
                             }
                         } else if y > r.y + 1 {
                             // Select item in list
-                            let inner_y = y.saturating_sub(r.y).saturating_sub(2);
-                            let idx = inner_y as usize;
+                            let inner_y = y.saturating_sub(r.y).saturating_sub(2) as usize;
+                            
                             match self.active_selection {
-                                MenuSelection::Todos => { if idx < self.filtered_todos.len() { self.todos_state.select(Some(idx)); } }
-                                MenuSelection::MergeRequests => { if idx < self.filtered_mrs.len() { self.mrs_state.select(Some(idx)); } }
-                                MenuSelection::Issues => { if idx < self.filtered_issues.len() { self.issues_state.select(Some(idx)); } }
-                                MenuSelection::Pipelines => { if idx < self.pipelines.len() { self.pipelines_state.select(Some(idx)); } }
-                                MenuSelection::Projects => { if idx < self.filtered_projects.len() { self.projects_state.select(Some(idx)); } }
-                                MenuSelection::Groups => { if idx < self.filtered_groups.len() { self.groups_state.select(Some(idx)); } }
-                                MenuSelection::Branches => { if idx < self.project_branches.len() { self.branches_state.select(Some(idx)); } }
-                                MenuSelection::Commits => { if idx < self.commits.len() { self.commits_state.select(Some(idx)); } }
+                                MenuSelection::Todos => { let idx = self.todos_state.offset() + inner_y; if idx < self.filtered_todos.len() { self.todos_state.select(Some(idx)); } }
+                                MenuSelection::MergeRequests => { let idx = self.mrs_state.offset() + inner_y; if idx < self.filtered_mrs.len() { self.mrs_state.select(Some(idx)); } }
+                                MenuSelection::Issues => { let idx = self.issues_state.offset() + inner_y; if idx < self.filtered_issues.len() { self.issues_state.select(Some(idx)); } }
+                                MenuSelection::Pipelines => { let idx = self.pipelines_state.offset() + inner_y; if idx < self.pipelines.len() { self.pipelines_state.select(Some(idx)); } }
+                                MenuSelection::Projects => { let idx = self.projects_state.offset() + inner_y; if idx < self.filtered_projects.len() { self.projects_state.select(Some(idx)); } }
+                                MenuSelection::Groups => { let idx = self.groups_state.offset() + inner_y; if idx < self.filtered_groups.len() { self.groups_state.select(Some(idx)); } }
+                                MenuSelection::Branches => { let idx = self.branches_state.offset() + inner_y; if idx < self.project_branches.len() { self.branches_state.select(Some(idx)); } }
+                                MenuSelection::Commits => { let idx = self.commits_state.offset() + inner_y; if idx < self.commits.len() { self.commits_state.select(Some(idx)); } }
                                 MenuSelection::Boards => { 
-                                    if self.view_mode == ViewMode::Board {
-                                        // Handled by kanban_col_N checks below
-                                    } else if idx < self.project_boards.len() { 
-                                        self.project_boards_state.select(Some(idx)); 
-                                    } 
+                                    if self.view_mode != ViewMode::Board {
+                                        let idx = self.project_boards_state.offset() + inner_y;
+                                        if idx < self.project_boards.len() { 
+                                            self.project_boards_state.select(Some(idx)); 
+                                        } 
+                                    }
                                 }
-                                MenuSelection::Epics => { if idx < self.epics.len() { self.epics_state.select(Some(idx)); } }
+                                MenuSelection::Epics => { let idx = self.epics_state.offset() + inner_y; if idx < self.epics.len() { self.epics_state.select(Some(idx)); } }
                                 _ => {}
                             }
                         }
@@ -2821,11 +2924,11 @@ impl App {
                                 self.board_lists_state.select(Some(i));
                                 let inner_y = y.saturating_sub(r.y).saturating_sub(1);
                                 let list_id = self.board_lists[i].id;
-                                let issues_len = self.board_issues.get(&list_id).map(|v| v.len()).unwrap_or(0);
+                                let issues_len = self.filtered_board_issues.get(&list_id).map(|v| v.len()).unwrap_or(0);
                                 if issues_len > 0 {
                                     let state = self.board_issue_states.entry(list_id).or_default();
                                     // Heuristic: items are ~4 lines high (Title + Meta + Labels + Spacer)
-                                    let item_idx = (inner_y as usize / 4).min(issues_len - 1);
+                                    let item_idx = (state.offset() + inner_y as usize / 4).min(issues_len - 1);
                                     state.select(Some(item_idx));
                                 }
                                 let _ = self.update_preview().await;
