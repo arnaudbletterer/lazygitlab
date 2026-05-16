@@ -196,19 +196,19 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
     use crate::models::InputTarget;
 
     // Ref Input
-    let ref_style = if let InputTarget::PipelineRef = app.input_target { Style::default().fg(Color::Yellow) } else { Style::default() };
+    let ref_style = if let InputTarget::PipelineRef = app.input_target { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
     let ref_input = Paragraph::new(app.pipeline_ref_input.as_str())
         .block(Block::default().borders(Borders::ALL).title(" Ref (Branch/Tag) ").border_style(ref_style));
     f.render_widget(ref_input, chunks[0]);
 
     // Variable Key Input
-    let key_style = if let InputTarget::PipelineVariableKey = app.input_target { Style::default().fg(Color::Yellow) } else { Style::default() };
+    let key_style = if let InputTarget::PipelineVariableKey = app.input_target { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
     let key_input = Paragraph::new(app.pipeline_variable_key_input.as_str())
         .block(Block::default().borders(Borders::ALL).title(" Variable Key ").border_style(key_style));
     f.render_widget(key_input, chunks[1]);
 
     // Variable Value Input
-    let val_style = if let InputTarget::PipelineVariableValue = app.input_target { Style::default().fg(Color::Yellow) } else { Style::default() };
+    let val_style = if let InputTarget::PipelineVariableValue = app.input_target { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
     let val_input = Paragraph::new(app.pipeline_variable_value_input.as_str())
         .block(Block::default().borders(Borders::ALL).title(" Variable Value ").border_style(val_style));
     f.render_widget(val_input, chunks[2]);
@@ -218,7 +218,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
         .map(|v| ListItem::new(format!("{}: {}", v.key, v.value)))
         .collect();
     let is_var_list_focused = app.input_target == InputTarget::PipelineVariableList;
-    let var_list_style = if is_var_list_focused { Style::default().fg(Color::Yellow) } else { Style::default() };
+    let var_list_style = if is_var_list_focused { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
     let highlight_style = if is_var_list_focused {
         Style::default().bg(app.theme.highlight_bg)
     } else {
@@ -248,7 +248,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
             .map(|b| ListItem::new(b.name.as_str()))
             .collect();
         let list = List::new(branches)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.highlight_bg)))
             .highlight_style(Style::default().bg(app.theme.highlight_bg))
             .highlight_symbol(">> ");
         f.render_stateful_widget(list, dropdown_area, &mut app.branches_state);
@@ -272,7 +272,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
                 .map(|v| ListItem::new(format!("{} ({})", v.key, v.environment_scope)))
                 .collect();
             let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title(" Suggested Keys ").border_style(Style::default().fg(Color::Yellow)))
+                .block(Block::default().borders(Borders::ALL).title(" Suggested Keys ").border_style(Style::default().fg(app.theme.highlight_bg)))
                 .highlight_style(Style::default().bg(app.theme.highlight_bg))
                 .highlight_symbol(">> ");
             f.render_stateful_widget(list, dropdown_area, &mut app.label_state); 
@@ -473,15 +473,15 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     let items: Vec<ListItem> = app.search_results.iter().map(|res| {
         match res {
             SearchResult::Project(p) => ListItem::new(Line::from(vec![
-                Span::styled(" [Project] ", Style::default().fg(Color::Cyan)),
+                Span::styled(" [Project] ", Style::default().fg(app.theme.project)),
                 Span::raw(format!(" {}", p.path_with_namespace.as_deref().unwrap_or(&p.name))),
             ])),
             SearchResult::Issue(i) => ListItem::new(Line::from(vec![
-                Span::styled(" [Issue]   ", Style::default().fg(Color::Green)),
+                Span::styled(" [Issue]   ", Style::default().fg(app.theme.issue)),
                 Span::raw(format!(" #{} {}", i.iid, i.title)),
             ])),
             SearchResult::MergeRequest(m) => ListItem::new(Line::from(vec![
-                Span::styled(" [MR]      ", Style::default().fg(Color::Magenta)),
+                Span::styled(" [MR]      ", Style::default().fg(app.theme.mr)),
                 Span::raw(format!(" !{} {}", m.iid, m.title)),
             ])),
         }

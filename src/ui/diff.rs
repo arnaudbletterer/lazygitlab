@@ -22,9 +22,9 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
             ]),
             Line::from(vec![
                 Span::raw(" Author: "), Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
-                Span::raw("  State: "), Span::styled(&mr.state, Style::default().fg(if mr.state == "opened" { Color::Green } else { Color::Red })),
+                Span::raw("  State: "), Span::styled(&mr.state, crate::ui::widgets::get_status_style(&mr.state, &app.theme)),
                 Span::raw("  Approvals: "), Span::styled(format!("+{}", mr.upvotes.unwrap_or(0)), Style::default().fg(app.theme.success)),
-                Span::raw("  Comments: "), Span::styled(format!("{}", app.discussions.len()), Style::default().fg(Color::Yellow)),
+                Span::raw("  Comments: "), Span::styled(format!("{}", app.discussions.len()), Style::default().fg(app.theme.pending)),
             ]),
         ];
         if let Some(refs) = &mr.diff_refs {
@@ -99,11 +99,11 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                         } else { false };
 
                         let style = if line.starts_with('+') {
-                            Style::default().fg(Color::Green)
+                            Style::default().fg(app.theme.success)
                         } else if line.starts_with('-') {
-                            Style::default().fg(Color::Red)
+                            Style::default().fg(app.theme.failed)
                         } else if line.starts_with("@@") {
-                            Style::default().fg(Color::Cyan)
+                            Style::default().fg(app.theme.shortcut_key)
                         } else {
                             Style::default()
                         };
@@ -126,7 +126,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                         
                         let prefix = if is_resolved { " [RESOLVED] " } else { "" };
                         // Resolved threads use Dim color; Unresolved use bright Yellow
-                        let prefix_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(Color::Yellow) };
+                        let prefix_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.pending) };
                         let content_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default() };
                         let author_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.author) };
 
@@ -172,7 +172,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                                 text.push(Line::from("")); // Spacer between notes
                             }
                         }
-                        let mut item = ListItem::new(text).style(Style::default().bg(Color::Rgb(30, 30, 30)));
+                        let mut item = ListItem::new(text).style(Style::default().bg(app.theme.code_bg));
                         if is_cursor && !is_file_list_focused {
                             item = item.style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD));
                         } else if is_in_manual_selection && !is_file_list_focused {

@@ -81,6 +81,10 @@ pub struct Theme {
     pub open_mr: Color,    // GitLab Blue (Open MRs)
     pub merged_mr: Color,  // GitLab Purple (Merged MRs)
     pub closed_mr: Color,  // GitLab Red (Closed MRs)
+    pub header: Color,
+    pub project: Color,
+    pub issue: Color,
+    pub mr: Color,
     pub shortcut_key: Color,
     pub shortcut_desc: Color,
     pub keyword: Color,
@@ -103,6 +107,10 @@ impl Theme {
             open_mr: Color::Rgb(31, 117, 203), // #1f75cb (Same as running/blue)
             merged_mr: Color::Rgb(102, 102, 196), // #6666c4
             closed_mr: Color::Rgb(219, 59, 33), // #db3b21 (Same as failed/red)
+            header: Color::Rgb(100, 150, 255), // Light blue for project headers
+            project: Color::Cyan,
+            issue: Color::Green,
+            mr: Color::Magenta,
             shortcut_key: Color::Cyan,
             shortcut_desc: Color::White,
             keyword: Color::Rgb(255, 120, 120), // Light red for keywords

@@ -49,12 +49,12 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     if let Some(err) = &app.last_error {
         footer_spans.push(Span::raw("   "));
-        footer_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
+        footer_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(app.theme.failed).fg(Color::White).add_modifier(Modifier::BOLD)));
     }
     if app.is_loading || app.status_message.is_some() {
         let msg = app.status_message.as_deref().unwrap_or("Loading");
         footer_spans.push(Span::raw("   "));
-        footer_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        footer_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(app.theme.pending).add_modifier(Modifier::BOLD)));
     }
 
     f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_chunks[0]);
@@ -173,7 +173,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             third_line.push(Span::raw(" | "));
         }
         if job.allow_failure {
-            third_line.push(Span::styled("Allow Failure", Style::default().fg(Color::Yellow)));
+            third_line.push(Span::styled("Allow Failure", Style::default().fg(app.theme.pending)));
         }
         header_lines.push(Line::from(third_line));
 
@@ -188,8 +188,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 
         let title = if app.is_loading { " Job Info (Refreshing...) " } else { " Job Info [LIVE] " };
         let header = Paragraph::new(header_lines)
-            .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(if app.is_loading { Color::Yellow } else { Color::Green })));
-        f.render_widget(header, chunks[0]);
+            .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(if app.is_loading { app.theme.pending } else { app.theme.success })));        f.render_widget(header, chunks[0]);
     } else {
         let header = Paragraph::new("No job selected")
             .block(Block::default().borders(Borders::ALL).title(" Job Info ").border_style(Style::default().fg(app.theme.border)));
@@ -220,7 +219,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 
         if line.is_section_start {
             let symbol = if is_collapsed { "[+] " } else { "[-] " };
-            spans.push(Span::styled(symbol, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(symbol, Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
         } else if line.section.is_some() {
             spans.push(Span::raw("    "));
         }
@@ -261,7 +260,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             };
             log_lines.push(Line::from(vec![
                 Span::styled("     ", Style::default().fg(app.theme.dim)),
-                Span::styled(dots, Style::default().fg(Color::Yellow)),
+                Span::styled(dots, Style::default().fg(app.theme.pending)),
             ]));
         }
     }

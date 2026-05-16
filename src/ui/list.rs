@@ -177,7 +177,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     GroupedItem::Header(h) => {
                         let key = format!("todos:{}", h);
                         let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
                     },
                 }
             }).collect();
@@ -201,7 +201,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
                         let key = format!("{}:{}", scope, h);
                         let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
                     },
                 }
             }).collect();
@@ -225,7 +225,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
                         let key = format!("{}:{}", scope, h);
                         let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
                     },
                 }
             }).collect();

@@ -40,7 +40,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
     
     if lists.is_empty() {
         if app.is_loading {
-            f.render_widget(Paragraph::new("\n  Loading board columns...").fg(Color::Yellow), area);
+            f.render_widget(Paragraph::new("\n  Loading board columns...").fg(app.theme.pending), area);
         } else {
             f.render_widget(Paragraph::new("\n  No columns found for this board.\n  (Note: Backlog and Closed columns are currently not shown if they are not explicitly added as label lists)").fg(app.theme.dim), area);
         }
@@ -92,7 +92,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
             .border_style(Style::default().fg(if is_column_focused { app.theme.border } else { app.theme.dim }));
 
         if issues.is_empty() && app.is_loading {
-             f.render_widget(Paragraph::new("\n  Loading issues...").fg(Color::Yellow).block(block), chunks[i]);
+             f.render_widget(Paragraph::new("\n  Loading issues...").fg(app.theme.pending).block(block), chunks[i]);
              continue;
         }
 
@@ -118,7 +118,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
 
             if let Some(ms) = &issue.milestone {
                 meta_spans.push(Span::raw(" | "));
-                meta_spans.push(Span::styled(format!(" 󰔛 {} ", ms.title), Style::default().fg(Color::Yellow)));
+                meta_spans.push(Span::styled(format!(" 󰔛 {} ", ms.title), Style::default().fg(app.theme.pending)));
             }
 
             let upvotes = issue.upvotes.unwrap_or(0);
@@ -183,7 +183,7 @@ pub fn render_epics_view(f: &mut Frame, app: &mut App, area: Rect) {
             Span::styled(format!("&{} ", e.iid), Style::default().fg(app.theme.dim)),
             Span::styled(e.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
         ];
-        if e.state == "closed" { spans.push(Span::styled(" [CLOSED]", Style::default().fg(Color::Red))); }
+        if e.state == "closed" { spans.push(Span::styled(" [CLOSED]", Style::default().fg(app.theme.failed))); }
         ListItem::new(Line::from(spans))
     }).collect();
 
