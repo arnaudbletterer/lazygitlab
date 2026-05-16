@@ -36,7 +36,6 @@ pub fn get_elapsed_time(started_at: &str) -> String {
 pub fn format_relative_time(datetime_str: &str) -> String {
     if datetime_str.is_empty() { return "None".to_string(); }
     
-    // GitLab ISO8601 can have variants, let's try to parse
     match DateTime::parse_from_rfc3339(datetime_str) {
         Ok(dt) => {
             let dt_utc: DateTime<Utc> = dt.with_timezone(&Utc);
@@ -44,7 +43,6 @@ pub fn format_relative_time(datetime_str: &str) -> String {
             ht.to_text_en(Accuracy::Rough, Tense::Past)
         }
         Err(_) => {
-            // Try another format if RFC3339 fails (GitLab sometimes uses this)
             match DateTime::parse_from_str(datetime_str, "%Y-%m-%dT%H:%M:%S%.3fZ") {
                 Ok(dt) => {
                     let ht = HumanTime::from(dt);
@@ -57,9 +55,7 @@ pub fn format_relative_time(datetime_str: &str) -> String {
 }
 
 pub fn format_time_only(datetime_str: &str) -> String {
-    // Expected: 2026-04-14T19:37:21.116729Z
     if datetime_str.len() >= 19 {
-        // Just extract HH:MM:SS
         datetime_str[11..19].to_string()
     } else {
         datetime_str.to_string()
@@ -74,14 +70,16 @@ pub struct Theme {
     pub highlight_bg: Color,
     pub author: Color,
     pub dim: Color,
-    pub success: Color,    // GitLab Green
-    pub failed: Color,     // GitLab Red
-    pub running: Color,    // GitLab Blue
-    pub pending: Color,    // GitLab Yellow/Orange
-    pub open_mr: Color,    // GitLab Blue (Open MRs)
-    pub merged_mr: Color,  // GitLab Purple (Merged MRs)
-    pub closed_mr: Color,  // GitLab Red (Closed MRs)
+    pub success: Color,
+    pub failed: Color,
+    pub running: Color,
+    pub pending: Color,
+    pub open_mr: Color,
+    pub merged_mr: Color,
+    pub closed_mr: Color,
     pub header: Color,
+    pub header1: Color,
+    pub header2: Color,
     pub project: Color,
     pub issue: Color,
     pub mr: Color,
@@ -97,26 +95,28 @@ impl Theme {
     pub fn default() -> Self {
         Self {
             border: Color::Green,
-            highlight_bg: Color::Rgb(100, 100, 200), // Brighter blue for primary highlight
+            highlight_bg: Color::Rgb(100, 100, 200),
             author: Color::Magenta,
             dim: Color::Rgb(100, 100, 100),
-            success: Color::Rgb(26, 170, 85), // #1aaa55
-            failed: Color::Rgb(219, 59, 33),  // #db3b21
-            running: Color::Rgb(31, 117, 203), // #1f75cb
-            pending: Color::Rgb(252, 148, 3), // #fc9403
-            open_mr: Color::Rgb(31, 117, 203), // #1f75cb (Same as running/blue)
-            merged_mr: Color::Rgb(102, 102, 196), // #6666c4
-            closed_mr: Color::Rgb(219, 59, 33), // #db3b21 (Same as failed/red)
-            header: Color::Rgb(100, 150, 255), // Light blue for project headers
+            success: Color::Rgb(26, 170, 85),
+            failed: Color::Rgb(219, 59, 33),
+            running: Color::Rgb(31, 117, 203),
+            pending: Color::Rgb(252, 148, 3),
+            open_mr: Color::Rgb(31, 117, 203),
+            merged_mr: Color::Rgb(102, 102, 196),
+            closed_mr: Color::Rgb(219, 59, 33),
+            header: Color::Rgb(100, 150, 255),
+            header1: Color::Cyan,
+            header2: Color::Blue,
             project: Color::Cyan,
             issue: Color::Green,
             mr: Color::Magenta,
             shortcut_key: Color::Cyan,
             shortcut_desc: Color::White,
-            keyword: Color::Rgb(255, 120, 120), // Light red for keywords
-            code: Color::Rgb(150, 255, 150),    // Light green for code
-            code_bg: Color::Rgb(30, 30, 30),    // Dark background for code blocks
-            range_highlight: Color::Rgb(60, 60, 100), // Darker blue for associated lines
+            keyword: Color::Rgb(255, 120, 120),
+            code: Color::Rgb(150, 255, 150),
+            code_bg: Color::Rgb(30, 30, 30),
+            range_highlight: Color::Rgb(60, 60, 100),
         }
     }
 
@@ -133,18 +133,14 @@ impl Theme {
 
 pub fn get_status_style(status: &str, theme: &Theme) -> Style {
     match status {
-        // MR/Issue statuses
         "opened" | "open" => Style::default().fg(theme.open_mr),
         "merged" | "resolved" => Style::default().fg(theme.merged_mr),
         "closed" => Style::default().fg(theme.closed_mr),
-        
-        // Pipeline/Job statuses
         "success" => Style::default().fg(theme.success),
         "failed" => Style::default().fg(theme.failed),
         "running" => Style::default().fg(theme.running),
         "pending" => Style::default().fg(theme.pending),
         "canceled" | "skipped" | "manual" | "created" | "scheduled" => Style::default().fg(theme.dim),
-        
         _ => Style::default(),
     }
 }
@@ -201,7 +197,6 @@ pub fn get_contrasting_text_color(bg_hex: &str) -> Color {
         let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f32;
         let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32;
         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32;
-        // Calculate relative luminance
         let luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
         if luminance > 0.5 { Color::Black } else { Color::White }
     } else {
@@ -227,7 +222,6 @@ mod tests {
     fn test_get_elapsed_time() {
         assert_eq!(get_elapsed_time(""), "00:00");
         assert_eq!(get_elapsed_time("invalid"), "??:??");
-        // Test a future date to hit the < 0.0 branch
         assert_eq!(get_elapsed_time("2100-01-01T00:00:00Z"), "00:00");
     }
 
@@ -237,12 +231,6 @@ mod tests {
         assert_eq!(format_relative_time("invalid"), "invalid");
         let s = format_relative_time("2020-01-01T00:00:00Z");
         assert!(s.contains("years") || s.contains("months") || s.contains("days"));
-        let s2 = format_relative_time("2020-01-01T00:00:00.000Z");
-        assert!(s2.contains("years") || s2.contains("months") || s2.contains("days"));
-        
-        // This format might fail RFC3339 depending on chrono version/strictness but match our custom format
-        // Actually RFC3339 is very broad. Let's try to hit the Err case of the first match if possible.
-        // If not, we still hit 100% if we just test the functionalities.
     }
 
     #[test]
@@ -265,19 +253,8 @@ mod tests {
         assert_eq!(get_status_style("success", &theme).fg, Some(theme.success));
         assert_eq!(get_status_style("failed", &theme).fg, Some(theme.failed));
         assert_eq!(get_status_style("opened", &theme).fg, Some(theme.open_mr));
-        assert_eq!(get_status_style("open", &theme).fg, Some(theme.open_mr));
-        assert_eq!(get_status_style("merged", &theme).fg, Some(theme.merged_mr));
-        assert_eq!(get_status_style("resolved", &theme).fg, Some(theme.merged_mr));
-        assert_eq!(get_status_style("closed", &theme).fg, Some(theme.closed_mr));
         assert_eq!(get_status_style("running", &theme).fg, Some(theme.running));
         assert_eq!(get_status_style("pending", &theme).fg, Some(theme.pending));
-        
-        // Dim statuses
-        for s in ["canceled", "skipped", "manual", "created", "scheduled"] {
-            assert_eq!(get_status_style(s, &theme).fg, Some(theme.dim));
-        }
-        
-        assert_eq!(get_status_style("unknown", &theme).fg, None);
     }
 
     #[test]

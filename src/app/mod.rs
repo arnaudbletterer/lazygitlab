@@ -1139,8 +1139,17 @@ impl App {
             }
             Panel::Main => {
                 if self.toggle_group_collapse() { return; }
-                // Determine if we should enter a specialized view or just focus detail
                 match self.active_selection {
+                    MenuSelection::Pipelines => {
+                        if let Some(i) = self.pipelines_state.selected() {
+                            if let Some(p) = self.filtered_pipelines.get(i) {
+                                self.selected_pipeline = Some(p.clone());
+                                self.active_panel = Panel::MainDetail;
+                                self.detail_section = DetailSection::Metadata;
+                                let _ = self.fetch_jobs(p.project_id, p.id).await;
+                            }
+                        }
+                    }
                     MenuSelection::Projects => {
                         if let Some(i) = self.projects_state.selected() {
                             self.selected_project = Some(self.filtered_projects[i].clone());
@@ -1148,7 +1157,7 @@ impl App {
                             self.active_context = Context::Project;
                             self.project_menu_state.select(Some(0));
                             self.active_selection = MenuSelection::MergeRequests;
-                            let _ = self.refresh().await;
+                            let _ = self.update_preview().await;
                         }
                     }
                     MenuSelection::Repository => {
@@ -1173,6 +1182,12 @@ impl App {
                                 let _ = self.fetch_board_lists(board.id).await;
                             }
                         }
+                    }
+                    MenuSelection::MergeRequests if self.selected_mr.is_some() => {
+                        self.view_mode = ViewMode::Diff;
+                        self.mr_diff_state.select(Some(0));
+                        let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
+                        let _ = self.fetch_mr_diffs(pid, iid).await;
                     }
                     _ => {
                         self.active_panel = Panel::MainDetail;

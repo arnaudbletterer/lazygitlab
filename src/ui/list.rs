@@ -1,6 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, DetailSection};
 use crate::ui::detail::render_detail_view;
+use crate::ui::Theme;
 
 pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -105,13 +106,13 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_nav_panel(f: &mut Frame, active_panel: Panel, theme: &crate::ui::Theme, area: Rect, panel: Panel, title: &str, state: &mut ListState, items: Vec<&str>) {
-    let is_focused = active_panel == panel;
+fn render_nav_panel(f: &mut Frame, active_panel: Panel, theme: &Theme, area: Rect, target_panel: Panel, title: &str, state: &mut ListState, items: Vec<&str>) {
+    let is_focused = active_panel == target_panel;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
         .border_style(if is_focused { Style::default().fg(theme.border) } else { Style::default().fg(theme.dim) });
-    
+
     let list_items: Vec<ListItem> = items.iter().map(|i| ListItem::new(*i)).collect();
     f.render_stateful_widget(
         List::new(list_items)
@@ -339,12 +340,15 @@ fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         if let Some(note) = d.notes.first() {
             let mut spans = vec![
                 Span::styled(if is_selected { "● " } else { "  " }, highlight.fg(app.theme.border)),
-                Span::styled(format!("@{}", note.author.username), highlight.fg(app.theme.author)),
+                Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)),
             ];
-            if d.resolved.unwrap_or(false) { spans.push(Span::styled(" [RESOLVED]", highlight.fg(app.theme.success))); }
+            if d.resolved.unwrap_or(false) { spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.success))); }
             spans.push(Span::styled(": ", highlight));
-            spans.push(Span::styled(note.body.chars().take(30).collect::<String>(), highlight));
-            if note.body.len() > 30 { spans.push(Span::styled("...", highlight)); }
+            
+            // Show more content (up to 100 chars) for a better overview
+            let body = note.body.replace('\n', " ");
+            spans.push(Span::styled(body.chars().take(100).collect::<String>(), highlight));
+            if body.len() > 100 { spans.push(Span::styled("...", highlight)); }
             ListItem::new(Line::from(spans))
         } else { ListItem::new(" (empty thread)") }
     }).collect();

@@ -73,9 +73,9 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                     TagEnd::Heading(_) => {
                         let level = in_heading.unwrap_or(pulldown_cmark::HeadingLevel::H1);
                         let style = match level {
-                            pulldown_cmark::HeadingLevel::H1 => Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-                            pulldown_cmark::HeadingLevel::H2 => Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
-                            _ => Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                            pulldown_cmark::HeadingLevel::H1 => Style::default().fg(theme.header1).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                            pulldown_cmark::HeadingLevel::H2 => Style::default().fg(theme.header2).add_modifier(Modifier::BOLD),
+                            _ => Style::default().fg(theme.shortcut_key).add_modifier(Modifier::BOLD),
                         };
                         for span in &mut current_line_spans {
                             span.style = span.style.patch(style);
