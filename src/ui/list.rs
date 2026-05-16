@@ -174,7 +174,11 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             let items: Vec<ListItem> = app.filtered_todos.iter().map(|item| {
                 match item {
                     GroupedItem::Item(t) => ListItem::new(format!("{} - {}", t.action_name, t.body)),
-                    GroupedItem::Header(h) => ListItem::new(Line::from(vec![Span::styled(format!("📁 {}", h), Style::default().fg(Color::Blue))])),
+                    GroupedItem::Header(h) => {
+                        let key = format!("todos:{}", h);
+                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                    },
                 }
             }).collect();
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.todos_state);
@@ -193,7 +197,12 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         }
                         ListItem::new(Line::from(spans))
                     }
-                    GroupedItem::Header(h) => ListItem::new(Line::from(vec![Span::styled(format!("📁 {}", h), Style::default().fg(Color::Blue))])),
+                    GroupedItem::Header(h) => {
+                        let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
+                        let key = format!("{}:{}", scope, h);
+                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                    },
                 }
             }).collect();
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.mrs_state);
@@ -212,7 +221,12 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         }
                         ListItem::new(Line::from(spans))
                     }
-                    GroupedItem::Header(h) => ListItem::new(Line::from(vec![Span::styled(format!("📁 {}", h), Style::default().fg(Color::Blue))])),
+                    GroupedItem::Header(h) => {
+                        let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
+                        let key = format!("{}:{}", scope, h);
+                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
+                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]))
+                    },
                 }
             }).collect();
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.issues_state);

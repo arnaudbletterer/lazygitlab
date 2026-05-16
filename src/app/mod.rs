@@ -69,6 +69,7 @@ impl App {
             last_refresh: std::time::Instant::now(),
             tx,
             project_labels: Vec::new(),
+            project_cache: std::collections::HashMap::new(),
             project_label_cache: std::collections::HashMap::new(),
             project_milestone_cache: std::collections::HashMap::new(),
             project_member_cache: std::collections::HashMap::new(),
@@ -76,6 +77,7 @@ impl App {
             project_milestones: Vec::new(),
             project_members: Vec::new(),
             project_variables: Vec::new(),
+            collapsed_groups: std::collections::HashSet::new(),
             show_label_popup: false,
             label_state: ListState::default(),
             selected_label_ids: Vec::new(),
@@ -211,16 +213,28 @@ impl App {
                     }
                 }
             }
-            DataUpdate::Todos { data, page, has_more } => { self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); }
-            DataUpdate::AppendTodos(mut data) => { self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); }
-
             DataUpdate::Projects { data, page, has_more } => { 
-                for p in &data { self.trigger_project_metadata_fetch(p.id); }
+                for p in &data { 
+                    self.project_cache.insert(p.id, p.clone());
+                    self.trigger_project_metadata_fetch(p.id); 
+                }
                 self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); 
             }
             DataUpdate::AppendProjects(mut data) => { 
-                for p in &data { self.trigger_project_metadata_fetch(p.id); }
+                for p in &data { 
+                    self.project_cache.insert(p.id, p.clone());
+                    self.trigger_project_metadata_fetch(p.id); 
+                }
                 self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); 
+            }
+
+            DataUpdate::Todos { data, page, has_more } => { 
+                for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
+                self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); 
+            }
+            DataUpdate::AppendTodos(mut data) => { 
+                for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
+                self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); 
             }
 
             DataUpdate::Groups { data, page, has_more } => { self.groups = data; self.groups_page = page; self.groups_has_more = has_more; self.filter_lists(); }
@@ -1091,12 +1105,40 @@ impl App {
         }
     }
 
+    pub fn toggle_group_collapse(&mut self) -> bool {
+        let (scope, idx) = match self.active_selection {
+            MenuSelection::Todos => (Some("todos"), self.todos_state.selected()),
+            MenuSelection::MergeRequests => (Some("mrs"), self.mrs_state.selected()),
+            MenuSelection::Issues => (Some("issues"), self.issues_state.selected()),
+            _ => (None, None),
+        };
+        
+        if let (Some(s), Some(i)) = (scope, idx) {
+            let header = match self.active_selection {
+                MenuSelection::Todos => self.filtered_todos.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
+                MenuSelection::MergeRequests => self.filtered_mrs.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
+                MenuSelection::Issues => self.filtered_issues.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
+                _ => None,
+            };
+
+            if let Some(h) = header {
+                let key = format!("{}:{}", s, h);
+                if self.collapsed_groups.contains(&key) { self.collapsed_groups.remove(&key); }
+                else { self.collapsed_groups.insert(key); }
+                self.filter_lists();
+                return true;
+            }
+        }
+        false
+    }
+
     pub async fn go_forward(&mut self) {
         match self.active_panel {
             Panel::Dashboard | Panel::Explore | Panel::Project => {
                 self.active_panel = Panel::Main;
             }
             Panel::Main => {
+                if self.toggle_group_collapse() { return; }
                 // Determine if we should enter a specialized view or just focus detail
                 match self.active_selection {
                     MenuSelection::Projects => {
@@ -2760,9 +2802,60 @@ impl App {
 
     pub fn filter_lists(&mut self) {
         let filter = self.filter_input.to_lowercase();
-        self.filtered_todos = self.todos.iter().filter(|t| t.body.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
-        self.filtered_mrs = self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
-        self.filtered_issues = self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
+        
+        // 1. Group Todos
+        let mut grouped_todos = Vec::new();
+        let mut todos_by_project: std::collections::BTreeMap<String, Vec<Todo>> = std::collections::BTreeMap::new();
+        for t in self.todos.iter().filter(|t| t.body.to_lowercase().contains(&filter)) {
+            let p_name = t.project.path_with_namespace.as_deref().unwrap_or(&t.project.name).to_string();
+            todos_by_project.entry(p_name).or_default().push(t.clone());
+        }
+        for (p_name, items) in todos_by_project {
+            let key = format!("todos:{}", p_name);
+            let is_collapsed = self.collapsed_groups.contains(&key);
+            grouped_todos.push(GroupedItem::Header(p_name));
+            if !is_collapsed { for item in items { grouped_todos.push(GroupedItem::Item(item)); } }
+        }
+        self.filtered_todos = grouped_todos;
+
+        // 2. Group Merge Requests
+        let mut grouped_mrs = Vec::new();
+        if self.active_context == Context::Dashboard {
+            let mut mrs_by_project: std::collections::BTreeMap<String, Vec<MergeRequest>> = std::collections::BTreeMap::new();
+            for mr in self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter)) {
+                let p_name = self.project_cache.get(&mr.project_id).and_then(|p| p.path_with_namespace.as_deref()).unwrap_or("Unknown Project").to_string();
+                mrs_by_project.entry(p_name).or_default().push(mr.clone());
+            }
+            for (p_name, items) in mrs_by_project {
+                let key = format!("mrs:{}", p_name);
+                let is_collapsed = self.collapsed_groups.contains(&key);
+                grouped_mrs.push(GroupedItem::Header(p_name));
+                if !is_collapsed { for item in items { grouped_mrs.push(GroupedItem::Item(item)); } }
+            }
+        } else {
+            grouped_mrs = self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
+        }
+        self.filtered_mrs = grouped_mrs;
+
+        // 3. Group Issues
+        let mut grouped_issues = Vec::new();
+        if self.active_context == Context::Dashboard {
+            let mut issues_by_project: std::collections::BTreeMap<String, Vec<Issue>> = std::collections::BTreeMap::new();
+            for i in self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)) {
+                let p_name = self.project_cache.get(&i.project_id).and_then(|p| p.path_with_namespace.as_deref()).unwrap_or("Unknown Project").to_string();
+                issues_by_project.entry(p_name).or_default().push(i.clone());
+            }
+            for (p_name, items) in issues_by_project {
+                let key = format!("issues:{}", p_name);
+                let is_collapsed = self.collapsed_groups.contains(&key);
+                grouped_issues.push(GroupedItem::Header(p_name));
+                if !is_collapsed { for item in items { grouped_issues.push(GroupedItem::Item(item)); } }
+            }
+        } else {
+            grouped_issues = self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
+        }
+        self.filtered_issues = grouped_issues;
+
         self.filtered_projects = self.projects.iter().filter(|p| p.name.to_lowercase().contains(&filter)).cloned().collect();
         self.filtered_pipelines = self.pipelines.iter().filter(|p| p.ref_name.to_lowercase().contains(&filter)).cloned().collect();
         self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
@@ -2774,17 +2867,15 @@ impl App {
             self.filtered_board_issues.insert(*list_id, filtered);
         }
 
-        // Always reset selections to 0 when filter query exists or was just cleared
-        // to ensure "first element is always selected" as the user types.
-        self.todos_state.select(Some(0));
-        self.mrs_state.select(Some(0));
-        self.issues_state.select(Some(0));
-        self.projects_state.select(Some(0));
-        self.pipelines_state.select(Some(0));
-        self.branches_state.select(Some(0));
-        
-        for list in &self.board_lists {
-            self.board_issue_states.entry(list.id).or_default().select(Some(0));
+        // Selection normalization
+        if !filter.is_empty() {
+            self.todos_state.select(Some(0));
+            self.mrs_state.select(Some(0));
+            self.issues_state.select(Some(0));
+            self.projects_state.select(Some(0));
+            self.pipelines_state.select(Some(0));
+            self.branches_state.select(Some(0));
+            for list in &self.board_lists { self.board_issue_states.entry(list.id).or_default().select(Some(0)); }
         }
 
         self.clamp_selections();

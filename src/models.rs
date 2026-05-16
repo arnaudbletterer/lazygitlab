@@ -726,6 +726,7 @@ pub struct App {
 
     // Project Metadata
     pub project_labels: Vec<Label>,
+    pub project_cache: std::collections::HashMap<u64, Project>,
     pub project_label_cache: std::collections::HashMap<u64, Vec<Label>>,
     pub project_milestone_cache: std::collections::HashMap<u64, Vec<Milestone>>,
     pub project_member_cache: std::collections::HashMap<u64, Vec<Author>>,
@@ -733,6 +734,7 @@ pub struct App {
     pub project_milestones: Vec<Milestone>,
     pub project_members: Vec<Author>,
     pub project_variables: Vec<ProjectVariable>,
+    pub collapsed_groups: std::collections::HashSet<String>,
 
     // Popups
     pub show_label_popup: bool,
