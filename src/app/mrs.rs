@@ -42,8 +42,8 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let next_page = self.mrs_page + 1;
-            let _ = tx.send(DataUpdate::Loading(true));
-            let state_str = match self.mr_filter {
+            self.mrs_page = next_page;
+            let _ = tx.send(DataUpdate::Loading(true));            let state_str = match self.mr_filter {
                 MergeRequestFilter::Opened => Some("opened".to_string()),
                 MergeRequestFilter::Merged => Some("merged".to_string()),
                 MergeRequestFilter::Closed => Some("closed".to_string()),
@@ -66,26 +66,41 @@ impl App {
     pub async fn fetch_global_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        self.status_message = Some("Fetching Global Merge Requests...".into());
         let state_str = match self.mr_filter {
             MergeRequestFilter::Opened => "opened".to_string(),
             MergeRequestFilter::Merged => "merged".to_string(),
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
+        let user_id = self.current_user.as_ref().map(|u| u.id);
+
+        let _ = tx.send(DataUpdate::Loading(true));
+        let _ = tx.send(DataUpdate::ClearGlobalMRs);
+        self.status_message = Some("Fetching Involved Merge Requests...".into());
 
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(30), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
-            let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
-            match res {
-                Ok(Ok(data)) => { 
-                    let has_more = data.len() == 30;
-                    let _ = tx.send(DataUpdate::GlobalMRs { data, page: 1, has_more }); 
-                }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global MRs fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Global MRs fetch timed out".into())); }
+            let strategies = vec![Some("assigned_to_me".to_string()), Some("created_by_me".to_string())];
+            let mut handles = Vec::new();
+
+            for strategy in strategies {
+                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                }));
             }
+
+            if let Some(uid) = user_id {
+                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                }));
+            }
+
+            for h in handles { let _ = h.await; }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -96,21 +111,34 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.mrs_page + 1;
-        let _ = tx.send(DataUpdate::Loading(true));
         let state_str = match self.mr_filter {
             MergeRequestFilter::Opened => "opened".to_string(),
             MergeRequestFilter::Merged => "merged".to_string(),
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
+        let user_id = self.current_user.as_ref().map(|u| u.id);
+
+        let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let ep = GlobalMergeRequests { scope: None, state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(30), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
-            let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
-            match res {
-                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalMRs(data)); } }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global MRs fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Global MRs fetch timed out".into())); }
+            let mut handles = Vec::new();
+            for scope in vec![Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
+                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                }));
             }
+            if let Some(uid) = user_id {
+                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                }));
+            }
+            for h in handles { let _ = h.await; }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -441,8 +469,8 @@ mod tests {
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
-        let mut app = App::new(client);
-        app.tx = tx; app.active_panel = Panel::Project; app.project_menu_state.select(Some(1)); app.active_context = Context::Project; app.active_selection = MenuSelection::MergeRequests; app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
+        let mut app = App::new(client, tx);
+        app.active_panel = Panel::Project; app.project_menu_state.select(Some(1)); app.active_context = Context::Project; app.active_selection = MenuSelection::MergeRequests; app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
         (server, app, rx)
     }
 

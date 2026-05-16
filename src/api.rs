@@ -432,6 +432,8 @@ pub struct GlobalIssues {
     pub state: Option<String>, 
     pub membership: Option<bool>, 
     pub search: Option<String>,
+    pub author_id: Option<u64>,
+    pub assignee_id: Option<u64>,
     pub page: Option<u64>, 
     pub per_page: Option<u64>, 
     pub order_by: Option<String>, 
@@ -447,6 +449,8 @@ impl Endpoint for GlobalIssues {
         if let Some(s) = &self.state { params.push("state", s); }
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(s) = &self.search { params.push("search", s); }
+        if let Some(id) = self.author_id { params.push("author_id", id); }
+        if let Some(id) = self.assignee_id { params.push("assignee_id", id); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
         if let Some(o) = &self.order_by { params.push("order_by", o); }
@@ -463,6 +467,9 @@ pub struct GlobalMergeRequests {
     pub state: Option<String>, 
     pub membership: Option<bool>, 
     pub search: Option<String>,
+    pub author_id: Option<u64>,
+    pub assignee_id: Option<u64>,
+    pub reviewer_id: Option<u64>,
     pub page: Option<u64>, 
     pub per_page: Option<u64>, 
     pub order_by: Option<String>, 
@@ -478,6 +485,9 @@ impl Endpoint for GlobalMergeRequests {
         if let Some(s) = &self.state { params.push("state", s); }
         if let Some(m) = self.membership { params.push("membership", m); }
         if let Some(s) = &self.search { params.push("search", s); }
+        if let Some(id) = self.author_id { params.push("author_id", id); }
+        if let Some(id) = self.assignee_id { params.push("assignee_id", id); }
+        if let Some(id) = self.reviewer_id { params.push("reviewer_id", id); }
         if let Some(p) = self.page { params.push("page", p); }
         if let Some(pp) = self.per_page { params.push("per_page", pp); }
         if let Some(o) = &self.order_by { params.push("order_by", o); }

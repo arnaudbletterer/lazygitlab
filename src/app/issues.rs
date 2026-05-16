@@ -67,28 +67,41 @@ impl App {
             IssueFilter::All => "all".to_string(),
         };
         let _ = tx.send(DataUpdate::Loading(true));
-        self.status_message = Some("Fetching Global Issues...".into());
+        let _ = tx.send(DataUpdate::ClearGlobalIssues);
+        self.status_message = Some("Fetching Involved Issues...".into());
+
         tokio::spawn(async move {
-            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(1), per_page: Some(30), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
-            let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
-            match res {
-                Ok(Ok(data)) => { 
-                    let has_more = data.len() == 30;
-                    let _ = tx.send(DataUpdate::GlobalIssues { data, page: 1, has_more }); 
-                }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global issues fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Global issues fetch timed out".into())); }
+            let scopes = vec!["assigned_to_me", "created_by_me"];
+            let mut handles = Vec::new();
+
+            for scope in scopes {
+                let c_inner = c.clone();
+                let tx_inner = tx.clone();
+                let s_inner = state_str.clone();
+                let scope_val = scope.to_string();
+                
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res {
+                        if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data)); }
+                    }
+                }));
             }
+
+            for h in handles { let _ = h.await; }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
 
     pub async fn fetch_next_global_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Pagination for multi-scope is complex. For now, we'll just fetch more of both.
         if !self.issues_has_more || self.is_loading { return Ok(()); }
         let c = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.issues_page + 1;
+        self.issues_page = next_page;
         let state_str = match self.issue_filter {
             IssueFilter::Opened => "opened".to_string(),
             IssueFilter::Closed => "closed".to_string(),
@@ -96,13 +109,20 @@ impl App {
         };
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let ep = GlobalIssues { scope: Some("all".into()), state: Some(state_str), membership: Some(true), search: None, page: Some(next_page), per_page: Some(30), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
-            let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
-            match res {
-                Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendGlobalIssues(data)); } else { let _ = tx.send(DataUpdate::Loading(false)); } }
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Global issues fetch failed: {}", e))); }
-                Err(_) => { let _ = tx.send(DataUpdate::Error("Global issues fetch timed out".into())); }
+            let scopes = vec!["assigned_to_me", "created_by_me"];
+            let mut handles = Vec::new();
+            for scope in scopes {
+                let c_inner = c.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone(); let scope_val = scope.to_string();
+                handles.push(tokio::spawn(async move {
+                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
+                    if let Ok(Ok(data)) = res {
+                        if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data)); }
+                    }
+                }));
             }
+            for h in handles { let _ = h.await; }
+            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }

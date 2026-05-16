@@ -245,7 +245,13 @@ impl App {
                 for mr in &data { self.trigger_project_metadata_fetch(mr.project_id); }
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Dashboard { 
-                    self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
+                    let existing_keys: std::collections::HashSet<String> = self.merge_requests.iter().map(|m| format!("{}:{}", m.project_id, m.iid)).collect();
+                    for item in data {
+                        let key = format!("{}:{}", item.project_id, item.iid);
+                        if !existing_keys.contains(&key) { self.merge_requests.push(item); }
+                    }
+                    self.merge_requests.sort_by(|a, b| b.iid.cmp(&a.iid));
+                    self.filter_lists(); 
                 } 
             }
             DataUpdate::AppendProjectMRs { project_id, mut data } => { 
@@ -276,7 +282,14 @@ impl App {
                 for issue in &data { self.trigger_project_metadata_fetch(issue.project_id); }
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Dashboard { 
-                    self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
+                    let existing_keys: std::collections::HashSet<String> = self.issues.iter().map(|i| format!("{}:{}", i.project_id, i.iid)).collect();
+                    for item in data {
+                        let key = format!("{}:{}", item.project_id, item.iid);
+                        if !existing_keys.contains(&key) { self.issues.push(item); }
+                    }
+                    self.issues.sort_by(|a, b| b.iid.cmp(&a.iid));
+                    self.issues_has_more = true;
+                    self.filter_lists(); 
                 } 
             }
             DataUpdate::AppendProjectIssues { project_id, mut data } => { 
