@@ -1829,6 +1829,24 @@ impl App {
             }
         }
 
+        if self.show_calendar_popup {
+            use chrono::Duration;
+            match processed_key.code {
+                KeyCode::Down | KeyCode::Char('j') => self.calendar_date += Duration::weeks(1),
+                KeyCode::Up | KeyCode::Char('k') => self.calendar_date -= Duration::weeks(1),
+                KeyCode::Left | KeyCode::Char('h') => self.calendar_date -= Duration::days(1),
+                KeyCode::Right | KeyCode::Char('l') => self.calendar_date += Duration::days(1),
+                KeyCode::Enter => {
+                    let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d"));
+                    let _ = self.snooze_todo(snooze_until).await;
+                    self.show_calendar_popup = false;
+                }
+                KeyCode::Esc => self.show_calendar_popup = false,
+                _ => {}
+            }
+            return;
+        }
+
         if self.show_snooze_popup {
             match processed_key.code {
                 KeyCode::Down | KeyCode::Char('j') => { let i = (self.snooze_state.selected().unwrap_or(0) + 1) % 5; self.snooze_state.select(Some(i)); }
