@@ -78,7 +78,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
         app.set_rect(&format!("kanban_col_{}", list_idx), chunks[i]);
         let is_column_focused = app.active_panel == crate::models::Panel::Main && app.board_lists_state.selected() == Some(list_idx);
         
-        let issues = app.board_issues.get(&list.id).map(|v| v.as_slice()).unwrap_or(&[]);
+        let issues = app.filtered_board_issues.get(&list.id).map(|v| v.as_slice()).unwrap_or(&[]);
         
         let header_style = if is_column_focused {
             Style::default().fg(Color::Black).bg(app.theme.border).add_modifier(Modifier::BOLD)
