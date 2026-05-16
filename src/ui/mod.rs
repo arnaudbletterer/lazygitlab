@@ -9,7 +9,7 @@ pub mod boards;
 pub use widgets::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use crate::models::{App, ViewMode, Panel};
+use crate::models::{App, ViewMode};
 use list::render_list_view;
 use detail::render_detail_view;
 use diff::render_diff_view;
@@ -21,7 +21,7 @@ use crate::ui::widgets::{format_relative_time, format_time_only};
 pub fn ui(f: &mut Frame, app: &mut App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(2)])
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(f.area());
 
     match app.view_mode {
@@ -34,88 +34,34 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ViewMode::Epics => render_epics_view(f, app, main_chunks[0]),
     }
 
-    // 1. Panels Shortcut Bar
-    let panel_shortcuts = vec![
-        Span::styled(" 1 ", Style::default().bg(if matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project) { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" Nav "),
-        Span::styled(" 2 ", Style::default().bg(if app.active_panel == Panel::Main { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" List "),
-        Span::styled(" 3 ", Style::default().bg(if app.active_panel == Panel::MainDetail { app.theme.highlight_bg } else { app.theme.dim }).fg(Color::White)), Span::raw(" Detail "),
+    // Footer with left shortcuts and right version info
+    let footer_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
+        .split(main_chunks[1]);
+
+    let mut footer_spans = vec![
+        Span::styled("?", Style::default().fg(app.theme.shortcut_key)),
+        Span::raw(" help  "),
+        Span::styled("q", Style::default().fg(app.theme.shortcut_key)),
+        Span::raw(" quit"),
     ];
 
-    // 2. Context-Aware Help / Keybindings Bar
-    let help_spans = match app.view_mode {
-        ViewMode::JobLog => vec![
-            Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Nav "),
-            Span::styled(" Shift ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
-            Span::styled(" y ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Copy "),
-            Span::styled(" r ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Retry "),
-            Span::styled(" c ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Cancel "),
-            Span::styled(" p ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Play "),
-            Span::styled(" Esc ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Back "),
-        ],
-        ViewMode::Diff => vec![
-            Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Line "),
-            Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" File "),
-            Span::styled(" c ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Comment "),
-            Span::styled(" r ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Reply "),
-            Span::styled(" s ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Resolve "),
-            Span::styled(" y ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Copy "),
-            Span::styled(" Esc ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Back "),
-        ],
-        _ => {
-            let mut spans = vec![
-                Span::styled(" j/k ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Move "),
-                Span::styled(" h/l ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Panel "),
-                Span::styled(" Tab ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Next "),
-                Span::styled(" Enter ", Style::default().fg(app.theme.shortcut_key)), Span::raw(" Select "),
-            ];
-
-            match app.active_selection {
-                crate::models::MenuSelection::Pipelines => {
-                    spans.push(Span::styled(" R ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Retry "));
-                    spans.push(Span::styled(" C ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Cancel "));
-                    spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" New "));
-                }
-                crate::models::MenuSelection::MergeRequests => {
-                    spans.push(Span::styled(" A ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Apprv "));
-                    spans.push(Span::styled(" R ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Revok "));
-                    spans.push(Span::styled(" D ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Draft "));
-                    spans.push(Span::styled(" v ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Diff "));
-                }
-                crate::models::MenuSelection::Issues => {
-                    spans.push(Span::styled(" c ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Close "));
-                    spans.push(Span::styled(" n ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" New "));
-                }
-                _ => {}
-            }
-            
-            spans.push(Span::styled(" o ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Browser "));
-            spans.push(Span::styled(" y ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Copy "));
-            spans.push(Span::styled(" q ", Style::default().fg(app.theme.shortcut_key))); spans.push(Span::raw(" Quit "));
-            spans
-        }
-    };
-
-    let mut status_spans = Vec::new();
     if let Some(err) = &app.last_error {
-        status_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
+        footer_spans.push(Span::raw("   "));
+        footer_spans.push(Span::styled(format!(" Error: {} ", err), Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)));
     }
     if app.is_loading || app.status_message.is_some() {
         let msg = app.status_message.as_deref().unwrap_or("Loading");
-        status_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        footer_spans.push(Span::raw("   "));
+        footer_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
     }
 
-    let footer_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(main_chunks[1]);
+    f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_chunks[0]);
 
-    f.render_widget(Paragraph::new(Line::from(panel_shortcuts)), footer_layout[0]);
-    
-    let mut footer_spans = help_spans;
-    footer_spans.push(Span::raw("   "));
-    footer_spans.extend(status_spans);
-
-    f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_layout[1]);
+    // Bottom right version info
+    let version_info = format!("v{} ({}{})", env!("CARGO_PKG_VERSION"), env!("GIT_HASH"), env!("GIT_DIRTY"));
+    f.render_widget(Paragraph::new(version_info).alignment(Alignment::Right).style(Style::default().fg(app.theme.dim)), footer_chunks[1]);
 
     // Contextual Popups
     if app.show_project_popup { render_project_popup(f, app); }
@@ -169,7 +115,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
         .split(area);
 
     if let Some(job) = &app.selected_job {

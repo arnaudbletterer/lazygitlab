@@ -10,7 +10,7 @@ use crate::models::*;
 use crate::api::*;
 use ratatui::widgets::ListState;
 use crate::ui::Theme;
-use chrono::Local;
+use chrono::{Local, Timelike};
 use regex::Regex;
 
 impl App {
@@ -690,7 +690,6 @@ impl App {
     }
 
     pub fn toggle_help(&mut self) { self.show_help_popup = !self.show_help_popup; }
-    pub fn filter_help(&mut self) {}
 
     pub async fn update_preview(&mut self) {
         let prev_selection = self.active_selection;
@@ -1129,12 +1128,128 @@ impl App {
         let _ = self.update_preview().await;
     }
 
+    pub fn get_available_actions(&self) -> Vec<HelpItem> {
+        let mut items = Vec::new();
+        items.push(HelpItem { shortcut: "q".into(), description: "Quit application".into(), action: HelpAction::Quit, category: "Global".into() });
+        items.push(HelpItem { shortcut: "?".into(), description: "Show/hide help".into(), action: HelpAction::ToggleHelp, category: "Global".into() });
+        items.push(HelpItem { shortcut: "r".into(), description: "Refresh current view".into(), action: HelpAction::Refresh, category: "Global".into() });
+        items.push(HelpItem { shortcut: "o".into(), description: "Open in browser".into(), action: HelpAction::OpenBrowser, category: "Global".into() });
+        items.push(HelpItem { shortcut: "y".into(), description: "Copy URL/Content to clipboard".into(), action: HelpAction::CopyUrl, category: "Global".into() });
+        items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
+        items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "Enter".into(), description: "Select / Open Detail".into(), action: HelpAction::Select, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "Esc".into(), description: "Go back / Close panel".into(), action: HelpAction::Back, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "Tab".into(), description: "Next Panel".into(), action: HelpAction::ToggleFocus, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "g t".into(), description: "Go to Todos".into(), action: HelpAction::GotoTodos, category: "Jump".into() });
+        items.push(HelpItem { shortcut: "g m".into(), description: "Go to Merge Requests".into(), action: HelpAction::GotoMRs, category: "Jump".into() });
+        items.push(HelpItem { shortcut: "g i".into(), description: "Go to Issues".into(), action: HelpAction::GotoIssues, category: "Jump".into() });
+        items.push(HelpItem { shortcut: "g p".into(), description: "Go to Pipelines".into(), action: HelpAction::GotoPipelines, category: "Jump".into() });
+        if self.view_mode == ViewMode::List {
+            items.push(HelpItem { shortcut: "f".into(), description: "Filter current list".into(), action: HelpAction::Filter, category: "List".into() });
+        }
+        if self.view_mode == ViewMode::Board {
+            items.push(HelpItem { shortcut: "Shift + H/L".into(), description: "Move issue between columns".into(), action: HelpAction::None, category: "Kanban".into() });
+        }
+        items
+    }
+
+    pub async fn execute_help_action(&mut self, action: HelpAction) {
+        match action {
+            HelpAction::Quit => self.should_quit = true,
+            HelpAction::ToggleHelp => {
+                self.show_help_popup = !self.show_help_popup;
+                if self.show_help_popup {
+                    self.help_filter_input.clear();
+                    self.show_help_filter = false;
+                    self.filtered_help = self.get_available_actions();
+                    self.help_state.select(Some(0));
+                }
+                let _ = self.update_preview().await;
+                return; // Early return so we don't hide it
+            }
+            HelpAction::Back => { let _ = self.go_back().await; }
+            HelpAction::Select => { let _ = self.go_forward().await; }
+            HelpAction::ToggleFocus => {
+                self.active_panel = match self.active_panel {
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                    Panel::Main => Panel::MainDetail,
+                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                };
+            }
+            HelpAction::Filter => { self.input_mode = true; self.input_target = InputTarget::Filter; self.show_filter_input = true; }
+            HelpAction::Search => { self.show_search = true; self.input_mode = true; self.input_target = InputTarget::Search; self.search_query.clear(); }
+            HelpAction::Refresh => { let _ = self.refresh().await; }
+            HelpAction::OpenBrowser => self.open_in_browser(),
+            HelpAction::CopyUrl => self.copy_url(),
+            HelpAction::GotoTodos => { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Todos; self.active_panel = Panel::Main; let _ = self.refresh().await; }
+            HelpAction::GotoMRs => { self.active_context = Context::Project; self.active_selection = MenuSelection::MergeRequests; self.active_panel = Panel::Main; let _ = self.refresh().await; }
+            HelpAction::GotoIssues => { self.active_context = Context::Project; self.active_selection = MenuSelection::Issues; self.active_panel = Panel::Main; let _ = self.refresh().await; }
+            _ => {}
+        }
+        self.show_help_popup = false;
+        let _ = self.update_preview().await;
+    }
+
+    pub fn filter_help(&mut self) {
+        let all = self.get_available_actions();
+        if self.help_filter_input.is_empty() { self.filtered_help = all; }
+        else {
+            let filter = self.help_filter_input.to_lowercase();
+            self.filtered_help = all.into_iter().filter(|item| item.description.to_lowercase().contains(&filter) || item.shortcut.to_lowercase().contains(&filter) || item.category.to_lowercase().contains(&filter)).collect();
+        }
+        if self.help_state.selected().unwrap_or(0) >= self.filtered_help.len() { self.help_state.select(if self.filtered_help.is_empty() { None } else { Some(0) }); }
+    }
+
     pub async fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
-        use chrono::Timelike;
 
         self.last_input = std::time::Instant::now();
-        tracing::info!("User action: key pressed: {:?}", key);
+
+        // 0. Help Popup Logic (High Priority if popup is open)
+        if self.show_help_popup {
+            if self.show_help_filter {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Enter => { self.show_help_filter = false; }
+                    KeyCode::Backspace => { self.help_filter_input.pop(); self.filter_help(); }
+                    KeyCode::Char(c) => { self.help_filter_input.push(c); self.filter_help(); }
+                    _ => {}
+                }
+                return;
+            }
+            let is_question_mark = key.code == KeyCode::Char('?') 
+                || (key.code == KeyCode::Char('/') && key.modifiers.contains(KeyModifiers::SHIFT))
+                || (key.code == KeyCode::Char(',') && key.modifiers.contains(KeyModifiers::SHIFT));
+
+            if is_question_mark || key.code == KeyCode::Esc {
+                self.show_help_popup = false;
+                return;
+            }
+            
+            match key.code {
+                KeyCode::Char('/') => { self.show_help_filter = true; }
+                KeyCode::Down | KeyCode::Char('j') => { if !self.filtered_help.is_empty() { let i = (self.help_state.selected().unwrap_or(0) + 1) % self.filtered_help.len(); self.help_state.select(Some(i)); } }
+                KeyCode::Up | KeyCode::Char('k') => { if !self.filtered_help.is_empty() { let i = if self.help_state.selected().unwrap_or(0) == 0 { self.filtered_help.len() - 1 } else { self.help_state.selected().unwrap() - 1 }; self.help_state.select(Some(i)); } }
+                KeyCode::Enter => { if let Some(i) = self.help_state.selected() { if let Some(item) = self.filtered_help.get(i).cloned() { self.execute_help_action(item.action).await; } } }
+                _ => {}
+            }
+            return;
+        }
+
+        // 0.1 Absolute High-Priority Global Keys (only when not in input mode)
+        if !self.input_mode {
+            let is_question_mark = key.code == KeyCode::Char('?') 
+                || (key.code == KeyCode::Char('/') && key.modifiers.contains(KeyModifiers::SHIFT))
+                || (key.code == KeyCode::Char(',') && key.modifiers.contains(KeyModifiers::SHIFT));
+
+            if is_question_mark {
+                self.execute_help_action(HelpAction::ToggleHelp).await;
+                return;
+            }
+            if key.code == KeyCode::Char('q') {
+                self.should_quit = true;
+                return;
+            }
+        }
 
         if self.pending_g_prefix {
             self.pending_g_prefix = false;
@@ -2841,20 +2956,6 @@ impl App {
         Ok(())
     }
 
-    pub async fn execute_help_action(&mut self, action: HelpAction) {
-        match action {
-            HelpAction::Quit => self.should_quit = true,
-            HelpAction::SwitchProject => self.switch_project(),
-            HelpAction::Back => { self.view_mode = ViewMode::List; self.active_panel = Panel::Dashboard; }
-            HelpAction::Select => { self.enter().await; }
-            HelpAction::ToggleHelp => self.toggle_help(),
-            HelpAction::ToggleFocus => self.toggle_focus(),
-            HelpAction::Filter => { self.input_mode = true; self.input_target = InputTarget::Filter; self.show_filter_input = true; }
-            HelpAction::OpenBrowser => self.open_in_browser(),
-            _ => {}
-        }
-        self.show_help_popup = false;
-    }
     pub async fn back(&mut self) { self.view_mode = ViewMode::List; self.active_panel = Panel::Dashboard; }
 
     pub fn copy_to_clipboard(&mut self, text: String) {
