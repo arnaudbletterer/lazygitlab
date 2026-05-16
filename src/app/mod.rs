@@ -1318,18 +1318,22 @@ impl App {
 
         self.last_input = std::time::Instant::now();
 
-        // 0. Help Popup Logic (High Priority if popup is open)
+        // --- 0. PRE-PROCESSING ---
+        let mut processed_key = key;
+        if let KeyCode::Char(_) = processed_key.code {
+            if processed_key.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) {
+                processed_key.modifiers.remove(KeyModifiers::CONTROL | KeyModifiers::ALT);
+            }
+        }
+
+        // --- 1. POPUP FOCUS (Highest Priority, return early) ---
+        
+        // 1.1 Help Popup
         if self.show_help_popup {
             if self.show_help_filter {
-                match key.code {
+                match processed_key.code {
                     KeyCode::Esc | KeyCode::Char('/') => { self.show_help_filter = false; }
-                    KeyCode::Enter => {
-                        if let Some(i) = self.help_state.selected() {
-                            if let Some(item) = self.filtered_help.get(i).cloned() {
-                                self.execute_help_action(item.action).await;
-                            }
-                        }
-                    }
+                    KeyCode::Enter => { if let Some(i) = self.help_state.selected() { if let Some(item) = self.filtered_help.get(i).cloned() { self.execute_help_action(item.action).await; } } }
                     KeyCode::Down => { if !self.filtered_help.is_empty() { let i = (self.help_state.selected().unwrap_or(0) + 1) % self.filtered_help.len(); self.help_state.select(Some(i)); } }
                     KeyCode::Up => { if !self.filtered_help.is_empty() { let i = if self.help_state.selected().unwrap_or(0) == 0 { self.filtered_help.len() - 1 } else { self.help_state.selected().unwrap() - 1 }; self.help_state.select(Some(i)); } }
                     KeyCode::Backspace => { self.help_filter_input.pop(); self.filter_help(); }
@@ -1338,16 +1342,8 @@ impl App {
                 }
                 return;
             }
-            let is_question_mark = key.code == KeyCode::Char('?') 
-                || (key.code == KeyCode::Char('/') && key.modifiers.contains(KeyModifiers::SHIFT))
-                || (key.code == KeyCode::Char(',') && key.modifiers.contains(KeyModifiers::SHIFT));
-
-            if is_question_mark || key.code == KeyCode::Esc {
-                self.show_help_popup = false;
-                return;
-            }
-            
-            match key.code {
+            if processed_key.code == KeyCode::Esc || processed_key.code == KeyCode::Char('?') { self.show_help_popup = false; return; }
+            match processed_key.code {
                 KeyCode::Char('/') => { self.show_help_filter = true; }
                 KeyCode::Down | KeyCode::Char('j') => { if !self.filtered_help.is_empty() { let i = (self.help_state.selected().unwrap_or(0) + 1) % self.filtered_help.len(); self.help_state.select(Some(i)); } }
                 KeyCode::Up | KeyCode::Char('k') => { if !self.filtered_help.is_empty() { let i = if self.help_state.selected().unwrap_or(0) == 0 { self.filtered_help.len() - 1 } else { self.help_state.selected().unwrap() - 1 }; self.help_state.select(Some(i)); } }
@@ -1357,496 +1353,27 @@ impl App {
             return;
         }
 
-        // 0.1 Absolute High-Priority Global Keys (only when not in input mode)
-        if !self.input_mode {
-            let is_question_mark = key.code == KeyCode::Char('?') 
-                || (key.code == KeyCode::Char('/') && key.modifiers.contains(KeyModifiers::SHIFT))
-                || (key.code == KeyCode::Char(',') && key.modifiers.contains(KeyModifiers::SHIFT));
-
-            if is_question_mark {
-                self.execute_help_action(HelpAction::ToggleHelp).await;
-                return;
-            }
-            if key.code == KeyCode::Char('q') {
-                self.should_quit = true;
-                return;
-            }
-        }
-
-        if self.pending_g_prefix {
-            self.pending_g_prefix = false;
-            match key.code {
-                KeyCode::Char('t') => { // Go to Todos
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Todos;
-                    self.active_panel = Panel::Main;
-                    self.dashboard_menu_state.select(Some(0));
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('m') => { // Go to MRs
-                    if self.active_context == Context::Project {
-                        self.active_selection = MenuSelection::MergeRequests;
-                        self.project_menu_state.select(Some(0));
-                    } else {
-                        self.active_context = Context::Dashboard;
-                        self.active_selection = MenuSelection::MergeRequests;
-                        self.dashboard_menu_state.select(Some(1));
-                    }
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('i') => { // Go to Issues
-                    if self.active_context == Context::Project {
-                        self.active_selection = MenuSelection::Issues;
-                        self.project_menu_state.select(Some(1));
-                    } else {
-                        self.active_context = Context::Dashboard;
-                        self.active_selection = MenuSelection::Issues;
-                        self.dashboard_menu_state.select(Some(2));
-                    }
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('p') => { // Go to Pipelines
-                    if self.selected_project.is_some() {
-                        self.active_context = Context::Project;
-                        self.active_selection = MenuSelection::Pipelines;
-                        self.project_menu_state.select(Some(2));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    }
-                }
-                KeyCode::Char('r') => { // Go to Repository
-                    if self.selected_project.is_some() {
-                        self.active_context = Context::Project;
-                        self.active_selection = MenuSelection::Repository;
-                        self.project_menu_state.select(Some(3));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    }
-                }
-                _ => {}
-            }
-            return;
-        }
-
-        // On Windows, characters produced via AltGr are often reported with Control + Alt modifiers.
-        // We strip these modifiers ONLY if both are present to ensure AltGr characters are correctly processed
-        // while preserving single modifiers like Control for shortcuts (e.g., Ctrl+Enter).
-        let mut processed_key = key;
-        if let KeyCode::Char(_) = processed_key.code {
-            if processed_key.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) {
-                processed_key.modifiers.remove(KeyModifiers::CONTROL | KeyModifiers::ALT);
-            }
-        }
-
-        // Global Quit (ALWAYS works if not in input mode)
-        if !self.input_mode {
-            if let KeyCode::Char('q') = processed_key.code {
-                self.should_quit = true;
-                return;
-            }
-        }
-
-        // 1. Specialized View Modes (these capture keys first)
-        if self.view_mode == ViewMode::JobLog {
-            match processed_key.code {
-                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => { self.toggle_job_section(); let _ = self.update_preview().await; return; }
-                KeyCode::Esc => {
-                    if self.job_log_selection_start.is_some() {
-                        self.job_log_selection_start = None;
-                    } else {
-                        self.view_mode = ViewMode::List;
-                    }
-                    let _ = self.update_preview().await;
-                    return;
-                }
-                KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if !self.job_log_lines.is_empty() {
-                        let current = self.job_log_cursor;
-                        self.job_log_cursor = (self.job_log_cursor + 1).min(self.job_log_lines.len().saturating_sub(1));
-                        
-                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
-                        } else {
-                            self.job_log_selection_start = None;
-                        }
-
-                        // Auto-scroll
-                        if self.job_log_cursor >= self.job_log_scroll as usize + self.job_log_viewport_height as usize {
-                            self.job_log_scroll = self.job_log_scroll.saturating_add(1);
-                        }
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if !self.job_log_lines.is_empty() {
-                        let current = self.job_log_cursor;
-                        self.job_log_cursor = self.job_log_cursor.saturating_sub(1);
-
-                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
-                        } else {
-                            self.job_log_selection_start = None;
-                        }
-
-                        // Auto-scroll
-                        if (self.job_log_cursor as u16) < self.job_log_scroll {
-                            self.job_log_scroll = self.job_log_cursor as u16;
-                        }
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Char('y') => {
-                    let text = if let Some(start) = self.job_log_selection_start {
-                        let (s, e) = if start <= self.job_log_cursor { (start, self.job_log_cursor) } else { (self.job_log_cursor, start) };
-                        self.job_log_lines[s..=e].iter().map(|l| l.content.clone()).collect::<Vec<String>>().join("\n")
-                    } else if !self.job_log_lines.is_empty() {
-                        self.job_log_lines[self.job_log_cursor].content.clone()
-                    } else {
-                        String::new()
-                    };
-                    self.copy_to_clipboard(text);
-                    self.job_log_selection_start = None;
-                    return;
-                }
-                KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } return; }
-                KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } return; }
-                KeyCode::Char('p') | KeyCode::Char('P') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.play_job(p.id, j.id).await; } } return; }
-                _ => {}
-            }
-            return;
-        }
-
-        if self.view_mode == ViewMode::Tree {
-            match processed_key.code {
-                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
-                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
-                KeyCode::Char('y') => {
-                    if let Some(file) = &self.selected_file_content {
-                        use base64::{Engine as _, engine::general_purpose};
-                        let clean_content = file.content.replace("\n", "").replace("\r", "");
-                        if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
-                            if let Ok(text) = String::from_utf8(decoded) {
-                                self.copy_to_clipboard(text);
-                            }
-                        }
-                    }
-                    return;
-                }
-                _ => {}
-            }
-            return;
-        }
-
-        if self.view_mode == ViewMode::Diff {
-            match processed_key.code {
-                KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    if self.diff_line_state.selected().is_some() {
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    } else {
-                        self.view_mode = ViewMode::List;
-                    }
-                    let _ = self.update_preview().await;
-                    return;
-                }
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => {
-                    self.diff_line_state.select(Some(0));
-                    self.diff_selection_start = None;
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if self.diff_line_state.selected().is_some() {
-                        if let Some(selected_idx) = self.mr_diff_state.selected() {
-                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                                let line_count = mr_diff.display_lines.len();
-                                if line_count > 0 {
-                                    let current = self.diff_line_state.selected().unwrap();
-                                    let next = (current + 1) % line_count;
-                                    
-                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
-                                    } else {
-                                        self.diff_selection_start = None;
-                                    }
-                                    
-                                    self.diff_line_state.select(Some(next));
-                                }
-                            }
-                        }
-                    } else {
-                        let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1);
-                        self.mr_diff_state.select(Some(i));
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if self.diff_line_state.selected().is_some() {
-                        if let Some(selected_idx) = self.mr_diff_state.selected() {
-                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                                let line_count = mr_diff.display_lines.len();
-                                if line_count > 0 {
-                                    let current = self.diff_line_state.selected().unwrap();
-                                    let prev = if current == 0 { line_count - 1 } else { current - 1 };
-
-                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
-                                    } else {
-                                        self.diff_selection_start = None;
-                                    }
-
-                                    self.diff_line_state.select(Some(prev));
-                                }
-                            }
-                        }
-                    } else {
-                        let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 };
-                        self.mr_diff_state.select(Some(i));
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Char('y') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                             let text = if let Some(start) = self.diff_selection_start {
-                                let (s, e) = if start <= self.diff_line_state.selected().unwrap() { (start, self.diff_line_state.selected().unwrap()) } else { (self.diff_line_state.selected().unwrap(), start) };
-                                mr_diff.display_lines[s..=e].iter().filter_map(|l| match l { DiffDisplayLine::Code(c, ..) => Some(c.clone()), _ => None }).collect::<Vec<_>>().join("\n")
-                            } else if let Some(idx) = self.diff_line_state.selected() {
-                                match &mr_diff.display_lines[idx] {
-                                    DiffDisplayLine::Code(c, ..) => c.clone(),
-                                    _ => String::new(),
-                                }
-                            } else {
-                                String::new()
-                            };
-                            self.copy_to_clipboard(text);
-                            self.diff_selection_start = None;
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Char('c') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                // Check if we are on a code line
-                                if let Some(DiffDisplayLine::Code(..)) = mr_diff.display_lines.get(line_idx) {
-                                    self.input_mode = true;
-                                    self.input_target = InputTarget::NewComment;
-                                    self.textarea = ratatui_textarea::TextArea::default();
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('r') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get(line_idx) {
-                                    if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) {
-                                        self.discussion_state.select(Some(pos));
-                                        self.input_mode = true;
-                                        self.input_target = InputTarget::Reply;
-                                        self.textarea = ratatui_textarea::TextArea::default();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) {
-                                    disc.collapsed = !disc.collapsed;
-                                    if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
-                                        main_disc.collapsed = disc.collapsed;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('s') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) {
-                                    // Automatically collapse on resolve
-                                    disc.collapsed = true;
-                                    if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
-                                        main_disc.collapsed = true;
-                                        if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) {
-                                            self.discussion_state.select(Some(pos));
-                                            let _ = self.resolve_discussion().await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('n') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            let current = self.diff_line_state.selected().unwrap_or(0);
-                            for i in (current + 1)..mr_diff.display_lines.len() {
-                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
-                                    self.diff_line_state.select(Some(i));
-                                    let _ = self.update_preview().await;
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('p') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            let current = self.diff_line_state.selected().unwrap_or(0);
-                            for i in (0..current).rev() {
-                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
-                                    self.diff_line_state.select(Some(i));
-                                    let _ = self.update_preview().await;
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-            return;
-        }
-
-        if self.view_mode == ViewMode::Board {
-            match processed_key.code {
-                KeyCode::Esc => { 
-                     self.view_mode = ViewMode::List; 
-                     self.selected_board = None; 
-                     return; 
-                }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    let current = self.board_lists_state.selected().unwrap_or(0);
-                    let next = if current == 0 { self.board_lists.len().saturating_sub(1) } else { current - 1 };
-                    self.board_lists_state.select(Some(next));
-                    return;
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    let current = self.board_lists_state.selected().unwrap_or(0);
-                    let next = (current + 1) % self.board_lists.len().max(1);
-                    self.board_lists_state.select(Some(next));
-                    return;
-                }
-                KeyCode::Char('H') => { let _ = self.move_board_issue(-1).await; return; }
-                KeyCode::Char('L') => { let _ = self.move_board_issue(1).await; return; }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if let Some(list_idx) = self.board_lists_state.selected() {
-                        if let Some(list) = self.board_lists.get(list_idx) {
-                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
-                            if issues > 0 {
-                                let state = self.board_issue_states.entry(list.id).or_default();
-                                let current = state.selected().unwrap_or(0);
-                                state.select(Some((current + 1) % issues));
-                            }
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if let Some(list_idx) = self.board_lists_state.selected() {
-                        if let Some(list) = self.board_lists.get(list_idx) {
-                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
-                            if issues > 0 {
-                                let state = self.board_issue_states.entry(list.id).or_default();
-                                let current = state.selected().unwrap_or(0);
-                                state.select(Some(if current == 0 { issues - 1 } else { current - 1 }));
-                            }
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Enter => {
-                    if let Some(list_idx) = self.board_lists_state.selected() {
-                        if let Some(list) = self.board_lists.get(list_idx) {
-                            let state = self.board_issue_states.entry(list.id).or_default();
-                            if let Some(issue_idx) = state.selected() {
-                                if let Some(issue) = self.board_issues.get(&list.id).and_then(|v| v.get(issue_idx)).cloned() {
-                                    self.selected_issue = Some(issue);
-                                    self.view_mode = ViewMode::Detail;
-                                    self.detail_section = DetailSection::Metadata;
-                                }
-                            }
-                        }
-                    }
-                    return;
-                }
-                _ => {}
-            }
-            return;
-        }
-
-        // Global Keys: Process q (Quit) and o (Open in Browser) at the top level, but only when input_mode is false.
-        if !self.input_mode {
-            match processed_key.code {
-                KeyCode::Char('q') => { self.should_quit = true; return; }
-                KeyCode::Char('o') => { self.open_in_browser(); return; }
-                KeyCode::Char('y') => {
-                    if self.active_panel == Panel::MainDetail {
-                        match self.detail_section {
-                            DetailSection::Description | DetailSection::Metadata => {
-                                let text = if let Some(mr) = &self.selected_mr { mr.description.clone() } else if let Some(issue) = &self.selected_issue { issue.description.clone() } else { None };
-                                if let Some(t) = text { self.copy_to_clipboard(t); }
-                            }
-                            DetailSection::Discussions => {
-                                if let Some(idx) = self.discussion_state.selected() {
-                                    if let Some(disc) = self.discussions.get(idx) {
-                                        let text = disc.notes.iter().map(|n| format!("@{} says: {}", n.author.username, n.body)).collect::<Vec<_>>().join("\n\n---\n\n");
-                                        self.copy_to_clipboard(text);
-                                    }
-                                }
-                            }
-                            _ => { self.copy_url(); }
-                        }
-                        return;
-                    }
-                    self.copy_url(); 
-                    return; 
-                }
-                _ => {}
-            }
-        }
-
+        // 1.2 Calendar Popup (Snooze Date Selection)
         if self.show_calendar_popup {
             use chrono::Duration;
             match processed_key.code {
-                KeyCode::Down | KeyCode::Char('j') => self.calendar_date += Duration::weeks(1),
-                KeyCode::Up | KeyCode::Char('k') => self.calendar_date -= Duration::weeks(1),
-                KeyCode::Left | KeyCode::Char('h') => self.calendar_date -= Duration::days(1),
-                KeyCode::Right | KeyCode::Char('l') => self.calendar_date += Duration::days(1),
+                KeyCode::Down | KeyCode::Char('j') => { self.calendar_date += Duration::weeks(1); }
+                KeyCode::Up | KeyCode::Char('k') => { self.calendar_date -= Duration::weeks(1); }
+                KeyCode::Left | KeyCode::Char('h') => { self.calendar_date -= Duration::days(1); }
+                KeyCode::Right | KeyCode::Char('l') => { self.calendar_date += Duration::days(1); }
                 KeyCode::Enter => {
                     let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d"));
                     let _ = self.snooze_todo(snooze_until).await;
                     self.show_calendar_popup = false;
                 }
-                KeyCode::Esc => self.show_calendar_popup = false,
+                KeyCode::Esc => { self.show_calendar_popup = false; }
                 _ => {}
             }
+            let _ = self.update_preview().await;
             return;
         }
 
+        // 1.3 Snooze Presets Popup
         if self.show_snooze_popup {
             match processed_key.code {
                 KeyCode::Down | KeyCode::Char('j') => { let i = (self.snooze_state.selected().unwrap_or(0) + 1) % 5; self.snooze_state.select(Some(i)); }
@@ -1854,156 +1381,127 @@ impl App {
                 KeyCode::Enter => {
                     let selected = self.snooze_state.selected().unwrap_or(0);
                     let snooze_until = match selected {
-                        0 => (Local::now() + chrono::Duration::hours(1)).to_rfc3339(),
-                        1 => (Local::now() + chrono::Duration::days(1)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
-                        2 => (Local::now() + chrono::Duration::days(3)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
-                        3 => (Local::now() + chrono::Duration::weeks(1)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
+                        0 => (chrono::Local::now() + chrono::Duration::hours(1)).to_rfc3339(),
+                        1 => (chrono::Local::now() + chrono::Duration::days(1)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
+                        2 => (chrono::Local::now() + chrono::Duration::days(3)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
+                        3 => (chrono::Local::now() + chrono::Duration::weeks(1)).with_hour(9).unwrap().with_minute(0).unwrap().with_second(0).unwrap().to_rfc3339(),
                         4 => { self.show_snooze_popup = false; self.show_calendar_popup = true; self.input_target = InputTarget::SnoozeUntil; return; }
-                        _ => (Local::now() + chrono::Duration::hours(1)).to_rfc3339(),
+                        _ => (chrono::Local::now() + chrono::Duration::hours(1)).to_rfc3339(),
                     };
                     let _ = self.snooze_todo(snooze_until).await;
+                    self.show_snooze_popup = false;
                 }
-                KeyCode::Esc => self.show_snooze_popup = false,
+                KeyCode::Esc => { self.show_snooze_popup = false; }
                 _ => {}
             }
+            let _ = self.update_preview().await;
             return;
         }
-        if self.show_project_popup {
-            match processed_key.code {
-                KeyCode::Down | KeyCode::Char('j') => self.move_down(),
-                KeyCode::Up | KeyCode::Char('k') => self.move_up(),
-                KeyCode::Enter => self.select_project().await,
-                KeyCode::Esc => self.show_project_popup = false,
-                _ => {}
-            }
-            return;
-        }
-        if self.show_label_popup {
-            let project_id = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
-            let labels = self.project_label_cache.get(&project_id).unwrap_or(&self.project_labels);
-            if !labels.is_empty() {
+
+        // 1.4 Global Search Popup
+        if self.show_search {
+            if self.input_target == InputTarget::Search && self.input_mode {
                 match processed_key.code {
-                    KeyCode::Down | KeyCode::Char('j') => { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); }
-                    KeyCode::Up | KeyCode::Char('k') => { let i = if self.label_state.selected().unwrap_or(0) == 0 { labels.len() - 1 } else { self.label_state.selected().unwrap() - 1 }; self.label_state.select(Some(i)); }
-                    KeyCode::Char(' ') => { if let Some(i) = self.label_state.selected() { if let Some(label) = labels.get(i) { let id = label.id(); if self.selected_label_ids.contains(&id) { self.selected_label_ids.retain(|&x| x != id); } else { self.selected_label_ids.push(id); } } } }
+                    KeyCode::Esc => { self.input_mode = false; self.show_search = false; self.search_query.clear(); self.search_results.clear(); }
+                    KeyCode::Enter => { self.input_mode = false; }
+                    KeyCode::Char(c) => { self.search_query.push(c); let _ = self.trigger_global_search().await; }
+                    KeyCode::Backspace => { self.search_query.pop(); let _ = self.trigger_global_search().await; }
                     _ => {}
                 }
+                return;
             }
             match processed_key.code {
-                KeyCode::Enter => { if self.selected_issue.is_some() { let _ = self.update_issue_labels().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_labels().await; } }
-                KeyCode::Esc => self.show_label_popup = false,
-                _ => {}
-            }
-            return;
-        }
-        if self.show_assignee_popup {
-            let project_id = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
-            let members = self.project_member_cache.get(&project_id).unwrap_or(&self.project_members);
-            if !members.is_empty() {
-                match processed_key.code {
-                    KeyCode::Down | KeyCode::Char('j') => { let i = (self.assignee_state.selected().unwrap_or(0) + 1) % members.len(); self.assignee_state.select(Some(i)); }
-                    KeyCode::Up | KeyCode::Char('k') => { let i = if self.assignee_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.assignee_state.selected().unwrap() - 1 }; self.assignee_state.select(Some(i)); }
-                    KeyCode::Char(' ') => { if let Some(i) = self.assignee_state.selected() { if let Some(member) = members.get(i) { let id = member.id; if self.selected_assignee_ids.contains(&id) { self.selected_assignee_ids.retain(|&x| x != id); } else { self.selected_assignee_ids.push(id); } } } }
-                    _ => {}
-                }
-            }
-            match processed_key.code {
-                KeyCode::Enter => { if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; } }
-                KeyCode::Esc => self.show_assignee_popup = false,
-                _ => {}
-            }
-            return;
-        }
-        if self.show_milestone_popup {
-            let project_id = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
-            let milestones = self.project_milestone_cache.get(&project_id).unwrap_or(&self.project_milestones);
-            match processed_key.code {
-                KeyCode::Down | KeyCode::Char('j') => { let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
-                KeyCode::Up | KeyCode::Char('k') => { let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
-                KeyCode::Enter => { let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
-                KeyCode::Esc => self.show_milestone_popup = false,
-                _ => {}
-            }
-            return;
-        }
-        if self.show_weight_popup {
-            match processed_key.code {
-                KeyCode::Down | KeyCode::Char('j') => { let i = (self.weight_state.selected().unwrap_or(0) + 1) % 21; self.weight_state.select(Some(i)); }
-                KeyCode::Up | KeyCode::Char('k') => { let i = if self.weight_state.selected().unwrap_or(0) == 0 { 20 } else { self.weight_state.selected().unwrap() - 1 }; self.weight_state.select(Some(i)); }
-                KeyCode::Enter => { let _ = self.update_issue_weight().await; }
-                KeyCode::Esc => self.show_weight_popup = false,
-                _ => {}
-            }
-            return;
-        }
-        if self.show_create_issue_popup {
-            match processed_key.code {
-                KeyCode::Tab => {
-                    if self.input_target == InputTarget::CreateIssueTitle {
-                        self.create_issue_title = self.textarea.lines().join("\n");
-                        self.input_target = InputTarget::CreateIssueDescription;
-                        self.textarea = ratatui_textarea::TextArea::from(self.create_issue_description.lines());
-                        self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
-                    } else {
-                        self.create_issue_description = self.textarea.lines().join("\n");
-                        self.input_target = InputTarget::CreateIssueTitle;
-                        self.textarea = ratatui_textarea::TextArea::from(self.create_issue_title.lines());
-                        self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
+                KeyCode::Esc => { self.show_search = false; self.search_results.clear(); }
+                KeyCode::Down | KeyCode::Char('j') => { if !self.search_results.is_empty() { let i = (self.search_state.selected().unwrap_or(0) + 1) % self.search_results.len(); self.search_state.select(Some(i)); } }
+                KeyCode::Up | KeyCode::Char('k') => { if !self.search_results.is_empty() { let i = if self.search_state.selected().unwrap_or(0) == 0 { self.search_results.len() - 1 } else { self.search_state.selected().unwrap() - 1 }; self.search_state.select(Some(i)); } }
+                KeyCode::Enter => {
+                    if let Some(idx) = self.search_state.selected() {
+                        if let Some(res) = self.search_results.get(idx).cloned() {
+                            match res {
+                                SearchResult::Project(p) => { self.selected_project = Some(p); self.active_context = Context::Project; self.active_panel = Panel::Project; self.show_search = false; let _ = self.refresh().await; }
+                                SearchResult::Issue(i) => { self.selected_issue = Some(i); self.view_mode = ViewMode::Detail; self.show_search = false; }
+                                SearchResult::MergeRequest(m) => { self.selected_mr = Some(m); self.view_mode = ViewMode::Detail; self.show_search = false; }
+                            }
+                        }
                     }
                 }
-                KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); }
-                    else { self.create_issue_description = self.textarea.lines().join("\n"); }
-                    let _ = self.create_issue().await;
-                }
-                KeyCode::Esc => self.show_create_issue_popup = false,
-                _ => { self.textarea.input(processed_key); }
+                KeyCode::Char('/') => { self.input_mode = true; self.input_target = InputTarget::Search; }
+                _ => {}
             }
+            let _ = self.update_preview().await;
             return;
         }
-        if self.show_create_mr_popup {
+
+        // 1.5 Selection Popups (Simple List/Selection Popups)
+        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_milestone_popup || self.show_weight_popup {
             match processed_key.code {
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if self.show_project_popup { self.move_down(); }
+                    else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
+                    else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.assignee_state.selected().unwrap_or(0) + 1) % members.len(); self.assignee_state.select(Some(i)); } }
+                    else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
+                    else if self.show_weight_popup { let i = (self.weight_state.selected().unwrap_or(0) + 1) % 21; self.weight_state.select(Some(i)); }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if self.show_project_popup { self.move_up(); }
+                    else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = if self.label_state.selected().unwrap_or(0) == 0 { labels.len() - 1 } else { self.label_state.selected().unwrap() - 1 }; self.label_state.select(Some(i)); } }
+                    else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.assignee_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.assignee_state.selected().unwrap() - 1 }; self.assignee_state.select(Some(i)); } }
+                    else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
+                    else if self.show_weight_popup { let i = if self.weight_state.selected().unwrap_or(0) == 0 { 20 } else { self.weight_state.selected().unwrap() - 1 }; self.weight_state.select(Some(i)); }
+                }
+                KeyCode::Char(' ') => {
+                    if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if let Some(i) = self.label_state.selected() { if let Some(label) = labels.get(i) { let id = label.id(); if self.selected_label_ids.contains(&id) { self.selected_label_ids.retain(|&x| x != id); } else { self.selected_label_ids.push(id); } } } }
+                    else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if let Some(i) = self.assignee_state.selected() { if let Some(member) = members.get(i) { let id = member.id; if self.selected_assignee_ids.contains(&id) { self.selected_assignee_ids.retain(|&x| x != id); } else { self.selected_assignee_ids.push(id); } } } }
+                }
+                KeyCode::Enter => {
+                    if self.show_project_popup { let _ = self.select_project().await; }
+                    else if self.show_label_popup { if self.selected_issue.is_some() { let _ = self.update_issue_labels().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_labels().await; } }
+                    else if self.show_assignee_popup { if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; } }
+                    else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
+                    else if self.show_weight_popup { let _ = self.update_issue_weight().await; }
+                }
+                _ => {}
+            }
+            let _ = self.update_preview().await;
+            return;
+        }
+
+        // 1.7 Creation Forms (Create Issue/MR)
+        if self.show_create_issue_popup || self.show_create_mr_popup {
+            match processed_key.code {
+                KeyCode::Esc => { self.show_create_issue_popup = false; self.show_create_mr_popup = false; }
                 KeyCode::Tab => {
-                    match self.input_target {
-                        InputTarget::CreateMRTitle => {
-                            self.create_mr_title = self.textarea.lines().join("\n");
-                            self.input_target = InputTarget::CreateMRSourceBranch;
-                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_source_branch.lines());
+                    if self.show_create_issue_popup {
+                        if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateIssueDescription; self.textarea = ratatui_textarea::TextArea::from(self.create_issue_description.lines()); }
+                        else { self.create_issue_description = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateIssueTitle; self.textarea = ratatui_textarea::TextArea::from(self.create_issue_title.lines()); }
+                    } else {
+                        match self.input_target {
+                            InputTarget::CreateMRTitle => { self.create_mr_title = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRSourceBranch; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_source_branch.lines()); }
+                            InputTarget::CreateMRSourceBranch => { self.create_mr_source_branch = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRTargetBranch; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_target_branch.lines()); }
+                            InputTarget::CreateMRTargetBranch => { self.create_mr_target_branch = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRDescription; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_description.lines()); }
+                            InputTarget::CreateMRDescription => { self.create_mr_description = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRTitle; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_title.lines()); }
+                            _ => {}
                         }
-                        InputTarget::CreateMRSourceBranch => {
-                            self.create_mr_source_branch = self.textarea.lines().join("\n");
-                            self.input_target = InputTarget::CreateMRTargetBranch;
-                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_target_branch.lines());
-                        }
-                        InputTarget::CreateMRTargetBranch => {
-                            self.create_mr_target_branch = self.textarea.lines().join("\n");
-                            self.input_target = InputTarget::CreateMRDescription;
-                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_description.lines());
-                        }
-                        InputTarget::CreateMRDescription => {
-                            self.create_mr_description = self.textarea.lines().join("\n");
-                            self.input_target = InputTarget::CreateMRTitle;
-                            self.textarea = ratatui_textarea::TextArea::from(self.create_mr_title.lines());
-                        }
-                        _ => {}
                     }
                     self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
                 }
-                KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    match self.input_target {
-                        InputTarget::CreateMRTitle => self.create_mr_title = self.textarea.lines().join("\n"),
-                        InputTarget::CreateMRSourceBranch => self.create_mr_source_branch = self.textarea.lines().join("\n"),
-                        InputTarget::CreateMRTargetBranch => self.create_mr_target_branch = self.textarea.lines().join("\n"),
-                        InputTarget::CreateMRDescription => self.create_mr_description = self.textarea.lines().join("\n"),
-                        _ => {}
+                KeyCode::Enter if processed_key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if self.show_create_issue_popup {
+                        if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); } else { self.create_issue_description = self.textarea.lines().join("\n"); }
+                        let _ = self.create_issue().await;
+                    } else {
+                        match self.input_target { InputTarget::CreateMRTitle => self.create_mr_title = self.textarea.lines().join("\n"), InputTarget::CreateMRSourceBranch => self.create_mr_source_branch = self.textarea.lines().join("\n"), InputTarget::CreateMRTargetBranch => self.create_mr_target_branch = self.textarea.lines().join("\n"), InputTarget::CreateMRDescription => self.create_mr_description = self.textarea.lines().join("\n"), _ => {} }
+                        let _ = self.create_mr().await;
                     }
-                    let _ = self.create_mr().await;
                 }
-                KeyCode::Esc => self.show_create_mr_popup = false,
                 _ => { self.textarea.input(processed_key); }
             }
+            let _ = self.update_preview().await;
             return;
         }
+
+        // 1.8 Pipeline Popup
         if self.show_pipeline_popup {
             match processed_key.code {
                 KeyCode::Tab => {
@@ -2015,158 +1513,140 @@ impl App {
                         _ => self.input_target = InputTarget::PipelineRef,
                     }
                 }
-                KeyCode::Char('p') if !self.input_mode => {
-                    let _ = self.submit_pipeline_launch().await;
-                }
+                KeyCode::Char('p') if !self.input_mode => { let _ = self.submit_pipeline_launch().await; }
                 KeyCode::Enter => {
                     match self.input_target {
                         InputTarget::PipelineRef => {
                              if self.show_branches_dropdown {
-                                if let Some(idx) = self.branches_state.selected() {
-                                    if let Some(b) = self.filtered_branches.get(idx) {
-                                        self.pipeline_ref_input = b.name.clone();
-                                    }
-                                }
-                                self.show_branches_dropdown = false;
-                                self.input_target = InputTarget::PipelineVariableKey;
-                             } else {
-                                self.input_target = InputTarget::PipelineVariableKey;
-                             }
-                             self.label_state.select(Some(0)); // Reset suggestion selection
+                                if let Some(idx) = self.branches_state.selected() { if let Some(b) = self.filtered_branches.get(idx) { self.pipeline_ref_input = b.name.clone(); } }
+                                self.show_branches_dropdown = false; self.input_target = InputTarget::PipelineVariableKey;
+                             } else { self.input_target = InputTarget::PipelineVariableKey; }
+                             self.label_state.select(Some(0));
                         }
                         InputTarget::PipelineVariableKey => {
-                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter()
-                                .filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase()))
-                                .collect();
-                            
-                            if !suggested_vars.is_empty() {
-                                if let Some(idx) = self.label_state.selected() {
-                                    if let Some(v) = suggested_vars.get(idx) {
-                                        self.pipeline_variable_key_input = v.key.clone();
-                                    }
-                                }
-                            }
+                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter().filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase())).collect();
+                            if !suggested_vars.is_empty() { if let Some(idx) = self.label_state.selected() { if let Some(v) = suggested_vars.get(idx) { self.pipeline_variable_key_input = v.key.clone(); } } }
                             self.input_target = InputTarget::PipelineVariableValue;
                         }
                         InputTarget::PipelineVariableValue => {
                             if !self.pipeline_variable_key_input.is_empty() {
-                                self.pipeline_variables.push(PipelineVariable {
-                                    key: self.pipeline_variable_key_input.clone(),
-                                    value: self.pipeline_variable_value_input.clone(),
-                                });
-                                self.pipeline_variable_key_input.clear();
-                                self.pipeline_variable_value_input.clear();
-                                self.input_target = InputTarget::PipelineVariableKey;
+                                self.pipeline_variables.push(PipelineVariable { key: self.pipeline_variable_key_input.clone(), value: self.pipeline_variable_value_input.clone() });
+                                self.pipeline_variable_key_input.clear(); self.pipeline_variable_value_input.clear(); self.input_target = InputTarget::PipelineVariableKey;
                             }
                         }
                         _ => {}
                     }
                 }
-                KeyCode::Delete | KeyCode::Backspace if self.input_target == InputTarget::PipelineVariableList => {
-                    if let Some(idx) = self.pipeline_variables_state.selected() {
-                        if idx < self.pipeline_variables.len() {
-                            self.pipeline_variables.remove(idx);
-                        }
-                    }
-                }
-                KeyCode::Esc => {
-                    self.show_pipeline_popup = false;
-                    self.input_mode = false;
-                }
+                KeyCode::Delete | KeyCode::Backspace if self.input_target == InputTarget::PipelineVariableList => { if let Some(idx) = self.pipeline_variables_state.selected() { if idx < self.pipeline_variables.len() { self.pipeline_variables.remove(idx); } } }
+                KeyCode::Esc => { self.show_pipeline_popup = false; self.input_mode = false; }
                 _ => {
                     match self.input_target {
-                        InputTarget::PipelineRef => {
-                            match processed_key.code {
-                                KeyCode::Char(c) => { self.pipeline_ref_input.push(c); self.show_branches_dropdown = true; self.filter_branches(); }
-                                KeyCode::Backspace => { self.pipeline_ref_input.pop(); self.filter_branches(); }
-                                KeyCode::Down => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } }
-                                KeyCode::Up => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + self.filtered_branches.len().saturating_sub(1)) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } }
-                                _ => {}
-                            }
-                        }
+                        InputTarget::PipelineRef => { match processed_key.code { KeyCode::Char(c) => { self.pipeline_ref_input.push(c); self.show_branches_dropdown = true; self.filter_branches(); } KeyCode::Backspace => { self.pipeline_ref_input.pop(); self.filter_branches(); } KeyCode::Down => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } } KeyCode::Up => { if !self.filtered_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + self.filtered_branches.len().saturating_sub(1)) % self.filtered_branches.len(); self.branches_state.select(Some(i)); } } _ => {} } }
                         InputTarget::PipelineVariableKey => {
-                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter()
-                                .filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase()))
-                                .collect();
-                            match processed_key.code {
-                                KeyCode::Char(c) => { self.pipeline_variable_key_input.push(c); self.label_state.select(Some(0)); }
-                                KeyCode::Backspace => { self.pipeline_variable_key_input.pop(); self.label_state.select(Some(0)); }
-                                KeyCode::Down => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % suggested_vars.len(); self.label_state.select(Some(i)); } }
-                                KeyCode::Up => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + suggested_vars.len().saturating_sub(1)) % suggested_vars.len(); self.label_state.select(Some(i)); } }
-                                _ => {}
-                            }
+                            let suggested_vars: Vec<&ProjectVariable> = self.project_variables.iter().filter(|v| v.key.to_lowercase().contains(&self.pipeline_variable_key_input.to_lowercase())).collect();
+                            match processed_key.code { KeyCode::Char(c) => { self.pipeline_variable_key_input.push(c); self.label_state.select(Some(0)); } KeyCode::Backspace => { self.pipeline_variable_key_input.pop(); self.label_state.select(Some(0)); } KeyCode::Down => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % suggested_vars.len(); self.label_state.select(Some(i)); } } KeyCode::Up => { if !suggested_vars.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + suggested_vars.len().saturating_sub(1)) % suggested_vars.len(); self.label_state.select(Some(i)); } } _ => {} }
                         }
-                        InputTarget::PipelineVariableValue => {
-                            if let KeyCode::Char(c) = processed_key.code { self.pipeline_variable_value_input.push(c); }
-                            else if let KeyCode::Backspace = processed_key.code { self.pipeline_variable_value_input.pop(); }
-                        }
+                        InputTarget::PipelineVariableValue => { if let KeyCode::Char(c) = processed_key.code { self.pipeline_variable_value_input.push(c); } else if let KeyCode::Backspace = processed_key.code { self.pipeline_variable_value_input.pop(); } }
                         _ => {}
                     }
                 }
+            }
+            let _ = self.update_preview().await;
+            return;
+        }
+
+        // --- 2. ABSOLUTE HIGH-PRIORITY GLOBAL KEYS (only when not in input mode) ---
+        if !self.input_mode {
+            let is_question_mark = processed_key.code == KeyCode::Char('?') 
+                || (processed_key.code == KeyCode::Char('/') && processed_key.modifiers.contains(KeyModifiers::SHIFT))
+                || (processed_key.code == KeyCode::Char(',') && processed_key.modifiers.contains(KeyModifiers::SHIFT));
+
+            if is_question_mark { self.execute_help_action(HelpAction::ToggleHelp).await; return; }
+            if processed_key.code == KeyCode::Char('q') { self.should_quit = true; return; }
+        }
+
+        // --- 3. G-PREFIX NAVIGATION ---
+        if self.pending_g_prefix {
+            self.pending_g_prefix = false;
+            match processed_key.code {
+                KeyCode::Char('t') => { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Todos; self.active_panel = Panel::Main; self.dashboard_menu_state.select(Some(0)); let _ = self.refresh().await; }
+                KeyCode::Char('m') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::MergeRequests; self.project_menu_state.select(Some(0)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::MergeRequests; self.dashboard_menu_state.select(Some(1)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
+                KeyCode::Char('i') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::Issues; self.project_menu_state.select(Some(1)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Issues; self.dashboard_menu_state.select(Some(2)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
+                KeyCode::Char('p') => { if self.selected_project.is_some() { self.active_context = Context::Project; self.active_selection = MenuSelection::Pipelines; self.project_menu_state.select(Some(2)); self.active_panel = Panel::Main; let _ = self.refresh().await; } }
+                KeyCode::Char('r') => { if self.selected_project.is_some() { self.active_context = Context::Project; self.active_selection = MenuSelection::Repository; self.project_menu_state.select(Some(3)); self.active_panel = Panel::Main; let _ = self.refresh().await; } }
+                _ => {}
             }
             return;
         }
-        if self.show_search && !self.input_mode {
+
+        // --- 4. SPECIALIZED VIEW MODES ---
+
+        // JobLog Mode
+        if self.view_mode == ViewMode::JobLog {
             match processed_key.code {
-                KeyCode::Esc => {
-                    self.show_search = false;
-                    self.search_results.clear();
-                    return;
-                }
-                KeyCode::Char('j') | KeyCode::Down => {
-                    if !self.search_results.is_empty() {
-                        let i = match self.search_state.selected() {
-                            Some(i) => if i >= self.search_results.len() - 1 { 0 } else { i + 1 },
-                            None => 0,
-                        };
-                        self.search_state.select(Some(i));
-                    }
-                    return;
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    if !self.search_results.is_empty() {
-                        let i = match self.search_state.selected() {
-                            Some(i) => if i == 0 { self.search_results.len() - 1 } else { i - 1 },
-                            None => 0,
-                        };
-                        self.search_state.select(Some(i));
-                    }
-                    return;
-                }
-                KeyCode::Enter => {
-                    if let Some(idx) = self.search_state.selected() {
-                        if let Some(res) = self.search_results.get(idx).cloned() {
-                            match res {
-                                SearchResult::Project(p) => {
-                                    self.selected_project = Some(p);
-                                    self.active_context = Context::Project;
-                                    self.active_panel = Panel::Project;
-                                    self.show_search = false;
-                                    let _ = self.refresh().await;
-                                }
-                                SearchResult::Issue(i) => {
-                                    self.selected_issue = Some(i);
-                                    self.view_mode = ViewMode::Detail;
-                                    self.show_search = false;
-                                }
-                                SearchResult::MergeRequest(m) => {
-                                    self.selected_mr = Some(m);
-                                    self.view_mode = ViewMode::Detail;
-                                    self.show_search = false;
-                                }
-                            }
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Char('/') => {
-                    self.input_mode = true;
-                    self.input_target = InputTarget::Search;
-                    return;
-                }
+                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => { self.toggle_job_section(); let _ = self.update_preview().await; return; }
+                KeyCode::Esc => { if self.job_log_selection_start.is_some() { self.job_log_selection_start = None; } else { self.view_mode = ViewMode::List; } let _ = self.update_preview().await; return; }
+                KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { if !self.job_log_lines.is_empty() { let current = self.job_log_cursor; self.job_log_cursor = (self.job_log_cursor + 1).min(self.job_log_lines.len().saturating_sub(1)); if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); } } else { self.job_log_selection_start = None; } if self.job_log_cursor >= self.job_log_scroll as usize + self.job_log_viewport_height as usize { self.job_log_scroll = self.job_log_scroll.saturating_add(1); } } let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { if !self.job_log_lines.is_empty() { let current = self.job_log_cursor; self.job_log_cursor = self.job_log_cursor.saturating_sub(1); if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); } } else { self.job_log_selection_start = None; } if (self.job_log_cursor as u16) < self.job_log_scroll { self.job_log_scroll = self.job_log_cursor as u16; } } let _ = self.update_preview().await; return; }
+                KeyCode::Char('y') => { let text = if let Some(start) = self.job_log_selection_start { let (s, e) = if start <= self.job_log_cursor { (start, self.job_log_cursor) } else { (self.job_log_cursor, start) }; self.job_log_lines[s..=e].iter().map(|l| l.content.clone()).collect::<Vec<String>>().join("\n") } else if !self.job_log_lines.is_empty() { self.job_log_lines[self.job_log_cursor].content.clone() } else { String::new() }; self.copy_to_clipboard(text); self.job_log_selection_start = None; return; }
+                KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } return; }
+                KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } return; }
+                KeyCode::Char('p') | KeyCode::Char('P') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.play_job(p.id, j.id).await; } } return; }
                 _ => {}
             }
+            return;
         }
+
+        // Tree Mode
+        if self.view_mode == ViewMode::Tree {
+            match processed_key.code {
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                KeyCode::Char('y') => { if let Some(file) = &self.selected_file_content { use base64::{Engine as _, engine::general_purpose}; let clean_content = file.content.replace('\n', "").replace('\r', ""); if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) { if let Ok(text) = String::from_utf8(decoded) { self.copy_to_clipboard(text); } } } return; }
+                _ => {}
+            }
+            return;
+        }
+
+        // Diff Mode
+        if self.view_mode == ViewMode::Diff {
+            match processed_key.code {
+                KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
+                KeyCode::Left | KeyCode::Char('h') => { if self.diff_line_state.selected().is_some() { self.diff_line_state.select(None); self.diff_selection_start = None; } else { self.view_mode = ViewMode::List; } let _ = self.update_preview().await; return; }
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => { self.diff_line_state.select(Some(0)); self.diff_selection_start = None; let _ = self.update_preview().await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { if self.diff_line_state.selected().is_some() { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let line_count = mr_diff.display_lines.len(); if line_count > 0 { let current = self.diff_line_state.selected().unwrap(); let next = (current + 1) % line_count; if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); } } else { self.diff_selection_start = None; } self.diff_line_state.select(Some(next)); } } } } else { let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1); self.mr_diff_state.select(Some(i)); self.diff_line_state.select(None); self.diff_selection_start = None; } let _ = self.update_preview().await; return; }
+                KeyCode::Up | KeyCode::Char('k') => { if self.diff_line_state.selected().is_some() { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let line_count = mr_diff.display_lines.len(); if line_count > 0 { let current = self.diff_line_state.selected().unwrap(); let prev = if current == 0 { line_count - 1 } else { current - 1 }; if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); } } else { self.diff_selection_start = None; } self.diff_line_state.select(Some(prev)); } } } } else { let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 }; self.mr_diff_state.select(Some(i)); self.diff_line_state.select(None); self.diff_selection_start = None; } let _ = self.update_preview().await; return; }
+                KeyCode::Char('y') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let text = if let Some(start) = self.diff_selection_start { let (s, e) = if start <= self.diff_line_state.selected().unwrap() { (start, self.diff_line_state.selected().unwrap()) } else { (self.diff_line_state.selected().unwrap(), start) }; mr_diff.display_lines[s..=e].iter().filter_map(|l| match l { DiffDisplayLine::Code(c, ..) => Some(c.clone()), _ => None }).collect::<Vec<_>>().join("\n") } else if let Some(idx) = self.diff_line_state.selected() { match &mr_diff.display_lines[idx] { DiffDisplayLine::Code(c, ..) => c.clone(), _ => String::new() } } else { String::new() }; self.copy_to_clipboard(text); self.diff_selection_start = None; } } return; }
+                KeyCode::Char('c') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Code(..)) = mr_diff.display_lines.get(line_idx) { self.input_mode = true; self.input_target = InputTarget::NewComment; self.textarea = ratatui_textarea::TextArea::default(); return; } } } } }
+                KeyCode::Char('r') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get(line_idx) { if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) { self.discussion_state.select(Some(pos)); self.input_mode = true; self.input_target = InputTarget::Reply; self.textarea = ratatui_textarea::TextArea::default(); return; } } } } } }
+                KeyCode::Char(' ') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) { disc.collapsed = !disc.collapsed; if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) { main_disc.collapsed = disc.collapsed; } } } } } }
+                KeyCode::Char('s') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) { disc.collapsed = true; if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) { main_disc.collapsed = true; if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) { self.discussion_state.select(Some(pos)); let _ = self.resolve_discussion().await; } } } } } } }
+                KeyCode::Char('n') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let current = self.diff_line_state.selected().unwrap_or(0); for i in (current + 1)..mr_diff.display_lines.len() { if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] { self.diff_line_state.select(Some(i)); let _ = self.update_preview().await; return; } } } } }
+                KeyCode::Char('p') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let current = self.diff_line_state.selected().unwrap_or(0); for i in (0..current).rev() { if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] { self.diff_line_state.select(Some(i)); let _ = self.update_preview().await; return; } } } } }
+                _ => {}
+            }
+            return;
+        }
+
+        // Board Mode
+        if self.view_mode == ViewMode::Board {
+            match processed_key.code {
+                KeyCode::Esc => { self.view_mode = ViewMode::List; self.selected_board = None; return; }
+                KeyCode::Left | KeyCode::Char('h') => { let current = self.board_lists_state.selected().unwrap_or(0); let next = if current == 0 { self.board_lists.len().saturating_sub(1) } else { current - 1 }; self.board_lists_state.select(Some(next)); return; }
+                KeyCode::Right | KeyCode::Char('l') => { let current = self.board_lists_state.selected().unwrap_or(0); let next = (current + 1) % self.board_lists.len().max(1); self.board_lists_state.select(Some(next)); return; }
+                KeyCode::Char('H') => { let _ = self.move_board_issue(-1).await; return; }
+                KeyCode::Char('L') => { let _ = self.move_board_issue(1).await; return; }
+                KeyCode::Down | KeyCode::Char('j') => { if let Some(list_idx) = self.board_lists_state.selected() { if let Some(list) = self.board_lists.get(list_idx) { let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0); if issues > 0 { let state = self.board_issue_states.entry(list.id).or_default(); let current = state.selected().unwrap_or(0); state.select(Some((current + 1) % issues)); } } } return; }
+                KeyCode::Up | KeyCode::Char('k') => { if let Some(list_idx) = self.board_lists_state.selected() { if let Some(list) = self.board_lists.get(list_idx) { let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0); if issues > 0 { let state = self.board_issue_states.entry(list.id).or_default(); let current = state.selected().unwrap_or(0); state.select(Some(if current == 0 { issues - 1 } else { current - 1 })); } } } return; }
+                KeyCode::Enter => { if let Some(list_idx) = self.board_lists_state.selected() { if let Some(list) = self.board_lists.get(list_idx) { let state = self.board_issue_states.entry(list.id).or_default(); if let Some(issue_idx) = state.selected() { if let Some(issue) = self.board_issues.get(&list.id).and_then(|v| v.get(issue_idx)).cloned() { self.selected_issue = Some(issue); self.view_mode = ViewMode::Detail; self.detail_section = DetailSection::Metadata; } } } } return; }
+                _ => {}
+            }
+            return;
+        }
+
+        // --- 5. INPUT MODES ---
 
         if self.input_mode {
             if self.input_target == InputTarget::Filter {
@@ -2174,101 +1654,18 @@ impl App {
                     KeyCode::Esc | KeyCode::Char('/') => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
                     KeyCode::Down | KeyCode::Char('j') => { self.move_down(); }
                     KeyCode::Up | KeyCode::Char('k') => { self.move_up(); }
-                    KeyCode::Enter => { 
-                        self.input_mode = false; 
-                        self.show_filter_input = false;
-                        let _ = self.go_forward().await; 
-                        self.filter_input.clear();
-                        self.filter_lists();
-                    }
+                    KeyCode::Enter => { self.input_mode = false; self.show_filter_input = false; let _ = self.update_preview().await; let _ = self.go_forward().await; self.filter_input.clear(); self.filter_lists(); }
                     KeyCode::Char(c) if c != '/' => { self.filter_input.push(c); self.filter_lists(); }
                     KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
                     _ => {}
                 }
-            } else if self.input_target == InputTarget::Search {
-                match processed_key.code {
-                    KeyCode::Esc | KeyCode::Char('/') => {
-                        self.input_mode = false;
-                        self.show_search = false;
-                        self.search_query.clear();
-                        self.search_results.clear();
-                    }
-                    KeyCode::Down => {
-                        if !self.search_results.is_empty() {
-                            let i = (self.search_state.selected().unwrap_or(0) + 1) % self.search_results.len();
-                            self.search_state.select(Some(i));
-                        }
-                    }
-                    KeyCode::Up => {
-                        if !self.search_results.is_empty() {
-                            let i = if self.search_state.selected().unwrap_or(0) == 0 { self.search_results.len() - 1 } else { self.search_state.selected().unwrap() - 1 };
-                            self.search_state.select(Some(i));
-                        }
-                    }
-                    KeyCode::Enter => {
-                        if let Some(idx) = self.search_state.selected() {
-                            if let Some(res) = self.search_results.get(idx).cloned() {
-                                match res {
-                                    SearchResult::Project(p) => {
-                                        self.selected_project = Some(p);
-                                        self.active_context = Context::Project;
-                                        self.active_panel = Panel::Project;
-                                        self.show_search = false;
-                                        self.input_mode = false;
-                                        let _ = self.refresh().await;
-                                    }
-                                    SearchResult::Issue(i) => {
-                                        self.selected_issue = Some(i);
-                                        self.view_mode = ViewMode::Detail;
-                                        self.show_search = false;
-                                        self.input_mode = false;
-                                    }
-                                    SearchResult::MergeRequest(m) => {
-                                        self.selected_mr = Some(m);
-                                        self.view_mode = ViewMode::Detail;
-                                        self.show_search = false;
-                                        self.input_mode = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    KeyCode::Char(c) if c != '/' => {
-                        self.search_query.push(c);
-                        self.search_id += 1;
-                        let sid = self.search_id;
-                        let tx = self.tx.clone();
-                        tokio::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                            let _ = tx.send(DataUpdate::TriggerSearch(sid));
-                        });
-                    }
-                    KeyCode::Backspace => {
-                        self.search_query.pop();
-                        self.search_id += 1;
-                        let sid = self.search_id;
-                        let tx = self.tx.clone();
-                        tokio::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                            let _ = tx.send(DataUpdate::TriggerSearch(sid));
-                        });
-                    }
-                    _ => {}
-                }
             } else {
+                // Default textarea input modes (EditTitle, EditDescription, Reply, NewComment, SnoozeUntil)
                 match processed_key.code {
-                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::SHIFT) => {
-                        self.enter().await;
-                    }
-                    KeyCode::Char('\n') | KeyCode::Char('\r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.enter().await;
-                    }
-                    KeyCode::Enter if matches!(self.input_target, InputTarget::EditTitle | InputTarget::SnoozeUntil) => {
-                        self.enter().await;
-                    }
-                    KeyCode::Enter => {
-                        self.textarea.input(processed_key);
-                    }
+                    KeyCode::Enter if processed_key.modifiers.contains(KeyModifiers::CONTROL) || processed_key.modifiers.contains(KeyModifiers::SHIFT) => { self.enter().await; }
+                    KeyCode::Char('\n') | KeyCode::Char('\r') if processed_key.modifiers.contains(KeyModifiers::CONTROL) => { self.enter().await; }
+                    KeyCode::Enter if matches!(self.input_target, InputTarget::EditTitle | InputTarget::SnoozeUntil) => { self.enter().await; }
+                    KeyCode::Enter => { self.textarea.input(processed_key); }
                     KeyCode::Esc => { self.input_mode = false; }
                     _ => { self.textarea.input(processed_key); }
                 }
@@ -2276,238 +1673,10 @@ impl App {
             return;
         }
 
-        if self.view_mode == ViewMode::JobLog {
-            match processed_key.code {
-                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => { self.toggle_job_section(); let _ = self.update_preview().await; return; }
-                KeyCode::Esc => {
-                    if self.job_log_selection_start.is_some() {
-                        self.job_log_selection_start = None;
-                    } else {
-                        self.view_mode = ViewMode::List;
-                    }
-                    let _ = self.update_preview().await;
-                    return;
-                }
-                KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if !self.job_log_lines.is_empty() {
-                        let current = self.job_log_cursor;
-                        self.job_log_cursor = (self.job_log_cursor + 1).min(self.job_log_lines.len().saturating_sub(1));
-                        
-                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
-                        } else {
-                            self.job_log_selection_start = None;
-                        }
+        // --- 6. DEFAULT NAVIGATION (Background) ---
 
-                        // Auto-scroll
-                        if self.job_log_cursor >= self.job_log_scroll as usize + self.job_log_viewport_height as usize {
-                            self.job_log_scroll = self.job_log_scroll.saturating_add(1);
-                        }
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if !self.job_log_lines.is_empty() {
-                        let current = self.job_log_cursor;
-                        self.job_log_cursor = self.job_log_cursor.saturating_sub(1);
-
-                        if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                            if self.job_log_selection_start.is_none() { self.job_log_selection_start = Some(current); }
-                        } else {
-                            self.job_log_selection_start = None;
-                        }
-
-                        // Auto-scroll
-                        if (self.job_log_cursor as u16) < self.job_log_scroll {
-                            self.job_log_scroll = self.job_log_cursor as u16;
-                        }
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Char('y') => {
-                    let text = if let Some(start) = self.job_log_selection_start {
-                        let (s, e) = if start <= self.job_log_cursor { (start, self.job_log_cursor) } else { (self.job_log_cursor, start) };
-                        self.job_log_lines[s..=e].iter().map(|l| l.content.clone()).collect::<Vec<String>>().join("\n")
-                    } else if !self.job_log_lines.is_empty() {
-                        self.job_log_lines[self.job_log_cursor].content.clone()
-                    } else {
-                        String::new()
-                    };
-                    self.copy_to_clipboard(text);
-                    self.job_log_selection_start = None;
-                    return;
-                }
-                KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } return; }
-                KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } return; }
-                KeyCode::Char('p') | KeyCode::Char('P') => { if let Some(j) = &self.selected_job { if let Some(p) = &self.selected_project { let _ = self.play_job(p.id, j.id).await; } } return; }
-                _ => {}
-            }
-        }
-
-        if self.view_mode == ViewMode::Tree {
-            match processed_key.code {
-                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
-                KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
-                KeyCode::Char('y') => {
-                    if let Some(file) = &self.selected_file_content {
-                        use base64::{Engine as _, engine::general_purpose};
-                        let clean_content = file.content.replace("\n", "").replace("\r", "");
-                        if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
-                            if let Ok(text) = String::from_utf8(decoded) {
-                                self.copy_to_clipboard(text);
-                            }
-                        }
-                    }
-                    return;
-                }
-                _ => {}
-            }
-        }
-
-        if self.view_mode == ViewMode::Diff {
-            match processed_key.code {
-                KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    if self.diff_line_state.selected().is_some() {
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    } else {
-                        self.view_mode = ViewMode::List;
-                    }
-                    let _ = self.update_preview().await;
-                    return;
-                }
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => {
-                    self.diff_line_state.select(Some(0));
-                    self.diff_selection_start = None;
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if self.diff_line_state.selected().is_some() {
-                        if let Some(selected_idx) = self.mr_diff_state.selected() {
-                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                                let line_count = mr_diff.display_lines.len();
-                                if line_count > 0 {
-                                    let current = self.diff_line_state.selected().unwrap();
-                                    let next = (current + 1) % line_count;
-                                    
-                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
-                                    } else {
-                                        self.diff_selection_start = None;
-                                    }
-                                    
-                                    self.diff_line_state.select(Some(next));
-                                }
-                            }
-                        }
-                    } else {
-                        let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1);
-                        self.mr_diff_state.select(Some(i));
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if self.diff_line_state.selected().is_some() {
-                        if let Some(selected_idx) = self.mr_diff_state.selected() {
-                            if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                                let line_count = mr_diff.display_lines.len();
-                                if line_count > 0 {
-                                    let current = self.diff_line_state.selected().unwrap();
-                                    let prev = if current == 0 { line_count - 1 } else { current - 1 };
-
-                                    if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                                        if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); }
-                                    } else {
-                                        self.diff_selection_start = None;
-                                    }
-
-                                    self.diff_line_state.select(Some(prev));
-                                }
-                            }
-                        }
-                    } else {
-                        let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 };
-                        self.mr_diff_state.select(Some(i));
-                        self.diff_line_state.select(None);
-                        self.diff_selection_start = None;
-                    }
-                    let _ = self.update_preview().await; return;
-                }
-                KeyCode::Char('c') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                // Check if we are on a code line
-                                if let Some(DiffDisplayLine::Code(..)) = mr_diff.display_lines.get(line_idx) {
-                                    self.input_mode = true;
-                                    self.input_target = InputTarget::NewComment;
-                                    self.textarea = ratatui_textarea::TextArea::default();
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('r') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get(line_idx) {
-                                    if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) {
-                                        self.discussion_state.select(Some(pos));
-                                        self.input_mode = true;
-                                        self.input_target = InputTarget::Reply;
-                                        self.textarea = ratatui_textarea::TextArea::default();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) {
-                                    disc.collapsed = !disc.collapsed;
-                                    if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
-                                        main_disc.collapsed = disc.collapsed;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                KeyCode::Char('s') => {
-                    if let Some(selected_idx) = self.mr_diff_state.selected() {
-                        if let Some(mr_diff) = self.mr_diffs.get_mut(selected_idx) {
-                            if let Some(line_idx) = self.diff_line_state.selected() {
-                                if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get_mut(line_idx) {
-                                    // Automatically collapse on resolve
-                                    disc.collapsed = true;
-                                    if let Some(main_disc) = self.discussions.iter_mut().find(|d| d.id == disc.id) {
-                                        main_disc.collapsed = true;
-                                        if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) {
-                                            self.discussion_state.select(Some(pos));
-                                            let _ = self.resolve_discussion().await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if self.active_panel == Panel::MainDetail && self.active_selection == MenuSelection::Pipelines && !self.input_mode {
+        // Panel-specific keys (like Job Retry in Pipelines)
+        if self.active_panel == Panel::MainDetail && self.active_selection == MenuSelection::Pipelines {
             match processed_key.code {
                 KeyCode::Char('r') | KeyCode::Char('R') => { if let Some(i) = self.jobs_state.selected() { if let Some(j) = self.jobs.get(i).cloned() { if let Some(p) = &self.selected_project { let _ = self.retry_job(p.id, j.id).await; } } } return; }
                 KeyCode::Char('c') | KeyCode::Char('C') => { if let Some(i) = self.jobs_state.selected() { if let Some(j) = self.jobs.get(i).cloned() { if let Some(p) = &self.selected_project { let _ = self.cancel_job(p.id, j.id).await; } } } return; }
@@ -2551,9 +1720,8 @@ impl App {
             }
             KeyCode::Down | KeyCode::Char('j') => { self.move_down(); let _ = self.update_preview().await; }
             KeyCode::Up | KeyCode::Char('k') => { self.move_up(); let _ = self.update_preview().await; }
-            KeyCode::Enter => { self.go_forward().await; }
-            KeyCode::Esc => { self.go_back().await; }            KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char('v') => {
+            KeyCode::Enter => { let _ = self.update_preview().await; self.go_forward().await; }
+            KeyCode::Esc => { self.go_back().await; }            KeyCode::Char('v') => {
                 if self.selected_mr.is_some() {
                     self.view_mode = ViewMode::Diff;
                     self.mr_diff_state.select(Some(0));
@@ -2574,7 +1742,6 @@ impl App {
             }
             KeyCode::Char('2') => { self.active_panel = Panel::Main; let _ = self.update_preview().await; }
             KeyCode::Char('3') => { self.active_panel = Panel::MainDetail; let _ = self.update_preview().await; }
-            KeyCode::Char('o') => self.open_in_browser(),
             KeyCode::Char('p') => self.switch_project(),
             KeyCode::Char('r') => { let _ = self.refresh().await; }
             KeyCode::Char('f') => {
@@ -2613,7 +1780,7 @@ impl App {
                 }
                 self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
             }
-            KeyCode::Char('c') => { if let Some(_) = &self.selected_issue { let _ = self.toggle_issue_state().await; } else if let Some(_) = &self.selected_mr { let _ = self.toggle_mr_state().await; } }
+            KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
             KeyCode::Char('C') => {
                 if self.active_selection == MenuSelection::Pipelines {
@@ -2640,7 +1807,7 @@ impl App {
                 if self.active_selection == MenuSelection::Todos {
                     self.show_snooze_popup = true; self.snooze_state.select(Some(0));
                 } else {
-                    if let Some(_) = &self.selected_mr { 
+                    if self.selected_mr.is_some() || self.selected_issue.is_some() { 
                         if let Some(idx) = self.discussion_state.selected() {
                             if let Some(disc) = self.discussions.get_mut(idx) {
                                 disc.collapsed = true;
@@ -2648,17 +1815,10 @@ impl App {
                         }
                         let _ = self.resolve_discussion().await; 
                     }
-                    else if let Some(_) = &self.selected_issue { 
-                        if let Some(idx) = self.discussion_state.selected() {
-                            if let Some(disc) = self.discussions.get_mut(idx) {
-                                disc.collapsed = true;
-                            }
-                        }
-                        let _ = self.resolve_discussion().await; 
-                        }
-                        }
-                        }
-                        KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }            KeyCode::Char('n') => {
+                }
+            }
+            KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
+            KeyCode::Char('n') => {
                 if self.show_create_issue_popup || self.show_create_mr_popup || self.show_pipeline_popup || self.show_project_popup || self.show_help_popup || self.show_search { return; }
                 match self.active_selection {
                     MenuSelection::Issues => {
@@ -2697,6 +1857,7 @@ impl App {
             }
             _ => {}
         }
+        let _ = self.update_preview().await;
     }
 
     pub async fn enter_detail_action(&mut self) {
@@ -2733,6 +1894,7 @@ impl App {
             }
         }
     }
+
 
     pub fn filter_lists(&mut self) {
         let filter = self.filter_input.to_lowercase();
