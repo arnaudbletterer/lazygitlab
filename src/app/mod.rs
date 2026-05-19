@@ -140,6 +140,7 @@ impl App {
             last_error: None,
             status_message: None,
             loading_tasks: 0,
+            diff_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(10)),
             last_fetch_todos: None,
             last_fetch_mrs: None,
             last_fetch_issues: None,
@@ -376,9 +377,11 @@ impl App {
                     if selected.iid == iid && selected.project_id == project_id {
                         self.mr_diffs = data;
                         self.enrich_diffs_with_discussions();
+                        let _ = self.fetch_all_missing_diffs().await;
                     }
                 }
-            }            DataUpdate::Metadata { project_id, labels, milestones, members } => { 
+            }
+            DataUpdate::Metadata { project_id, labels, milestones, members } => { 
                 self.project_label_cache.insert(project_id, labels.clone());
                 self.project_milestone_cache.insert(project_id, milestones.clone());
                 self.project_member_cache.insert(project_id, members.clone());
@@ -1271,7 +1274,6 @@ impl App {
         items.push(HelpItem { shortcut: "y".into(), description: "Copy URL/Content to clipboard".into(), action: HelpAction::CopyUrl, category: "Global".into() });
         if self.view_mode == ViewMode::Diff {
             items.push(HelpItem { shortcut: "e / E".into(), description: "Expand collapsed diff file".into(), action: HelpAction::ExpandCollapsedDiff, category: "Diff".into() });
-            items.push(HelpItem { shortcut: "Shift + E".into(), description: "Fetch all missing diffs".into(), action: HelpAction::FetchAllMissingDiffs, category: "Diff".into() });
         }
         items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
@@ -1650,10 +1652,7 @@ impl App {
                 KeyCode::Char('e') | KeyCode::Char('E') => {
                     if let Some(selected_idx) = self.mr_diff_state.selected() {
                         if let Some(mr_diff) = self.mr_diffs.get(selected_idx).cloned() {
-                            if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
-                                let _ = self.tx.send(DataUpdate::TerminalEscape("Fetching all missing diffs...".into()));
-                                let _ = self.fetch_all_missing_diffs().await;
-                            } else if mr_diff.collapsed {
+                            if mr_diff.collapsed {
                                 if let Some(mr) = &self.selected_mr {
                                     let _ = self.tx.send(DataUpdate::TerminalEscape(format!("Fetching diff for {}...", mr_diff.new_path)));
                                     let _ = self.fetch_single_file_diff(mr.project_id, mr.iid, mr_diff.old_path, mr_diff.new_path).await;

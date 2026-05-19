@@ -547,7 +547,6 @@ pub enum HelpAction {
     Panel2,
     Panel3,
     ExpandCollapsedDiff,
-    FetchAllMissingDiffs,
     None,
 }
 
@@ -826,6 +825,7 @@ pub struct App {
     pub last_error: Option<String>,
     pub status_message: Option<String>,
     pub loading_tasks: usize,
+    pub diff_fetch_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
 
     // Cache timestamps
     pub last_fetch_todos: Option<std::time::Instant>,

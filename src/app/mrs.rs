@@ -197,7 +197,9 @@ impl App {
         } else { return Ok(()); };
 
         let _ = tx.send(DataUpdate::Loading(true));
+        let sem = self.diff_fetch_semaphore.clone();
         tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
             let mut current_mr = mr;
             if current_mr.diff_refs.is_none() {
                 let _ = tx.send(DataUpdate::TerminalEscape(format!("Fetching MR refs for {}...", current_mr.iid)));
