@@ -562,6 +562,10 @@ impl App {
         };
 
         for diff in &mut self.mr_diffs {
+            if diff.diff.is_empty() {
+                diff.collapsed = true;
+            }
+
             if diff.collapsed && diff.diff.is_empty() {
                 if diff.display_lines.is_empty() {
                     diff.display_lines.push(DiffDisplayLine::Code("@@ [Diff collapsed by GitLab API. File too large or too many files.] @@".to_string(), None, None));
@@ -1267,6 +1271,7 @@ impl App {
         items.push(HelpItem { shortcut: "y".into(), description: "Copy URL/Content to clipboard".into(), action: HelpAction::CopyUrl, category: "Global".into() });
         if self.view_mode == ViewMode::Diff {
             items.push(HelpItem { shortcut: "e / E".into(), description: "Expand collapsed diff file".into(), action: HelpAction::ExpandCollapsedDiff, category: "Diff".into() });
+            items.push(HelpItem { shortcut: "Shift + E".into(), description: "Fetch all missing diffs".into(), action: HelpAction::FetchAllMissingDiffs, category: "Diff".into() });
         }
         items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
@@ -1645,8 +1650,12 @@ impl App {
                 KeyCode::Char('e') | KeyCode::Char('E') => {
                     if let Some(selected_idx) = self.mr_diff_state.selected() {
                         if let Some(mr_diff) = self.mr_diffs.get(selected_idx).cloned() {
-                            if mr_diff.collapsed {
+                            if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
+                                let _ = self.tx.send(DataUpdate::TerminalEscape("Fetching all missing diffs...".into()));
+                                let _ = self.fetch_all_missing_diffs().await;
+                            } else if mr_diff.collapsed {
                                 if let Some(mr) = &self.selected_mr {
+                                    let _ = self.tx.send(DataUpdate::TerminalEscape(format!("Fetching diff for {}...", mr_diff.new_path)));
                                     let _ = self.fetch_single_file_diff(mr.project_id, mr.iid, mr_diff.old_path, mr_diff.new_path).await;
                                 }
                             }

@@ -547,6 +547,7 @@ pub enum HelpAction {
     Panel2,
     Panel3,
     ExpandCollapsedDiff,
+    FetchAllMissingDiffs,
     None,
 }
 

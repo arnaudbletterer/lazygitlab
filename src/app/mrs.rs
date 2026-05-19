@@ -191,14 +191,30 @@ impl App {
     pub async fn fetch_single_file_diff(&mut self, project_id: u64, iid: u64, old_path: String, new_path: String) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let refs = if let Some(mr) = &self.selected_mr {
-            if let Some(r) = &mr.diff_refs {
-                r.clone()
-            } else { return Ok(()); }
-        } else { return Ok(()); };
         
+        let mr = if let Some(mr) = &self.selected_mr {
+            mr.clone()
+        } else { return Ok(()); };
+
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let mut current_mr = mr;
+            if current_mr.diff_refs.is_none() {
+                let _ = tx.send(DataUpdate::TerminalEscape(format!("Fetching MR refs for {}...", current_mr.iid)));
+                let mr_endpoint = crate::api::SingleMergeRequest { project: project_id, merge_request: iid };
+                if let Ok(full_mr) = mr_endpoint.query_async(&client).await {
+                    current_mr = full_mr;
+                    let _ = tx.send(DataUpdate::MRDetail(current_mr.clone()));
+                }
+            }
+
+            let refs = if let Some(r) = &current_mr.diff_refs { r.clone() } else {
+                let _ = tx.send(DataUpdate::Error("Could not retrieve MR diff refs (SHAs)".into()));
+                let _ = tx.send(DataUpdate::Loading(false));
+                return;
+            };
+
+            let _ = tx.send(DataUpdate::TerminalEscape(format!("Fetching diff for {}...", new_path)));
             let base_sha = refs.base_sha;
             let head_sha = refs.head_sha;
             
@@ -225,6 +241,18 @@ impl App {
             let _ = tx.send(DataUpdate::SingleDiffFetched { project_id, iid, old_path, new_path, diff });
             let _ = tx.send(DataUpdate::Loading(false));
         });
+        Ok(())
+    }
+
+    pub async fn fetch_all_missing_diffs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (pid, iid) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid) } else { return Ok(()); };
+        let missing: Vec<(String, String)> = self.mr_diffs.iter().filter(|d| d.collapsed && d.diff.is_empty()).map(|d| (d.old_path.clone(), d.new_path.clone())).collect();
+        
+        if missing.is_empty() { return Ok(()); }
+        
+        for (old, new) in missing {
+            let _ = self.fetch_single_file_diff(pid, iid, old, new).await;
+        }
         Ok(())
     }
     pub async fn post_new_comment(&mut self) -> Result<(), Box<dyn std::error::Error>> {
