@@ -48,9 +48,8 @@ async fn test_exhaustive_stress_project() {
         .await
         .expect("Failed to create GitLab client");
 
-    let mut app = App::new(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx.clone());
 
     // 1. Initial Setup
     println!("Starting initial setup...");
