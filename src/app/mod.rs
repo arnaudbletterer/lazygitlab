@@ -357,15 +357,44 @@ impl App {
                 }
             }
             DataUpdate::Log { project_id, job_id, data } => { if let Some(selected) = &self.selected_job { if selected.id == job_id && self.selected_project.as_ref().map_or(false, |p| p.id == project_id) { self.job_log = data; self.parse_job_log(); } } }
-            DataUpdate::Diffs { project_id, iid, data } => { 
-                if let Some(selected) = &self.selected_mr { 
-                    if selected.iid == iid && selected.project_id == project_id { 
-                        self.mr_diffs = data; 
+            DataUpdate::SingleDiffFetched { project_id, iid, old_path, new_path, diff } => {
+                if let Some(selected) = &self.selected_mr {
+                    if selected.iid == iid && selected.project_id == project_id {
+                        for mr_diff in &mut self.mr_diffs {
+                            if mr_diff.old_path == old_path && mr_diff.new_path == new_path {
+                                mr_diff.diff = diff.clone();
+                                mr_diff.collapsed = false;
+                                let mut lines = Vec::new();
+                                for line in mr_diff.diff.lines() { lines.push(DiffDisplayLine::Code(line.to_string(), None, None)); }
+                                mr_diff.display_lines = lines;
+                                break;
+                            }
+                        }
                         self.enrich_diffs_with_discussions();
-                    } 
-                } 
+                    }
+                }
             }
-            DataUpdate::Metadata { project_id, labels, milestones, members } => { 
+            DataUpdate::Diffs { project_id, iid, data } => {
+                if let Some(selected) = &self.selected_mr {
+                    if selected.iid == iid && selected.project_id == project_id {
+                        let mut data = data;
+                        for diff in &mut data {
+                            let mut lines = Vec::new();
+                            if diff.diff.is_empty() {
+                                diff.collapsed = true;
+                                lines.push(DiffDisplayLine::Code("@@ [Diff collapsed by GitLab API. File too large or too many files.] @@".to_string(), None, None));
+                                lines.push(DiffDisplayLine::Code("@@ Press 'E' or 'e' to force fetch this file's diff from the repository. @@".to_string(), None, None));
+                            } else {
+                                diff.collapsed = false;
+                                for line in diff.diff.lines() { lines.push(DiffDisplayLine::Code(line.to_string(), None, None)); }
+                            }
+                            diff.display_lines = lines;
+                        }
+                        self.mr_diffs = data;
+                        self.enrich_diffs_with_discussions();
+                    }
+                }
+            }            DataUpdate::Metadata { project_id, labels, milestones, members } => { 
                 self.project_label_cache.insert(project_id, labels.clone());
                 self.project_milestone_cache.insert(project_id, milestones.clone());
                 self.project_member_cache.insert(project_id, members.clone());
@@ -1244,6 +1273,9 @@ impl App {
         items.push(HelpItem { shortcut: "r".into(), description: "Refresh current view".into(), action: HelpAction::Refresh, category: "Global".into() });
         items.push(HelpItem { shortcut: "o".into(), description: "Open in browser".into(), action: HelpAction::OpenBrowser, category: "Global".into() });
         items.push(HelpItem { shortcut: "y".into(), description: "Copy URL/Content to clipboard".into(), action: HelpAction::CopyUrl, category: "Global".into() });
+        if self.view_mode == ViewMode::Diff {
+            items.push(HelpItem { shortcut: "e / E".into(), description: "Expand collapsed diff file".into(), action: HelpAction::ExpandCollapsedDiff, category: "Diff".into() });
+        }
         items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "Enter".into(), description: "Select / Open Detail".into(), action: HelpAction::Select, category: "Navigation".into() });
@@ -1618,6 +1650,18 @@ impl App {
                 KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => { self.diff_line_state.select(Some(0)); self.diff_selection_start = None; let _ = self.update_preview().await; return; }
                 KeyCode::Down | KeyCode::Char('j') => { if self.diff_line_state.selected().is_some() { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let line_count = mr_diff.display_lines.len(); if line_count > 0 { let current = self.diff_line_state.selected().unwrap(); let next = (current + 1) % line_count; if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); } } else { self.diff_selection_start = None; } self.diff_line_state.select(Some(next)); } } } } else { let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len().max(1); self.mr_diff_state.select(Some(i)); self.diff_line_state.select(None); self.diff_selection_start = None; } let _ = self.update_preview().await; return; }
                 KeyCode::Up | KeyCode::Char('k') => { if self.diff_line_state.selected().is_some() { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let line_count = mr_diff.display_lines.len(); if line_count > 0 { let current = self.diff_line_state.selected().unwrap(); let prev = if current == 0 { line_count - 1 } else { current - 1 }; if processed_key.modifiers.contains(KeyModifiers::SHIFT) { if self.diff_selection_start.is_none() { self.diff_selection_start = Some(current); } } else { self.diff_selection_start = None; } self.diff_line_state.select(Some(prev)); } } } } else { let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len().saturating_sub(1) } else { self.mr_diff_state.selected().unwrap() - 1 }; self.mr_diff_state.select(Some(i)); self.diff_line_state.select(None); self.diff_selection_start = None; } let _ = self.update_preview().await; return; }
+                KeyCode::Char('e') | KeyCode::Char('E') => {
+                    if let Some(selected_idx) = self.mr_diff_state.selected() {
+                        if let Some(mr_diff) = self.mr_diffs.get(selected_idx).cloned() {
+                            if mr_diff.collapsed {
+                                if let Some(mr) = &self.selected_mr {
+                                    let _ = self.fetch_single_file_diff(mr.project_id, mr.iid, mr_diff.old_path, mr_diff.new_path).await;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
                 KeyCode::Char('y') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { let text = if let Some(start) = self.diff_selection_start { let (s, e) = if start <= self.diff_line_state.selected().unwrap() { (start, self.diff_line_state.selected().unwrap()) } else { (self.diff_line_state.selected().unwrap(), start) }; mr_diff.display_lines[s..=e].iter().filter_map(|l| match l { DiffDisplayLine::Code(c, ..) => Some(c.clone()), _ => None }).collect::<Vec<_>>().join("\n") } else if let Some(idx) = self.diff_line_state.selected() { match &mr_diff.display_lines[idx] { DiffDisplayLine::Code(c, ..) => c.clone(), _ => String::new() } } else { String::new() }; self.copy_to_clipboard(text); self.diff_selection_start = None; } } return; }
                 KeyCode::Char('c') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Code(..)) = mr_diff.display_lines.get(line_idx) { self.input_mode = true; self.input_target = InputTarget::NewComment; self.textarea = ratatui_textarea::TextArea::default(); return; } } } } }
                 KeyCode::Char('r') => { if let Some(selected_idx) = self.mr_diff_state.selected() { if let Some(mr_diff) = self.mr_diffs.get(selected_idx) { if let Some(line_idx) = self.diff_line_state.selected() { if let Some(DiffDisplayLine::Discussion(disc)) = mr_diff.display_lines.get(line_idx) { if let Some(pos) = self.discussions.iter().position(|d| d.id == disc.id) { self.discussion_state.select(Some(pos)); self.input_mode = true; self.input_target = InputTarget::Reply; self.textarea = ratatui_textarea::TextArea::default(); return; } } } } } }

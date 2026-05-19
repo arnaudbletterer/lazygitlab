@@ -187,6 +187,46 @@ impl App {
         Ok(())
     }
 
+
+    pub async fn fetch_single_file_diff(&mut self, project_id: u64, iid: u64, old_path: String, new_path: String) -> Result<(), Box<dyn std::error::Error>> {
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let refs = if let Some(mr) = &self.selected_mr {
+            if let Some(r) = &mr.diff_refs {
+                r.clone()
+            } else { return Ok(()); }
+        } else { return Ok(()); };
+        
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let base_sha = refs.base_sha;
+            let head_sha = refs.head_sha;
+            
+            let old_endpoint = gitlab::api::projects::repository::files::File::builder().project(project_id).file_path(old_path.clone()).ref_(base_sha).build().unwrap();
+            let new_endpoint = gitlab::api::projects::repository::files::File::builder().project(project_id).file_path(new_path.clone()).ref_(head_sha).build().unwrap();
+            
+            let old_res: Result<crate::models::RepositoryFile, _> = gitlab::api::AsyncQuery::query_async(&old_endpoint, &client).await;
+            let new_res: Result<crate::models::RepositoryFile, _> = gitlab::api::AsyncQuery::query_async(&new_endpoint, &client).await;
+            
+            use base64::{Engine as _, engine::general_purpose};
+            
+            let old_text = if let Ok(f) = old_res {
+                let clean = f.content.replace('\n', "").replace('\r', "");
+                if let Ok(dec) = general_purpose::STANDARD.decode(&clean) { String::from_utf8_lossy(&dec).into_owned() } else { String::new() }
+            } else { String::new() };
+            
+            let new_text = if let Ok(f) = new_res {
+                let clean = f.content.replace('\n', "").replace('\r', "");
+                if let Ok(dec) = general_purpose::STANDARD.decode(&clean) { String::from_utf8_lossy(&dec).into_owned() } else { String::new() }
+            } else { String::new() };
+            
+            let diff = similar::TextDiff::from_lines(&old_text, &new_text).unified_diff().to_string();
+            
+            let _ = tx.send(DataUpdate::SingleDiffFetched { project_id, iid, old_path, new_path, diff });
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
     pub async fn post_new_comment(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let body = self.textarea.lines().join("\n");
         if body.is_empty() { return Ok(()); }

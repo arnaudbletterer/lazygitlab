@@ -102,11 +102,13 @@ pub struct Discussion {
     pub resolved: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MRDiff {
     pub old_path: String,
     pub new_path: String,
     pub diff: String,
+    #[serde(default)]
+    pub collapsed: bool,
     #[serde(skip)]
     pub display_lines: Vec<DiffDisplayLine>,
 }
@@ -544,6 +546,7 @@ pub enum HelpAction {
     Panel1,
     Panel2,
     Panel3,
+    ExpandCollapsedDiff,
     None,
 }
 
@@ -651,6 +654,7 @@ pub enum DataUpdate {
     Log { project_id: u64, job_id: u64, data: String },
     TerminalEscape(String),
     Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
+    SingleDiffFetched { project_id: u64, iid: u64, old_path: String, new_path: String, diff: String },
     Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
     MemberProjectIds(std::collections::HashSet<u64>),
     MRDetail(MergeRequest),
