@@ -364,9 +364,6 @@ impl App {
                             if mr_diff.old_path == old_path && mr_diff.new_path == new_path {
                                 mr_diff.diff = diff.clone();
                                 mr_diff.collapsed = false;
-                                let mut lines = Vec::new();
-                                for line in mr_diff.diff.lines() { lines.push(DiffDisplayLine::Code(line.to_string(), None, None)); }
-                                mr_diff.display_lines = lines;
                                 break;
                             }
                         }
@@ -377,19 +374,6 @@ impl App {
             DataUpdate::Diffs { project_id, iid, data } => {
                 if let Some(selected) = &self.selected_mr {
                     if selected.iid == iid && selected.project_id == project_id {
-                        let mut data = data;
-                        for diff in &mut data {
-                            let mut lines = Vec::new();
-                            if diff.diff.is_empty() {
-                                diff.collapsed = true;
-                                lines.push(DiffDisplayLine::Code("@@ [Diff collapsed by GitLab API. File too large or too many files.] @@".to_string(), None, None));
-                                lines.push(DiffDisplayLine::Code("@@ Press 'E' or 'e' to force fetch this file's diff from the repository. @@".to_string(), None, None));
-                            } else {
-                                diff.collapsed = false;
-                                for line in diff.diff.lines() { lines.push(DiffDisplayLine::Code(line.to_string(), None, None)); }
-                            }
-                            diff.display_lines = lines;
-                        }
                         self.mr_diffs = data;
                         self.enrich_diffs_with_discussions();
                     }
@@ -578,6 +562,14 @@ impl App {
         };
 
         for diff in &mut self.mr_diffs {
+            if diff.collapsed && diff.diff.is_empty() {
+                if diff.display_lines.is_empty() {
+                    diff.display_lines.push(DiffDisplayLine::Code("@@ [Diff collapsed by GitLab API. File too large or too many files.] @@".to_string(), None, None));
+                    diff.display_lines.push(DiffDisplayLine::Code("@@ Press 'E' or 'e' to force fetch this file's diff from the repository. @@".to_string(), None, None));
+                }
+                continue;
+            }
+
             let mut display_lines = Vec::new();
             let mut current_old_line = 0;
             let mut current_new_line = 0;
