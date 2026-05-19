@@ -202,7 +202,6 @@ impl App {
             let _permit = sem.acquire().await.unwrap();
             let mut current_mr = mr;
             if current_mr.diff_refs.is_none() {
-                let _ = tx.send(DataUpdate::TerminalEscape(format!("Fetching MR refs for {}...", current_mr.iid)));
                 let mr_endpoint = crate::api::SingleMergeRequest { project: project_id, merge_request: iid };
                 if let Ok(full_mr) = mr_endpoint.query_async(&client).await {
                     current_mr = full_mr;
@@ -216,7 +215,6 @@ impl App {
                 return;
             };
 
-            let _ = tx.send(DataUpdate::TerminalEscape(format!("Fetching diff for {}...", new_path)));
             let base_sha = refs.base_sha;
             let head_sha = refs.head_sha;
             

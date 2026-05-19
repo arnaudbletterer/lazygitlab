@@ -1654,7 +1654,6 @@ impl App {
                         if let Some(mr_diff) = self.mr_diffs.get(selected_idx).cloned() {
                             if mr_diff.collapsed {
                                 if let Some(mr) = &self.selected_mr {
-                                    let _ = self.tx.send(DataUpdate::TerminalEscape(format!("Fetching diff for {}...", mr_diff.new_path)));
                                     let _ = self.fetch_single_file_diff(mr.project_id, mr.iid, mr_diff.old_path, mr_diff.new_path).await;
                                 }
                             }
