@@ -1,17 +1,15 @@
 use lazygitlab::models::*;
 use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{path, method};
+use wiremock::matchers::path;
 use gitlab::GitlabBuilder;
-use std::time::Duration;
 use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
 
 async fn setup_app() -> (MockServer, App, tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    let mut app = App::new(client);
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    app.tx = tx;
+    let app = App::new(client, tx);
     (server, app, rx)
 }
 
@@ -53,14 +51,14 @@ async fn test_selection_coherence_on_navigation() {
         Todo { id: 2, action_name: "other".into(), body: "other".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None } },
     ];
     app.filter_lists();
-    app.todos_state.select(Some(1)); // Select "other"
+    app.todos_state.select(Some(2)); // Select "other" (index 0 is Header, 1 is "match", 2 is "other")
 
     // Filter so only "match" remains
     app.filter_input = "match".into();
     app.filter_lists();
     
-    assert_eq!(app.filtered_todos.len(), 1);
-    assert_eq!(app.todos_state.selected(), Some(0), "Selection should be clamped to valid range after filtering");
+    assert_eq!(app.filtered_todos.len(), 2); // 1 Header + 1 Item
+    assert_eq!(app.todos_state.selected(), Some(0), "Selection should be reset to 0 after filtering");
     
     // Filter so nothing remains
     app.filter_input = "nomatch".into();

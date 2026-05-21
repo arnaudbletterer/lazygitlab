@@ -140,7 +140,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                                 Span::styled(format!("@{}", author), author_style),
                                 Span::styled(": ", content_style),
                                 Span::styled(body.replace('\n', " "), content_style),
-                                if first_note.map_or(false, |n| n.body.len() > 40) { Span::styled("...", content_style) } else { Span::raw("") },
+                                if first_note.is_some_and(|n| n.body.len() > 40) { Span::styled("...", content_style) } else { Span::raw("") },
                                 Span::styled(format!(" ({} more)", disc.notes.len().saturating_sub(1)), Style::default().fg(app.theme.dim)),
                             ]));
                         } else {
@@ -216,14 +216,15 @@ mod tests {
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        let mut app = App::new(client);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(client, tx);
         
         app.selected_mr = Some(MergeRequest {
             iid: 1,
             project_id: 1,
             title: "T".into(),
             description: Some("D".into()),
-            author: Author { id: 1, username: "u".into() },
+            author: Author::new(1, "u".into()),
             assignees: vec![],
             state: "opened".into(),
             web_url: "u".into(),
@@ -243,6 +244,7 @@ mod tests {
                 old_path: "a.txt".into(),
                 new_path: "b.txt".into(),
                 diff: "-old\n+new\n unchanged".into(),
+                collapsed: false,
                 display_lines: vec![
                     DiffDisplayLine::Code("@@ -1 +1 @@".into(), None, None),
                     DiffDisplayLine::Code("-old".into(), Some(1), None),

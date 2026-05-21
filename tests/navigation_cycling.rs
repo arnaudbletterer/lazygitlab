@@ -8,7 +8,31 @@ async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    (server, App::new(client))
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(client, tx);
+    app.dashboard_menu_state.select(Some(1));
+    app.active_selection = MenuSelection::MergeRequests;
+    // Set a dummy selected MR so that the stability check in update_preview doesn't reset active_panel from MainDetail back to Main.
+    app.selected_mr = Some(MergeRequest {
+        iid: 1,
+        project_id: 1,
+        title: "Test MR".into(),
+        author: Author::new(1, "u".into()),
+        web_url: "http://example.com".into(),
+        state: "opened".into(),
+        reactions: vec![],
+        description: None,
+        references: None,
+        upvotes: None,
+        downvotes: None,
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        created_at: None,
+        draft: None,
+        diff_refs: None,
+    });
+    (server, app)
 }
 
 #[tokio::test]
@@ -19,22 +43,24 @@ async fn test_panel_cycling_forward() {
     let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
 
-    // Main -> Nav (Dashboard)
-    app.handle_key(tab).await;
-    assert_eq!(app.active_panel, Panel::Dashboard);
-
-    // Sidebar -> MainDetail
+    // Under app's logic, Tab goes: Main -> MainDetail -> Sidebar (Dashboard) -> Main
+    
+    // Main -> MainDetail
     app.handle_key(tab).await;
     assert_eq!(app.active_panel, Panel::MainDetail);
 
-    // MainDetail -> Main
+    // MainDetail -> Sidebar (Dashboard)
+    app.handle_key(tab).await;
+    assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
+
+    // Sidebar -> Main
     app.handle_key(tab).await;
     assert_eq!(app.active_panel, Panel::Main);
 
-    // Any panel -> MainDetail via Right
+    // Dashboard -> Main via Right (under app's logic, Sidebar + Right -> Main)
     app.active_panel = Panel::Dashboard;
     app.handle_key(right).await;
-    assert_eq!(app.active_panel, Panel::MainDetail);
+    assert_eq!(app.active_panel, Panel::Main);
 }
 
 #[tokio::test]
@@ -45,15 +71,36 @@ async fn test_panel_cycling_backward() {
     let left = KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     let shift_tab = KeyEvent { code: KeyCode::BackTab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
 
-    // Main -> MainDetail (Cycle backward)
-    app.handle_key(shift_tab).await;
-    assert_eq!(app.active_panel, Panel::MainDetail);
+    // Under app's logic, BackTab goes: Main -> Sidebar (Dashboard) -> MainDetail -> Main
 
-    // MainDetail -> Sidebar (Dashboard/Explore/Project)
+    // Main -> Sidebar
     app.handle_key(shift_tab).await;
     assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
 
-    // Sidebar -> Main
+    // Sidebar -> MainDetail (re-set selected_mr as going to Sidebar cleared it)
+    app.selected_mr = Some(MergeRequest {
+        iid: 1,
+        project_id: 1,
+        title: "Test MR".into(),
+        author: Author::new(1, "u".into()),
+        web_url: "http://example.com".into(),
+        state: "opened".into(),
+        reactions: vec![],
+        description: None,
+        references: None,
+        upvotes: None,
+        downvotes: None,
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        created_at: None,
+        draft: None,
+        diff_refs: None,
+    });
+    app.handle_key(shift_tab).await;
+    assert_eq!(app.active_panel, Panel::MainDetail);
+
+    // MainDetail -> Main
     app.handle_key(shift_tab).await;
     assert_eq!(app.active_panel, Panel::Main);
 

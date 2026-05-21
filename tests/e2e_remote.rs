@@ -35,9 +35,8 @@ async fn test_remote_validation_and_isolation() {
         }
     };
 
-    let mut app = App::new(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx);
 
     // 1. Validate Initial Setup (Global Dashboard)
     app.initial_setup().await.expect("Failed initial setup");
@@ -120,9 +119,8 @@ async fn test_real_updates_on_lazygitlab_test() {
         }
     };
 
-    let mut app = App::new(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx);
 
     app.initial_setup().await.expect("Failed initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;
@@ -238,9 +236,8 @@ async fn test_collaboration_on_lazygitlab_test() {
         }
     };
 
-    let mut app = App::new(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx);
 
     app.initial_setup().await.expect("Failed initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;

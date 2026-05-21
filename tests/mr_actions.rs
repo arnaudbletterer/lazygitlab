@@ -10,14 +10,13 @@ async fn setup_app() -> (MockServer, App, mpsc::UnboundedReceiver<lazygitlab::mo
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client);
-    app.tx = tx;
+    let app = App::new(client, tx);
     (server, app, rx)
 }
 
 fn dummy_mr(iid: u64, title: &str) -> MergeRequest {
     MergeRequest {
-        iid, project_id: 1, title: title.into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid, project_id: 1, title: title.into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], milestone: None,
         assignees: vec![], created_at: Some("t".into()), draft: Some(false), diff_refs: None, reactions: vec![]
@@ -31,6 +30,7 @@ async fn test_mr_shortcuts() {
     let mr = dummy_mr(1, "MR1");
     app.selected_mr = Some(mr.clone());
     app.active_panel = Panel::MainDetail;
+    app.active_selection = lazygitlab::models::MenuSelection::MergeRequests;
 
     // Test 'A' shortcut (Approve)
     Mock::given(method("POST")).and(path("/api/v4/projects/1/merge_requests/1/approve")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
@@ -48,9 +48,8 @@ async fn test_mr_shortcuts() {
     // Consume updates to ensure no panic and that it triggered refreshes
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {
         while let Ok(update) = rx.try_recv() {
-            match update {
-                lazygitlab::models::DataUpdate::TriggerRefresh => break,
-                _ => {}
+            if let lazygitlab::models::DataUpdate::TriggerRefresh = update {
+                break;
             }
         }
     }).await;

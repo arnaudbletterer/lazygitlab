@@ -89,8 +89,8 @@ pub struct Theme {
     pub code_bg: Color,
     pub range_highlight: Color,
 }
-impl Theme {
-    pub fn default() -> Self {
+impl Default for Theme {
+    fn default() -> Self {
         Self {
             border: Color::Green,
             highlight_bg: Color::Rgb(100, 100, 200),
@@ -117,15 +117,16 @@ impl Theme {
             range_highlight: Color::Rgb(60, 60, 100),
         }
     }
+}
+
+impl Theme {
 
     pub fn load() -> Self {
         let config_path = "theme.toml";
-        if let Ok(content) = std::fs::read_to_string(config_path) {
-            if let Ok(theme) = toml::from_str(&content) {
-                return theme;
-            }
-        }
-        Self::default()
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|content| toml::from_str(&content).ok())
+            .unwrap_or_default()
     }
 }
 

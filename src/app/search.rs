@@ -47,8 +47,10 @@ impl App {
                         for val in data {
                             match s1_scope.as_str() {
                                 "projects" => {
-                                    if let Ok(p) = serde_json::from_value::<Project>(val.clone()) {
-                                        if s1_member_ids.is_empty() || s1_member_ids.contains(&p.id) { results.push(SearchResult::Project(p)); }
+                                    if let Ok(p) = serde_json::from_value::<Project>(val.clone())
+                                        && (s1_member_ids.is_empty() || s1_member_ids.contains(&p.id))
+                                    {
+                                        results.push(SearchResult::Project(p));
                                     }
                                 }
                                 "issues" => {

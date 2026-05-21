@@ -103,9 +103,8 @@ impl App {
         tokio::spawn(async move {
             let endpoint = ProjectPipeline { project: project_id, pipeline: pipeline_id };
             let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
-            match res {
-                Ok(Ok(_pipeline)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                _ => {}
+            if let Ok(Ok(_pipeline)) = res {
+                let _ = tx.send(DataUpdate::TriggerRefresh);
             }
             let _ = tx.send(DataUpdate::Loading(false));
         });
@@ -264,8 +263,32 @@ impl App {
         Ok(())
     }
 
-    pub fn toggle_job_section(&mut self) {}
-    pub fn get_visible_job_log_lines_count(&self) -> usize { 0 }
+    pub fn toggle_job_section(&mut self) {
+        if let Some(line) = self.job_log_lines.get(self.job_log_cursor)
+            && let Some(section) = &line.section
+        {
+            if self.collapsed_sections.contains(section) {
+                self.collapsed_sections.remove(section);
+            } else {
+                self.collapsed_sections.insert(section.clone());
+            }
+        }
+    }
+
+    pub fn get_visible_job_log_lines_count(&self) -> usize {
+        let mut count = 0;
+        for line in &self.job_log_lines {
+            let is_collapsed = line.section.as_ref().map(|s| self.collapsed_sections.contains(s)).unwrap_or(false);
+            if is_collapsed && !line.is_section_start {
+                continue;
+            }
+            if line.is_section_end && line.content.trim().is_empty() {
+                 continue;
+            }
+            count += 1;
+        }
+        count
+    }
 }
 
 pub fn parse_job_log(log: &str) -> Vec<LogLine> {
@@ -302,7 +325,7 @@ pub fn parse_job_log(log: &str) -> Vec<LogLine> {
         }
 
         // 3. Remove initial noise characters (like the '00O+' artifacts)
-        content = content.trim_start_matches(|c: char| c.is_digit(10) || c == 'O' || c == '+').trim_start().to_string();
+        content = content.trim_start_matches(|c: char| c.is_ascii_digit() || c == 'O' || c == '+').trim_start().to_string();
         
         // 4. Clean up [0K noise
         content = noise_re.replace_all(&content, "").to_string();
@@ -335,7 +358,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        (server, App::new(client, tx))
     }
 
     #[tokio::test]

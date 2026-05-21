@@ -1,4 +1,4 @@
-use lazygitlab::models::{App, DataUpdate, MergeRequest};
+use lazygitlab::models::{App, MergeRequest};
 use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
 use std::env;

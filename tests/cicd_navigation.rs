@@ -8,7 +8,8 @@ async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    (server, App::new(client))
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    (server, App::new(client, tx))
 }
 
 #[tokio::test]
@@ -38,6 +39,7 @@ async fn test_job_to_log_navigation() {
     app.active_panel = Panel::MainDetail;
     app.active_selection = MenuSelection::Pipelines;
     app.selected_project = Some(Project { id: 1, name: "p".into(), web_url: Some("u".into()), path_with_namespace: Some("p".into()), default_branch: Some("master".into()), namespace: None });
+    app.selected_pipeline = Some(Pipeline { id: 123, project_id: 1, status: "success".into(), source: "trigger".into(), ref_name: "master".into(), web_url: "u".into(), created_at: "t".into(), started_at: None, duration: None });
     app.jobs = vec![Job { id: 456, name: "build".into(), stage: "build".into(), status: "success".into(), created_at: "t".into(), started_at: None, finished_at: None, duration: None, user: None, runner: None, allow_failure: false, web_url: "u".into(), tag_list: vec![] }];
     app.jobs_state.select(Some(0));
 
@@ -76,7 +78,7 @@ async fn test_no_overlapping_popups_on_pipeline_launch() {
     let mut output = String::new();
     for y in 0..buffer.area.height {
         for x in 0..buffer.area.width {
-            output.push(buffer.get(x, y).symbol().chars().next().unwrap_or(' '));
+            output.push(buffer[(x, y)].symbol().chars().next().unwrap_or(' '));
         }
         output.push('\n');
     }

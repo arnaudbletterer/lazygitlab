@@ -250,19 +250,17 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    if let Some(job) = &app.selected_job {
-        if job.status == "running" {
-            let dots = match (chrono::Utc::now().timestamp_millis() / 500) % 4 {
-                1 => ".",
-                2 => "..",
-                3 => "...",
-                _ => "",
-            };
-            log_lines.push(Line::from(vec![
-                Span::styled("     ", Style::default().fg(app.theme.dim)),
-                Span::styled(dots, Style::default().fg(app.theme.pending)),
-            ]));
-        }
+    if app.selected_job.as_ref().is_some_and(|j| j.status == "running") {
+        let dots = match (chrono::Utc::now().timestamp_millis() / 500) % 4 {
+            1 => ".",
+            2 => "..",
+            3 => "...",
+            _ => "",
+        };
+        log_lines.push(Line::from(vec![
+            Span::styled("     ", Style::default().fg(app.theme.dim)),
+            Span::styled(dots, Style::default().fg(app.theme.pending)),
+        ]));
     }
 
     let inner_height = chunks[1].height.saturating_sub(2);

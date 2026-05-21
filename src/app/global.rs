@@ -137,30 +137,30 @@ impl App {
     }
 
     pub async fn snooze_todo(&mut self, until: String) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(i) = self.todos_state.selected() {
-            if let Some(GroupedItem::Item(todo)) = self.filtered_todos.get(i) {
-                let tid = todo.id; let client = self.gitlab.clone(); let tx = self.tx.clone();
-                tokio::spawn(async move {
-                    let ep = SnoozeTodo { todo_id: tid, snooze_until: until };
-                    let _: Result<serde_json::Value, _> = ep.query_async(&client).await;
-                    let _ = tx.send(DataUpdate::TriggerRefresh);
-                });
-            }
+        if let Some(i) = self.todos_state.selected()
+            && let Some(GroupedItem::Item(todo)) = self.filtered_todos.get(i)
+        {
+            let tid = todo.id; let client = self.gitlab.clone(); let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let ep = SnoozeTodo { todo_id: tid, snooze_until: until };
+                let _: Result<serde_json::Value, _> = ep.query_async(&client).await;
+                let _ = tx.send(DataUpdate::TriggerRefresh);
+            });
         }
         self.show_snooze_popup = false;
         Ok(())
     }
 
     pub async fn mark_todo_as_done(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(i) = self.todos_state.selected() {
-            if let Some(GroupedItem::Item(todo)) = self.filtered_todos.get(i) {
-                let tid = todo.id; let client = self.gitlab.clone(); let tx = self.tx.clone();
-                tokio::spawn(async move {
-                    let ep = MarkTodoAsDone { todo_id: tid };
-                    let _: Result<serde_json::Value, _> = ep.query_async(&client).await;
-                    let _ = tx.send(DataUpdate::TriggerRefresh);
-                });
-            }
+        if let Some(i) = self.todos_state.selected()
+            && let Some(GroupedItem::Item(todo)) = self.filtered_todos.get(i)
+        {
+            let tid = todo.id; let client = self.gitlab.clone(); let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let ep = MarkTodoAsDone { todo_id: tid };
+                let _: Result<serde_json::Value, _> = ep.query_async(&client).await;
+                let _ = tx.send(DataUpdate::TriggerRefresh);
+            });
         }
         Ok(())
     }
@@ -316,14 +316,13 @@ impl App {
         
         #[cfg(test)] {
             let _ = url;
-            return;
         }
 
         #[cfg(not(test))]
         if let Some(url) = url {
             if url == "u" { return; }
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                if !url.starts_with('/') { return; }
+            if !url.starts_with("http://") && !url.starts_with("https://") && !url.starts_with('/') {
+                return;
             }
             #[cfg(target_os = "windows")] let _ = std::process::Command::new("cmd").arg("/c").arg("start").arg(&url).spawn();
             #[cfg(target_os = "macos")] let _ = std::process::Command::new("open").arg(&url).spawn();
@@ -346,8 +345,7 @@ mod tests {
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
-        let mut app = App::new(client);
-        app.tx = tx;
+        let app = App::new(client, tx);
         (server, app, rx)
     }
 

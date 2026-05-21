@@ -2,13 +2,13 @@ use std::process::Command;
 
 fn main() {
     let output = Command::new("git")
-        .args(&["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
         .expect("Failed to execute git rev-parse");
     let git_hash = String::from_utf8(output.stdout).unwrap().trim().to_string();
 
     let output = Command::new("git")
-        .args(&["status", "--porcelain"])
+        .args(["status", "--porcelain"])
         .output()
         .expect("Failed to execute git status");
     let is_dirty = !String::from_utf8(output.stdout).unwrap().trim().is_empty();

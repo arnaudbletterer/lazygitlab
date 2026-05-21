@@ -26,9 +26,8 @@ async fn run_monolithic_tests() {
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    let mut app = App::new(client);
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    app.tx = tx;
+    let mut app = App::new(client, tx);
     app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
 
     // 1. Initial data load

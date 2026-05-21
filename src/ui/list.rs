@@ -28,28 +28,27 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let status_text = if let Some(project) = &app.selected_project {
         format!(" Project: {}\n Context: {:?}", project.name, app.active_context)
     } else {
-        format!(" No Project Selected\n Context: Dashboard")
+        " No Project Selected\n Context: Dashboard".to_string()
     };
     f.render_widget(Paragraph::new(status_text).block(status_block), side_chunks[0]);
 
     // 2. Navigation Panels (Filling space)
     app.set_rect("nav_dashboard", side_chunks[1]);
-    render_nav_panel(f, app.active_panel, &app.theme, side_chunks[1], Panel::Dashboard, " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues"]);
+    render_nav_panel(f, app.active_panel == Panel::Dashboard, &app.theme, side_chunks[1], " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues"]);
     
     app.set_rect("nav_explore", side_chunks[2]);
-    render_nav_panel(f, app.active_panel, &app.theme, side_chunks[2], Panel::Explore, " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
+    render_nav_panel(f, app.active_panel == Panel::Explore, &app.theme, side_chunks[2], " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
     
     if app.selected_project.is_some() {
+        let has_epics = app.selected_project.as_ref()
+            .and_then(|p| p.namespace.as_ref())
+            .is_some_and(|ns| ns.kind == "group");
         app.set_rect("nav_project", side_chunks[3]);
         let mut project_items = vec!["  Merge Requests", "  Issues", "  Pipelines", "  Repository", "  Branches", "  Commits", "  Boards"];
-        if let Some(project) = &app.selected_project {
-            if let Some(namespace) = &project.namespace {
-                if namespace.kind == "group" {
-                    project_items.push("  Epics");
-                }
-            }
+        if has_epics {
+            project_items.push("  Epics");
         }
-        render_nav_panel(f, app.active_panel, &app.theme, side_chunks[3], Panel::Project, " Project ", &mut app.project_menu_state, project_items);
+        render_nav_panel(f, app.active_panel == Panel::Project, &app.theme, side_chunks[3], " Project ", &mut app.project_menu_state, project_items);
     }
 
     // --- RIGHT COLUMN: MAIN REGION (LIST -> DESCRIPTION -> CONTEXT) ---
@@ -106,8 +105,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_nav_panel(f: &mut Frame, active_panel: Panel, theme: &Theme, area: Rect, target_panel: Panel, title: &str, state: &mut ListState, items: Vec<&str>) {
-    let is_focused = active_panel == target_panel;
+fn render_nav_panel(f: &mut Frame, is_focused: bool, theme: &Theme, area: Rect, title: &str, state: &mut ListState, items: Vec<&str>) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

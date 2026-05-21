@@ -22,7 +22,8 @@ async fn setup_app() -> (MockServer, App) {
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
 
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    let mut app = App::new(client);
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(client, tx);
     app.active_panel = Panel::MainDetail;
     app.active_context = Context::Project;
     app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests
@@ -99,7 +100,7 @@ async fn test_mr_visual_completeness() {
     assert_buffer_contains(&terminal, "Labels:  bug");
     assert_buffer_contains(&terminal, "Assign: @bob");
     assert_buffer_contains(&terminal, "Miles: v1.0");
-    assert_buffer_contains(&terminal, "@bob:");
+    assert_buffer_contains(&terminal, "@bob :");
     assert_buffer_contains(&terminal, "Please review this part.");
 }
 
@@ -169,7 +170,11 @@ async fn test_pipeline_visual_completeness() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let pipeline_json = r##"{"id": 789, "project_id": 1, "status": "running", "source": "trigger", "ref": "master", "web_url": "u", "created_at": "2026-04-25T12:00:00Z", "started_at": "2026-04-25T12:00:00Z"}"##;
-    app.selected_pipeline = Some(serde_json::from_str(pipeline_json).unwrap());
+    let pipeline = serde_json::from_str::<Pipeline>(pipeline_json).unwrap();
+    app.selected_pipeline = Some(pipeline.clone());
+    app.pipelines = vec![pipeline.clone()];
+    app.filtered_pipelines = vec![pipeline];
+    app.pipelines_state.select(Some(0));
     app.active_selection = MenuSelection::Pipelines;
     
     let job_json = r##"{"id": 1, "name": "build-job", "stage": "build", "status": "running", "created_at": "t", "started_at": "2026-04-25T12:00:00Z", "web_url": "u", "tag_list": ["docker"], "allow_failure": false}"##;
@@ -180,7 +185,7 @@ async fn test_pipeline_visual_completeness() {
 
     assert_buffer_contains(&terminal, "Pipelines");
     assert_buffer_contains(&terminal, "running");
-    assert_buffer_contains(&terminal, "Ref: master");
+    assert_buffer_contains(&terminal, "master - trigger");
 }
 
 #[tokio::test]
@@ -240,5 +245,5 @@ async fn test_interaction_completeness() {
     
     // Title in model should still be "Old Title" until refresh or manual update in mock environment
     // But our UI should have cleared input mode
-    assert_eq!(app.input_mode, false);
+    assert!(!app.input_mode);
 }

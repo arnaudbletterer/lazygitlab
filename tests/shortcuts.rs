@@ -8,7 +8,8 @@ async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-    (server, App::new(client))
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    (server, App::new(client, tx))
 }
 
 fn key_event(code: KeyCode) -> KeyEvent {

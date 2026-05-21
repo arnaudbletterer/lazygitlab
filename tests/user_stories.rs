@@ -11,8 +11,7 @@ async fn setup_app() -> (MockServer, App, mpsc::UnboundedReceiver<DataUpdate>) {
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client);
-    app.tx = tx;
+    let app = App::new(client, tx);
     (server, app, rx)
 }
 
@@ -30,7 +29,7 @@ async fn test_user_story_label_editing() {
     app.active_panel = Panel::MainDetail;
 
     let mr = MergeRequest {
-        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![dummy_label(0, "bug", "#808080")], 
         milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
@@ -76,7 +75,7 @@ async fn test_user_story_discussion_reply() {
     app.active_panel = Panel::MainDetail;
 
     let mr = MergeRequest {
-        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
         milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
@@ -86,7 +85,7 @@ async fn test_user_story_discussion_reply() {
     
     let disc = Discussion {
         id: "d1".into(),
-        notes: vec![Note { body: "Note 1".into(), author: Author { id: 2, username: "u2".into() }, system: false, position: None, context: None }],
+        notes: vec![Note { body: "Note 1".into(), author: Author::new(2, "u2".into()), system: false, position: None, context: None }],
         individual_note: false,
         collapsed: false,
         resolved: Some(false),
@@ -124,7 +123,7 @@ async fn test_user_story_assignee_milestone_editing() {
     app.active_panel = Panel::MainDetail;
 
     let issue = Issue {
-        iid: 1, project_id: 1, title: "I1".into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid: 1, project_id: 1, title: "I1".into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u".into(), references: None,
         issue_type: None, labels: vec![], milestone: None, due_date: None, weight: Some(1),
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
@@ -133,7 +132,7 @@ async fn test_user_story_assignee_milestone_editing() {
     app.selected_issue = Some(issue);
 
     // 1. Mock Metadata (Members and Milestones)
-    let members = vec![Author { id: 2, username: "dev1".into() }];
+    let members = vec![Author::new(2, "dev1".into())];
     let milestones = vec![Milestone { id: 5, title: "Sprint 1".into() }];
     app.tx.send(DataUpdate::Metadata { project_id: 1, labels: vec![], milestones: milestones.clone(), members: members.clone() }).unwrap();
     app.process_updates(&mut _rx).await;
@@ -175,7 +174,7 @@ async fn test_user_story_post_comment_and_visibility() {
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
-        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
         milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
@@ -188,6 +187,7 @@ async fn test_user_story_post_comment_and_visibility() {
         old_path: "file.rs".into(),
         new_path: "file.rs".into(),
         diff: "@@ -1,3 +1,3 @@\n line1\n-old\n+new".into(),
+        collapsed: false,
         display_lines: Vec::new(),
     };
     app.mr_diffs = vec![diff];
@@ -211,7 +211,7 @@ async fn test_user_story_post_comment_and_visibility() {
     let refreshed_discussions = vec![
         Discussion {
             id: "new_disc_id".into(),
-            notes: vec![Note { body: "New Review Comment".into(), author: Author { id: 1, username: "u".into() }, system: false, position: Some(Position { new_path: Some("file.rs".into()), old_path: Some("file.rs".into()), new_line: Some(2), old_line: None, line_range: None }), context: None }],
+            notes: vec![Note { body: "New Review Comment".into(), author: Author::new(1, "u".into()), system: false, position: Some(Position { new_path: Some("file.rs".into()), old_path: Some("file.rs".into()), new_line: Some(2), old_line: None, line_range: None }), context: None }],
             individual_note: false,
             collapsed: false,
             resolved: Some(false),

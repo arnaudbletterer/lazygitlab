@@ -83,8 +83,8 @@ impl App {
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res {
-                        if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data)); }
+                    if let Ok(Ok(data)) = res && !data.is_empty() {
+                        let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data));
                     }
                 }));
             }
@@ -116,8 +116,8 @@ impl App {
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res {
-                        if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data)); }
+                    if let Ok(Ok(data)) = res && !data.is_empty() {
+                        let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data));
                     }
                 }));
             }
@@ -147,9 +147,8 @@ impl App {
                 }
                 let ep = ep_builder.build().unwrap();
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(data) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
-                    _ => {}
+                if let Ok(data) = res {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -187,9 +186,8 @@ impl App {
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, assignee_ids: Some(assignees), ..Default::default() };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(data) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
-                    _ => {}
+                if let Ok(data) = res {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -209,9 +207,8 @@ impl App {
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, milestone_id: Some(mid), ..Default::default() };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(data) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
-                    _ => {}
+                if let Ok(data) = res {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -231,9 +228,8 @@ impl App {
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, weight: Some(weight), ..Default::default() };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(data) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
-                    _ => {}
+                if let Ok(data) = res {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -253,9 +249,8 @@ impl App {
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, state_event: Some(new_state.to_string()), ..Default::default() };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(data) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
-                    _ => {}
+                if let Ok(data) = res {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -274,9 +269,8 @@ impl App {
             tokio::spawn(async move {
                 let ep = CreateIssue { project: pid, title, description: Some(description), assignee_ids: vec![], label_names: vec![] };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                match res {
-                    Ok(_) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                    _ => {}
+                if res.is_ok() {
+                    let _ = tx.send(DataUpdate::TriggerRefresh);
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -292,9 +286,8 @@ impl App {
         tokio::spawn(async move {
             let ep = IssueDiscussions { project: project_id, issue: iid };
             let res: Result<Result<Vec<Discussion>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(ep, gitlab::api::Pagination::All).query_async(&c)).await;
-            match res {
-                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::IssueDiscussions { project_id, iid, data }); }
-                _ => {}
+            if let Ok(Ok(data)) = res {
+                let _ = tx.send(DataUpdate::IssueDiscussions { project_id, iid, data });
             }
         });
         Ok(())

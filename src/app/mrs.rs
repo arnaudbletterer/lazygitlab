@@ -87,7 +87,7 @@ impl App {
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
                 }));
             }
 
@@ -96,7 +96,7 @@ impl App {
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
                 }));
             }
 
@@ -122,12 +122,12 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
             let mut handles = Vec::new();
-            for scope in vec![Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
+            for scope in [Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
                 let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
                 }));
             }
             if let Some(uid) = user_id {
@@ -135,7 +135,7 @@ impl App {
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res { if !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); } }
+                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
                 }));
             }
             for h in handles { let _ = h.await; }
@@ -159,7 +159,7 @@ impl App {
             let res: Result<Result<Vec<Discussion>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(endpoint, gitlab::api::Pagination::All).query_async(&client)).await;
             match res {
                 Ok(Ok(mut discussions)) => {
-                    discussions.retain(|d| d.notes.first().map_or(false, |n| !n.system));
+                    discussions.retain(|d| d.notes.first().is_some_and(|n| !n.system));
                     let _ = tx.send(DataUpdate::Discussions { project_id, iid: mr_iid, data: discussions });
                 }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Discussions fetch failed: {}", e))); }
@@ -227,12 +227,12 @@ impl App {
             use base64::{Engine as _, engine::general_purpose};
             
             let old_text = if let Ok(f) = old_res {
-                let clean = f.content.replace('\n', "").replace('\r', "");
+                let clean = f.content.replace(['\n', '\r'], "");
                 if let Ok(dec) = general_purpose::STANDARD.decode(&clean) { String::from_utf8_lossy(&dec).into_owned() } else { String::new() }
             } else { String::new() };
             
             let new_text = if let Ok(f) = new_res {
-                let clean = f.content.replace('\n', "").replace('\r', "");
+                let clean = f.content.replace(['\n', '\r'], "");
                 if let Ok(dec) = general_purpose::STANDARD.decode(&clean) { String::from_utf8_lossy(&dec).into_owned() } else { String::new() }
             } else { String::new() };
             
@@ -261,9 +261,10 @@ impl App {
         let (pid, iid) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid) } else { return Ok(()); };
         let mr = self.selected_mr.as_ref().unwrap().clone();
         
-        if let Some(diff_idx) = self.mr_diff_state.selected() {
-            if let Some(mr_diff) = self.mr_diffs.get(diff_idx) {
-                if let Some(line_idx) = self.diff_line_state.selected() {
+        if let Some(diff_idx) = self.mr_diff_state.selected()
+            && let Some(mr_diff) = self.mr_diffs.get(diff_idx)
+            && let Some(line_idx) = self.diff_line_state.selected()
+        {
                     let start_idx = self.diff_selection_start.unwrap_or(line_idx).min(line_idx);
                     let end_idx = self.diff_selection_start.unwrap_or(line_idx).max(line_idx);
 
@@ -300,8 +301,6 @@ impl App {
                         self.input_mode = false; self.textarea = ratatui_textarea::TextArea::default();
                         self.diff_selection_start = None;
                     }
-                }
-            }
         }
         Ok(())
     }
@@ -447,9 +446,10 @@ impl App {
     }
 
     pub async fn resolve_discussion(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(mr) = &self.selected_mr {
-            if let Some(idx) = self.discussion_state.selected() {
-                if let Some(disc) = self.discussions.get(idx) {
+        if let Some(mr) = &self.selected_mr
+            && let Some(idx) = self.discussion_state.selected()
+            && let Some(disc) = self.discussions.get(idx)
+        {
                     let pid = mr.project_id; let iid = mr.iid; let disc_id = disc.id.clone(); let current_resolved = disc.resolved.unwrap_or(false);
                     let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
                     tokio::spawn(async move {
@@ -458,8 +458,6 @@ impl App {
                         if res.is_ok() { let _ = tx.send(DataUpdate::TriggerRefresh); }
                         let _ = tx.send(DataUpdate::Loading(false));
                     });
-                }
-            }
         }
         Ok(())
     }

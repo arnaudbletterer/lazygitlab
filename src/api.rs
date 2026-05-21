@@ -1069,7 +1069,7 @@ mod tests {
         assert_eq!(search_projs.method(), Method::GET);
         let _ = search_projs.parameters();
 
-        let p_projs = PagedProjects { membership: true, page: 1, per_page: 1, simple: Some(true), archived: Some(false), order_by: None };
+        let p_projs = PagedProjects { membership: true, search: None, page: 1, per_page: 1, simple: Some(true), archived: Some(false), order_by: None };
         assert_eq!(p_projs.method(), Method::GET);
         let _ = p_projs.parameters();
 
@@ -1089,11 +1089,11 @@ mod tests {
         assert_eq!(p_issues.method(), Method::GET);
         let _ = p_issues.parameters();
 
-        let g_mrs = GlobalMergeRequests { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
+        let g_mrs = GlobalMergeRequests { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(g_mrs.method(), Method::GET);
         let _ = g_mrs.parameters();
 
-        let g_issues = GlobalIssues { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
+        let g_issues = GlobalIssues { scope: Some("a".into()), state: Some("a".into()), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(1), order_by: None, sort: None, with_labels_details: None };
         assert_eq!(g_issues.method(), Method::GET);
         let _ = g_issues.parameters();
 

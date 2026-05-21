@@ -18,7 +18,7 @@ fn dummy_project(id: u64, name: &str) -> Project {
 
 fn dummy_issue(iid: u64, title: &str) -> Issue {
     Issue {
-        iid, project_id: 1, title: title.into(), description: None, author: Author { id: 1, username: "u".into() },
+        iid, project_id: 1, title: title.into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u".into(), references: Some(References { full: "r".into() }),
         issue_type: None, labels: vec![], milestone: None, due_date: None, weight: None,
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
@@ -40,8 +40,7 @@ async fn setup_app() -> (MockServer, App, mpsc::UnboundedReceiver<lazygitlab::mo
     Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
     let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client);
-    app.tx = tx;
+    let app = App::new(client, tx);
     (server, app, rx)
 }
 
@@ -57,6 +56,7 @@ async fn test_filtering_logic() {
     assert_eq!(app.filtered_projects.len(), 1);
     assert_eq!(app.filtered_projects[0].name, "Alpha");
 
+    app.active_context = Context::Project;
     app.filter_input = "bug".into();
     app.filter_lists();
     assert_eq!(app.filtered_issues.len(), 1);
@@ -66,7 +66,10 @@ async fn test_filtering_logic() {
 
     app.filter_input = "review".into();
     app.filter_lists();
-    assert_eq!(app.filtered_todos.len(), 1);
+    assert_eq!(app.filtered_todos.len(), 2); // 1 Header + 1 Item
+    if let GroupedItem::Item(todo) = &app.filtered_todos[1] {
+        assert_eq!(todo.body, "Review MR");
+    }
 }
 
 #[tokio::test]

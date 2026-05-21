@@ -241,7 +241,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
             chunks[0].x + 1,
             chunks[0].y + 3,
             chunks[0].width - 2,
-            (app.filtered_branches.len() as u16).min(10).max(3),
+            (app.filtered_branches.len() as u16).clamp(3, 10),
         );
         f.render_widget(Clear, dropdown_area);
         let branches: Vec<ListItem> = app.filtered_branches.iter()
@@ -265,7 +265,7 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
                 chunks[1].x + 1,
                 chunks[1].y + 3,
                 chunks[1].width - 2,
-                (suggested_vars.len() as u16).min(10).max(3),
+                (suggested_vars.len() as u16).clamp(3, 10),
             );
             f.render_widget(Clear, dropdown_area);
             let items: Vec<ListItem> = suggested_vars.iter()
@@ -422,7 +422,7 @@ pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(" Snooze Todo ").border_style(Style::default().fg(app.theme.border)), area);
 
-    let suggestions = vec![
+    let suggestions = [
         "In 1 hour",
         "Tomorrow",
         "In 3 days",
@@ -511,7 +511,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
         let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
-        (server, App::new(client))
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        (server, App::new(client, tx))
     }
 
     #[test]
@@ -531,7 +532,7 @@ mod tests {
         terminal.draw(|f| render_label_popup(f, &mut app)).unwrap();
 
         // 3. Assignee Popup
-        app.project_members = vec![Author { id: 1, username: "u1".into() }];
+        app.project_members = vec![Author::new(1, "u1".into())];
         terminal.draw(|f| render_assignee_popup(f, &mut app)).unwrap();
         app.selected_assignee_ids.push(1);
         terminal.draw(|f| render_assignee_popup(f, &mut app)).unwrap();

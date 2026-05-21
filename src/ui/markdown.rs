@@ -80,7 +80,7 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                         for span in &mut current_line_spans {
                             span.style = span.style.patch(style);
                         }
-                        lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                        lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         lines.push(Line::from(""));
                         in_heading = None;
                     }
@@ -90,12 +90,12 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                     }
                     TagEnd::Item | TagEnd::Paragraph => {
                         if !current_line_spans.is_empty() {
-                            lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                            lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
                     }
                     TagEnd::BlockQuote(_) => {
                         if !current_line_spans.is_empty() {
-                            lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                            lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
                         blockquote_depth = blockquote_depth.saturating_sub(1);
                     }
@@ -113,7 +113,7 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                         lines.push(Line::from(vec![Span::styled("-------------", Style::default().fg(theme.dim))]));
                     }
                     TagEnd::TableRow => {
-                        lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                        lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                     }
                     TagEnd::TableCell => {
                         current_line_spans.push(Span::raw(" | "));
@@ -148,7 +148,7 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                     let lines_str: Vec<&str> = text_str.split('\n').collect();
                     for (i, s) in lines_str.iter().enumerate() {
                         if i > 0 {
-                            lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                            lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
                         ensure_prefix(&mut current_line_spans, blockquote_depth);
                         current_line_spans.push(Span::styled(s.to_string(), style));
@@ -160,15 +160,13 @@ pub fn render_markdown(text: &str, theme: &Theme, syntax_set: &SyntaxSet, theme_
                 current_line_spans.push(Span::styled(t.to_string(), Style::default().fg(theme.code).bg(theme.code_bg)));
             }
             Event::SoftBreak | Event::HardBreak => {
-                lines.push(Line::from(current_line_spans.drain(..).collect::<Vec<_>>()));
+                lines.push(Line::from(std::mem::take(&mut current_line_spans)));
             }
             Event::TaskListMarker(checked) => {
-                if let Some(last) = current_line_spans.last_mut() {
-                    if last.content.ends_with("• ") {
-                        let indent = "  ".repeat(list_level.saturating_sub(1));
-                        let marker = if checked { "[x] " } else { "[ ] " };
-                        *last = Span::raw(format!("{}{}", indent, marker));
-                    }
+                if let Some(last) = current_line_spans.last_mut().filter(|l| l.content.ends_with("• ")) {
+                    let indent = "  ".repeat(list_level.saturating_sub(1));
+                    let marker = if checked { "[x] " } else { "[ ] " };
+                    *last = Span::raw(format!("{}{}", indent, marker));
                 }
             }
             _ => {}

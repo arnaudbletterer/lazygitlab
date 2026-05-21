@@ -47,19 +47,17 @@ impl App {
                     // GitLab board details can include "backlog_list" and "closed_list"
                     // These are not in the 'lists' endpoint.
                     
-                    if let Some(backlog) = det.get("backlog_list") {
-                        if let Ok(bl) = serde_json::from_value::<BoardList>(backlog.clone()) {
-                            if !all_lists.iter().any(|l| l.id == bl.id) {
-                                all_lists.insert(0, bl);
-                            }
-                        }
+                    if let Some(backlog) = det.get("backlog_list")
+                        && let Ok(bl) = serde_json::from_value::<BoardList>(backlog.clone())
+                        && !all_lists.iter().any(|l| l.id == bl.id)
+                    {
+                        all_lists.insert(0, bl);
                     }
-                    if let Some(closed) = det.get("closed_list") {
-                        if let Ok(cl) = serde_json::from_value::<BoardList>(closed.clone()) {
-                            if !all_lists.iter().any(|l| l.id == cl.id) {
-                                all_lists.push(cl);
-                            }
-                        }
+                    if let Some(closed) = det.get("closed_list")
+                        && let Ok(cl) = serde_json::from_value::<BoardList>(closed.clone())
+                        && !all_lists.iter().any(|l| l.id == cl.id)
+                    {
+                        all_lists.push(cl);
                     }
                 }
 
