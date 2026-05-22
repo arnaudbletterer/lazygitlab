@@ -123,9 +123,13 @@ where
         
         terminal.draw(|f| ui(f, app))?;
 
-        let is_live_view = (app.view_mode == ViewMode::List && app.active_selection == MenuSelection::Pipelines) 
-            || app.view_mode == ViewMode::JobLog
-            || (app.view_mode == ViewMode::Detail && app.selected_pipeline.is_some());
+        let is_live_view = (app.view_mode == ViewMode::List 
+                && app.active_selection == MenuSelection::Pipelines 
+                && app.pipelines.iter().any(|p| !p.is_finished())) 
+            || (app.view_mode == ViewMode::JobLog 
+                && app.selected_job.as_ref().is_some_and(|j| !j.is_finished()))
+            || (app.view_mode == ViewMode::Detail 
+                && app.selected_pipeline.as_ref().is_some_and(|p| !p.is_finished()));
 
         let idle_threshold = Duration::from_secs(60);
         let is_idle = app.last_input.elapsed() >= idle_threshold;
@@ -139,7 +143,7 @@ where
         };
 
         if app.last_refresh.elapsed() >= refresh_interval {
-            app.refresh().await;
+            app.refresh_background().await;
         }
 
         if let Some(event) = event_source.next_event(Duration::from_millis(100)).await? {

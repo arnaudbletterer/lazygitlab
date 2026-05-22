@@ -422,6 +422,18 @@ pub struct Job {
     pub tag_list: Vec<String>,
 }
 
+impl Pipeline {
+    pub fn is_finished(&self) -> bool {
+        matches!(self.status.as_str(), "success" | "failed" | "canceled" | "skipped")
+    }
+}
+
+impl Job {
+    pub fn is_finished(&self) -> bool {
+        matches!(self.status.as_str(), "success" | "failed" | "canceled" | "skipped")
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Issue {
     pub iid: u64,
@@ -746,6 +758,7 @@ pub struct App {
     pub input_mode: bool,
     pub input_target: InputTarget,
     pub is_loading: bool,
+    pub is_fetching_diffs: bool,
     pub textarea: ratatui_textarea::TextArea<'static>,
     pub theme: Theme,
     pub last_refresh: std::time::Instant,
@@ -899,6 +912,7 @@ pub struct App {
     pub search_id: u64,
     pub member_project_ids: std::collections::HashSet<u64>,
     pub is_syncing_membership: bool,
+    pub membership_sync_attempted: bool,
     pub last_input: std::time::Instant,
 
     pub syntax_set: syntect::parsing::SyntaxSet,

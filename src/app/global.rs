@@ -283,6 +283,7 @@ impl App {
                 }
                 Err(e) => {
                     tracing::error!("Membership sync failed: {}", e);
+                    let _ = tx.send(DataUpdate::MemberProjectIds(std::collections::HashSet::new()));
                 }
             }
         });

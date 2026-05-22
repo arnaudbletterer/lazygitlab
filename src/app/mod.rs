@@ -64,6 +64,7 @@ impl App {
             input_mode: false,
             input_target: InputTarget::Reply,
             is_loading: false,
+            is_fetching_diffs: false,
             textarea: ratatui_textarea::TextArea::default(),
             theme: Theme::load(),
             last_refresh: std::time::Instant::now(),
@@ -179,6 +180,7 @@ impl App {
             search_id: 0,
             member_project_ids: std::collections::HashSet::new(),
             is_syncing_membership: false,
+            membership_sync_attempted: false,
             last_input: std::time::Instant::now(),
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
             theme_set: syntect::highlighting::ThemeSet::load_defaults(),
@@ -197,6 +199,7 @@ impl App {
             DataUpdate::MemberProjectIds(ids) => {
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
+                self.membership_sync_attempted = true;
             }
             DataUpdate::SearchResults { data, search_id } => {
                 if search_id == self.search_id {
@@ -222,14 +225,12 @@ impl App {
             DataUpdate::Projects { data, page, has_more } => { 
                 for p in &data { 
                     self.project_cache.insert(p.id, p.clone());
-                    self.trigger_project_metadata_fetch(p.id); 
                 }
                 self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); 
             }
             DataUpdate::AppendProjects(mut data) => { 
                 for p in &data { 
                     self.project_cache.insert(p.id, p.clone());
-                    self.trigger_project_metadata_fetch(p.id); 
                 }
                 self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); 
             }
@@ -248,21 +249,18 @@ impl App {
 
             DataUpdate::GlobalMRs { data, page, has_more } => { 
                 let mut data = data;
-                for mr in &data { self.trigger_project_metadata_fetch(mr.project_id); }
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Dashboard { 
                     self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
                 } 
             }
             DataUpdate::ProjectMRs { project_id, mut data, page, has_more } => { 
-                self.trigger_project_metadata_fetch(project_id);
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
                     self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
                 } 
             }
             DataUpdate::AppendGlobalMRs(mut data) => { 
-                for mr in &data { self.trigger_project_metadata_fetch(mr.project_id); }
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Dashboard { 
                     let existing_keys: std::collections::HashSet<String> = self.merge_requests.iter().map(|m| format!("{}:{}", m.project_id, m.iid)).collect();
@@ -275,7 +273,6 @@ impl App {
                 } 
             }
             DataUpdate::AppendProjectMRs { project_id, mut data } => { 
-                self.trigger_project_metadata_fetch(project_id);
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
                     self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
@@ -285,21 +282,18 @@ impl App {
 
             DataUpdate::GlobalIssues { data, page, has_more } => { 
                 let mut data = data;
-                for issue in &data { self.trigger_project_metadata_fetch(issue.project_id); }
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Dashboard { 
                     self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
                 } 
             }
             DataUpdate::ProjectIssues { project_id, mut data, page, has_more } => { 
-                self.trigger_project_metadata_fetch(project_id);
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
                     self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
                 } 
             }
             DataUpdate::AppendGlobalIssues(mut data) => { 
-                for issue in &data { self.trigger_project_metadata_fetch(issue.project_id); }
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Dashboard { 
                     let existing_keys: std::collections::HashSet<String> = self.issues.iter().map(|i| format!("{}:{}", i.project_id, i.iid)).collect();
@@ -313,7 +307,6 @@ impl App {
                 } 
             }
             DataUpdate::AppendProjectIssues { project_id, mut data } => { 
-                self.trigger_project_metadata_fetch(project_id);
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
                     self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
@@ -355,11 +348,16 @@ impl App {
                     self.discussions = data; 
                 } 
             }
-            DataUpdate::Jobs { project_id, pipeline_id, data } => {
-                if let Some(selected) = &self.selected_pipeline
+            DataUpdate::Jobs { project_id, pipeline_id, data } => { 
+                if let Some(selected) = &self.selected_pipeline 
                     && selected.id == pipeline_id && selected.project_id == project_id
                 {
-                    self.jobs = data;
+                    self.jobs = data.clone();
+                    if let Some(curr_job) = &self.selected_job
+                        && let Some(updated_job) = data.iter().find(|j| j.id == curr_job.id)
+                    {
+                        self.selected_job = Some(updated_job.clone());
+                    }
                 }
             }
             DataUpdate::ProjectVariables { project_id, data } => {
@@ -391,6 +389,7 @@ impl App {
                 }
             }
             DataUpdate::Diffs { project_id, iid, data } => {
+                self.is_fetching_diffs = false;
                 if let Some(selected) = &self.selected_mr
                     && selected.iid == iid && selected.project_id == project_id
                 {
@@ -404,7 +403,10 @@ impl App {
                 self.project_milestone_cache.insert(project_id, milestones.clone());
                 self.project_member_cache.insert(project_id, members.clone());
 
-                if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) {
+                let active_pid = self.selected_mr.as_ref().map(|m| m.project_id)
+                    .or_else(|| self.selected_issue.as_ref().map(|i| i.project_id))
+                    .or_else(|| self.selected_project.as_ref().map(|p| p.id));
+                if active_pid.is_some_and(|pid| pid == project_id) {
                     self.project_labels = labels.clone(); 
                     self.project_milestones = milestones.clone(); 
                     self.project_members = members.clone(); 
@@ -429,9 +431,13 @@ impl App {
                                 label.id = old.id; label.color = old.color.clone(); label.text_color = old.text_color.clone();
                             }
                         }
-                        if !self.input_mode { *selected = mr; } 
+                        if !self.input_mode { *selected = mr.clone(); } 
                     } 
-                } else { self.selected_mr = Some(mr); }
+                } else { self.selected_mr = Some(mr.clone()); }
+                if let Some(existing) = self.merge_requests.iter_mut().find(|x| x.iid == mr.iid && x.project_id == mr.project_id) {
+                    *existing = mr;
+                    self.filter_lists();
+                }
             }
             DataUpdate::IssueDetail(mut issue) => { 
                 self.fix_issue_labels(&mut issue);
@@ -468,6 +474,9 @@ impl App {
                 }
             }
             DataUpdate::Error(e) => { 
+                if e.contains("Diffs") {
+                    self.is_fetching_diffs = false;
+                }
                 self.last_error = Some(e); 
                 self.loading_tasks = self.loading_tasks.saturating_sub(1); 
                 self.is_loading = self.loading_tasks > 0;
@@ -748,7 +757,19 @@ impl App {
     }
 
     pub async fn refresh(&mut self) {
+        self.refresh_impl(true).await;
+    }
+
+    pub async fn refresh_background(&mut self) {
+        self.refresh_impl(false).await;
+    }
+
+    pub async fn refresh_impl(&mut self, force_detail: bool) {
         self.last_refresh = std::time::Instant::now();
+
+        if force_detail {
+            self.membership_sync_attempted = false;
+        }
 
         if self.current_user.is_none() {
             let c = self.gitlab.clone(); let tx = self.tx.clone();
@@ -759,37 +780,42 @@ impl App {
             });
         }
 
-        if self.member_project_ids.is_empty() && !self.is_syncing_membership {
+        if self.member_project_ids.is_empty() && !self.is_syncing_membership && !self.membership_sync_attempted {
             let _ = self.fetch_membership_project_ids().await;
         }
+
+        let should_fetch_lists = self.view_mode == ViewMode::List && self.active_panel != Panel::MainDetail;
 
         match self.active_context {
             Context::Dashboard | Context::Explore => {
                 match self.active_selection {
-                    MenuSelection::Todos => { let _ = self.fetch_todos().await; }
-                    MenuSelection::MergeRequests => { let _ = self.fetch_global_merge_requests().await; }
-                    MenuSelection::Issues => { let _ = self.fetch_global_issues().await; }
-                    MenuSelection::Projects => { let _ = self.fetch_projects().await; }
-                    MenuSelection::Groups => { let _ = self.fetch_groups().await; }
+                    MenuSelection::Todos => { if should_fetch_lists { let _ = self.fetch_todos().await; } }
+                    MenuSelection::MergeRequests => { if should_fetch_lists { let _ = self.fetch_global_merge_requests().await; } }
+                    MenuSelection::Issues => { if should_fetch_lists { let _ = self.fetch_global_issues().await; } }
+                    MenuSelection::Projects => { if should_fetch_lists { let _ = self.fetch_projects().await; } }
+                    MenuSelection::Groups => { if should_fetch_lists { let _ = self.fetch_groups().await; } }
                     _ => {}
                 }
             }
             Context::Project => {
                 if let Some(_project) = &self.selected_project {
                     match self.active_selection {
-                        MenuSelection::MergeRequests => { let _ = self.fetch_merge_requests().await; }
-                        MenuSelection::Issues => { let _ = self.fetch_issues().await; }
-                        MenuSelection::Pipelines => { let _ = self.fetch_pipelines().await; }
-                        MenuSelection::Repository => { let _ = self.fetch_repository_tree().await; }
-                        MenuSelection::Branches => { if let Some(p) = &self.selected_project { let _ = self.fetch_branches(p.id).await; } }
-                        MenuSelection::Commits => { let _ = self.fetch_commits().await; }
+                        MenuSelection::MergeRequests => { if should_fetch_lists { let _ = self.fetch_merge_requests().await; } }
+                        MenuSelection::Issues => { if should_fetch_lists { let _ = self.fetch_issues().await; } }
+                        MenuSelection::Pipelines => { if should_fetch_lists { let _ = self.fetch_pipelines().await; } }
+                        MenuSelection::Repository => { if should_fetch_lists { let _ = self.fetch_repository_tree().await; } }
+                        MenuSelection::Branches => { if let Some(p) = &self.selected_project && should_fetch_lists { let _ = self.fetch_branches(p.id).await; } }
+                        MenuSelection::Commits => { if should_fetch_lists { let _ = self.fetch_commits().await; } }
                         MenuSelection::Boards => { 
-                            if let Some(board) = self.selected_board.clone() {
-                                let _ = self.fetch_board_lists(board.id).await;
-                            } else {
+                            if self.view_mode == ViewMode::Board && self.active_panel != Panel::MainDetail {
+                                if let Some(board) = self.selected_board.clone() {
+                                    let _ = self.fetch_board_lists(board.id).await;
+                                }
+                            } else if self.view_mode == ViewMode::List && self.active_panel != Panel::MainDetail {
                                 let _ = self.fetch_boards().await; 
                             }
-                        }                        MenuSelection::Epics => { let _ = self.fetch_epics().await; }
+                        }
+                        MenuSelection::Epics => { if should_fetch_lists { let _ = self.fetch_epics().await; } }
                         _ => {}
                     }
                 }
@@ -797,19 +823,41 @@ impl App {
         }
 
         if let Some(mr) = self.selected_mr.clone() { 
-            let _ = self.fetch_discussions(mr.project_id, mr.iid).await; 
-            self.trigger_project_metadata_fetch(mr.project_id);
+            if force_detail || self.discussions.is_empty() {
+                let _ = self.fetch_discussions(mr.project_id, mr.iid).await; 
+            }
+            let has_metadata = self.project_label_cache.contains_key(&mr.project_id);
+            if self.active_panel == Panel::MainDetail && !has_metadata {
+                self.trigger_project_metadata_fetch(mr.project_id);
+            }
         }
         else if let Some(issue) = self.selected_issue.clone() { 
-            let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; 
-            self.trigger_project_metadata_fetch(issue.project_id);
+            if force_detail || self.discussions.is_empty() {
+                let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; 
+            }
+            let has_metadata = self.project_label_cache.contains_key(&issue.project_id);
+            if self.active_panel == Panel::MainDetail && !has_metadata {
+                self.trigger_project_metadata_fetch(issue.project_id);
+            }
         }
         else if let Some(pipeline) = self.selected_pipeline.clone() { 
-            let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; 
-            self.trigger_project_metadata_fetch(pipeline.project_id);
-        }
-        else if let Some(project) = &self.selected_project {
-            self.trigger_project_metadata_fetch(project.id);
+            if self.view_mode == ViewMode::JobLog {
+                let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                if let Some(job) = &self.selected_job
+                    && (force_detail || !job.is_finished())
+                {
+                    let _ = self.fetch_job_log(pipeline.project_id, job.id).await;
+                }
+            } else {
+                let is_finished = pipeline.is_finished();
+                if force_detail || self.jobs.is_empty() || !is_finished {
+                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await; 
+                }
+            }
+            let has_metadata = self.project_label_cache.contains_key(&pipeline.project_id);
+            if self.active_panel == Panel::MainDetail && !has_metadata {
+                self.trigger_project_metadata_fetch(pipeline.project_id);
+            }
         }
     }
 
@@ -868,18 +916,28 @@ impl App {
                         let iid = re.captures(&todo.target_url).and_then(|cap| cap.get(1)).and_then(|m| m.as_str().parse().ok());
 
                         if let Some(iid) = iid {
-                            if todo.target_type == "MergeRequest"
-                                && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != todo.project.id)
+                            let project_id = todo.project.id;
+                            let target_type = todo.target_type.clone();
+                            let title = todo.body.clone();
+                            let target_url = todo.target_url.clone();
+                            if target_type == "MergeRequest"
+                                && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != project_id)
                             {
-                                self.selected_issue = None; self.discussions.clear();
-                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
-                                let _ = self.fetch_discussions(todo.project.id, iid).await;
-                            } else if todo.target_type == "Issue"
-                                && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != todo.project.id)
+                                self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
+                                self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
+                                let _ = self.fetch_discussions(project_id, iid).await;
+                                if self.active_panel == Panel::MainDetail {
+                                    self.trigger_project_metadata_fetch(project_id);
+                                }
+                            } else if target_type == "Issue"
+                                && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != project_id)
                             {
                                 self.selected_mr = None; self.discussions.clear();
-                                self.selected_issue = Some(Issue { iid, project_id: todo.project.id, title: todo.body.clone(), description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: todo.target_url.clone(), references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
-                                let _ = self.fetch_issue_discussions(todo.project.id, iid).await;
+                                self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
+                                let _ = self.fetch_issue_discussions(project_id, iid).await;
+                                if self.active_panel == Panel::MainDetail {
+                                    self.trigger_project_metadata_fetch(project_id);
+                                }
                             }
                         }
                     } else { self.selected_mr = None; self.selected_issue = None; self.discussions.clear(); }
@@ -887,10 +945,14 @@ impl App {
                 MenuSelection::MergeRequests => {
                     if let Some(GroupedItem::Item(mr)) = self.mrs_state.selected().and_then(|i| self.filtered_mrs.get(i)) {
                         if self.selected_mr.as_ref().is_none_or(|prev| prev.iid != mr.iid || prev.project_id != mr.project_id) {
-                            self.selected_mr = Some(mr.clone()); self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear();
-                            let (pid, iid) = (mr.project_id, mr.iid);
+                            let mr_clone = mr.clone();
+                            let pid = mr.project_id;
+                            let iid = mr.iid;
+                            self.selected_mr = Some(mr_clone); self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
                             let _ = self.fetch_discussions(pid, iid).await;
-                            let _ = self.fetch_mr_diffs(pid, iid).await;
+                            if self.active_panel == Panel::MainDetail {
+                                self.trigger_project_metadata_fetch(pid);
+                            }
                         } else if let Some(selected) = &mut self.selected_mr {
                             selected.title = mr.title.clone();
                             selected.state = mr.state.clone();
@@ -903,8 +965,14 @@ impl App {
                 MenuSelection::Issues => {
                     if let Some(GroupedItem::Item(issue)) = self.issues_state.selected().and_then(|i| self.filtered_issues.get(i)) {
                         if self.selected_issue.as_ref().is_none_or(|prev| prev.iid != issue.iid || prev.project_id != issue.project_id) {
-                            self.selected_issue = Some(issue.clone()); self.selected_mr = None; self.discussions.clear();
-                            let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
+                            let issue_clone = issue.clone();
+                            let pid = issue.project_id;
+                            let iid = issue.iid;
+                            self.selected_issue = Some(issue_clone); self.selected_mr = None; self.discussions.clear();
+                            let _ = self.fetch_issue_discussions(pid, iid).await;
+                            if self.active_panel == Panel::MainDetail {
+                                self.trigger_project_metadata_fetch(pid);
+                            }
                         } else if let Some(selected) = &mut self.selected_issue {
                             selected.title = issue.title.clone();
                             selected.state = issue.state.clone();
@@ -921,8 +989,14 @@ impl App {
                         .and_then(|i| self.pipelines.get(i))
                         .filter(|p| self.selected_pipeline.as_ref().is_none_or(|prev| prev.id != p.id))
                     {
-                        self.selected_pipeline = Some(p.clone()); self.jobs.clear();
-                        let _ = self.fetch_jobs(p.project_id, p.id).await;
+                        let p_clone = p.clone();
+                        let project_id = p.project_id;
+                        let pipeline_id = p.id;
+                        self.selected_pipeline = Some(p_clone); self.jobs.clear();
+                        let _ = self.fetch_jobs(project_id, pipeline_id).await;
+                        if self.active_panel == Panel::MainDetail {
+                            self.trigger_project_metadata_fetch(project_id);
+                        }
                     }
                 }
                 MenuSelection::Boards => {
@@ -949,6 +1023,16 @@ impl App {
             let is_item_selected = self.selected_mr.is_some() || self.selected_issue.is_some() || self.selected_pipeline.is_some() || self.selected_board.is_some();
             if !is_item_selected {
                 self.active_panel = Panel::Main;
+            }
+        }
+
+        if let Some(mr) = &self.selected_mr {
+            let pid = mr.project_id;
+            let iid = mr.iid;
+            let needs_diffs = self.view_mode == ViewMode::Diff
+                || (self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Changes);
+            if needs_diffs && self.mr_diffs.is_empty() && !self.is_fetching_diffs {
+                let _ = self.fetch_mr_diffs(pid, iid).await;
             }
         }
     }
@@ -1207,7 +1291,7 @@ impl App {
                     MenuSelection::Projects => {
                         if let Some(i) = self.projects_state.selected() {
                             self.selected_project = Some(self.filtered_projects[i].clone());
-                            self.active_panel = Panel::Main;
+                            self.active_panel = Panel::Project;
                             self.active_context = Context::Project;
                             self.project_menu_state.select(Some(0));
                             self.active_selection = MenuSelection::MergeRequests;
@@ -1487,9 +1571,17 @@ impl App {
                 KeyCode::Enter => {
                     if let Some(res) = self.search_state.selected().and_then(|idx| self.search_results.get(idx)).cloned() {
                         match res {
-                            SearchResult::Project(p) => { self.selected_project = Some(p); self.active_context = Context::Project; self.active_panel = Panel::Project; self.show_search = false; let _ = self.refresh().await; }
-                            SearchResult::Issue(i) => { self.selected_issue = Some(i); self.view_mode = ViewMode::Detail; self.show_search = false; }
-                            SearchResult::MergeRequest(m) => { self.selected_mr = Some(m); self.view_mode = ViewMode::Detail; self.show_search = false; }
+                            SearchResult::Project(p) => {
+                                self.selected_project = Some(p);
+                                self.active_context = Context::Project;
+                                self.active_panel = Panel::Project;
+                                self.project_menu_state.select(Some(0));
+                                self.active_selection = MenuSelection::MergeRequests;
+                                self.show_search = false;
+                                let _ = self.refresh().await;
+                            }
+                            SearchResult::Issue(i) => { self.selected_issue = Some(i); self.selected_mr = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false; self.view_mode = ViewMode::Detail; self.show_search = false; }
+                            SearchResult::MergeRequest(m) => { self.selected_mr = Some(m); self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false; self.view_mode = ViewMode::Detail; self.show_search = false; }
                         }
                     }
                 }
@@ -3030,7 +3122,7 @@ impl App {
         if let Some(project) = self.projects_state.selected().and_then(|i| self.projects.get(i)).cloned() { 
             self.selected_project = Some(project); 
             self.show_project_popup = false; 
-            self.active_panel = Panel::Main; 
+            self.active_panel = Panel::Project; 
             self.active_context = Context::Project; 
             self.project_menu_state.select(Some(0)); 
             self.active_selection = MenuSelection::MergeRequests; 
