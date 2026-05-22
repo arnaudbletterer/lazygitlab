@@ -236,6 +236,7 @@ mod tests {
             milestone: None,
             created_at: Some("t".into()),
             draft: Some(false),
+            squash: Some(false),
             diff_refs: None,
             reactions: vec![],
         });

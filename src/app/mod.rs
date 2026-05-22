@@ -870,7 +870,7 @@ impl App {
                                 && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != todo.project.id)
                             {
                                 self.selected_issue = None; self.discussions.clear();
-                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
+                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None });
                                 let _ = self.fetch_discussions(todo.project.id, iid).await;
                             } else if todo.target_type == "Issue"
                                 && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != todo.project.id)
@@ -1302,6 +1302,8 @@ impl App {
             items.push(HelpItem { shortcut: "R".into(), description: "Unapprove Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "M".into(), description: "Merge Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "D".into(), description: "Toggle Draft state".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "E".into(), description: "Rebase Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "S".into(), description: "Toggle Squash on merge".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
         items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
@@ -2238,6 +2240,8 @@ impl App {
                 } 
             }
             KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
+            KeyCode::Char('E') => { if self.selected_mr.is_some() { let _ = self.rebase_mr().await; } }
+            KeyCode::Char('S') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_squash().await; } }
             KeyCode::Char('s') => {
                 if self.active_selection == MenuSelection::Todos {
                     self.show_snooze_popup = true; self.snooze_state.select(Some(0));

@@ -69,7 +69,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .constraints([
                     Constraint::Percentage(35), // Main List (Top)
                     Constraint::Percentage(30), // Detail View (Description)
-                    Constraint::Length(7),      // Metadata
+                    Constraint::Length(8),      // Metadata
                     Constraint::Min(10),        // Discussions (Bottom)
                 ])
                 .split(chunks[1])
@@ -445,6 +445,7 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         lines.push(Line::from(reviewer_spans));
 
         lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(mr.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
+        lines.push(Line::from(vec![Span::raw(" Squash: "), Span::raw(if mr.squash.unwrap_or(false) { "Yes" } else { "No" })]));
     } else if let Some(issue) = &app.selected_issue {
         let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { issue.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));

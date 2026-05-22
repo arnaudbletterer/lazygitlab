@@ -32,7 +32,7 @@ async fn test_user_story_label_editing() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![dummy_label(0, "bug", "#808080")], 
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![]
     };
     app.selected_mr = Some(mr);
@@ -78,7 +78,7 @@ async fn test_user_story_discussion_reply() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![]
     };
     app.selected_mr = Some(mr);
@@ -177,7 +177,7 @@ async fn test_user_story_post_comment_and_visibility() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -262,7 +262,7 @@ async fn test_user_story_multiline_deleted_comment() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -341,7 +341,7 @@ async fn test_user_story_comment_validation_and_errors() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -571,7 +571,7 @@ async fn test_user_story_diff_navigation_and_reviewers() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![],
-        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false),
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false),
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }),
         reactions: vec![]
     };

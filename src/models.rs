@@ -79,6 +79,8 @@ pub struct MergeRequest {
     #[serde(default)]
     pub reviewers: Vec<Author>,
     #[serde(default)]
+    pub squash: Option<bool>,
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub diff_refs: Option<DiffRefs>,

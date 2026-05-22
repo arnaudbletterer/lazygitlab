@@ -19,7 +19,7 @@ fn dummy_mr(iid: u64, title: &str) -> MergeRequest {
         iid, project_id: 1, title: title.into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], milestone: None,
-        assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), diff_refs: None, reactions: vec![]
+        assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), diff_refs: None, reactions: vec![]
     }
 }
 
@@ -48,6 +48,15 @@ async fn test_mr_shortcuts() {
     // Test 'M' shortcut (Merge)
     Mock::given(method("PUT")).and(path("/api/v4/projects/1/merge_requests/1/merge")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
     app.handle_key(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::SHIFT)).await;
+
+    // Test 'E' shortcut (Rebase)
+    Mock::given(method("PUT")).and(path("/api/v4/projects/1/merge_requests/1/rebase")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
+    app.handle_key(KeyEvent::new(KeyCode::Char('E'), KeyModifiers::SHIFT)).await;
+
+    // Test 'S' shortcut (Squash toggle)
+    Mock::given(method("PUT")).and(path("/api/v4/projects/1/merge_requests/1")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"squash":true}))).mount(&server).await;
+    app.handle_key(KeyEvent::new(KeyCode::Char('S'), KeyModifiers::SHIFT)).await;
+    assert!(app.selected_mr.as_ref().unwrap().squash.unwrap());
 
     // Consume updates to ensure no panic and that it triggered refreshes
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), async {

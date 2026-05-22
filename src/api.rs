@@ -589,6 +589,13 @@ impl Endpoint for SingleMergeRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct RebaseMergeRequest { pub project: u64, pub merge_request: u64 }
+impl Endpoint for RebaseMergeRequest {
+    fn method(&self) -> Method { Method::PUT }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/rebase", self.project, self.merge_request).into() }
+}
+
+#[derive(Debug, Clone)]
 pub struct ApproveMergeRequest { pub project: u64, pub merge_request: u64 }
 impl Endpoint for ApproveMergeRequest {
     fn method(&self) -> Method { Method::POST }
@@ -1161,6 +1168,9 @@ mod tests {
 
         let unapprove_mr = UnapproveMergeRequest { project: 1, merge_request: 1 };
         assert_eq!(unapprove_mr.method(), Method::POST);
+
+        let rebase_mr = RebaseMergeRequest { project: 1, merge_request: 1 };
+        assert_eq!(rebase_mr.method(), Method::PUT);
 
         let accept_mr = AcceptMergeRequest { project: 1, merge_request: 1, squash: true, should_remove_source_branch: true };
         assert_eq!(accept_mr.method(), Method::PUT);

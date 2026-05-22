@@ -470,6 +470,46 @@ impl App {
         Ok(())
     }
 
+    pub async fn toggle_mr_squash(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (pid, iid, current_squash) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid, mr.squash.unwrap_or(false)) } else { return Ok(()); };
+        let client = self.gitlab.clone(); let tx = self.tx.clone();
+        if let Some(m) = &mut self.selected_mr { m.squash = Some(!current_squash); }
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: Some(!current_squash), target_branch: None, draft: None };
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
+            match res { 
+                Ok(Ok(val)) => { 
+                    if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
+                        let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                    }
+                    let _ = tx.send(DataUpdate::TriggerRefresh); 
+                } 
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } 
+                Err(_) => { let _ = tx.send(DataUpdate::Error("MR update timed out".into())); } 
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
+
+    pub async fn rebase_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let pid = mr.project_id; let iid = mr.iid; let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let endpoint = RebaseMergeRequest { project: pid, merge_request: iid };
+                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                match res {
+                    Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Rebase MR failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Rebase MR timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
     pub async fn resolve_discussion(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mr) = &self.selected_mr
             && let Some(idx) = self.discussion_state.selected()
