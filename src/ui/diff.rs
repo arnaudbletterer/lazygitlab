@@ -243,6 +243,8 @@ mod tests {
             detailed_merge_status: None,
             has_conflicts: None,
             head_pipeline: None,
+            source_branch: "".into(),
+            target_branch: "".into(),
         });
 
         app.mr_diffs = vec![

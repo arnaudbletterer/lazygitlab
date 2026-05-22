@@ -552,15 +552,17 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
             Span::raw(&mr.title),
         ]));
         
-        let mut branches = vec![
-            Span::styled("Merge: ", Style::default().add_modifier(Modifier::BOLD)),
-        ];
-        if let Some(refs) = &mr.references {
-            branches.push(Span::styled(&refs.full, Style::default().fg(app.theme.author)));
-        } else {
-            branches.push(Span::styled(format!("!{}", mr.iid), Style::default().fg(app.theme.author)));
-        }
-        lines.push(Line::from(branches));
+        lines.push(Line::from(vec![
+            Span::styled("Branches: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
+            Span::raw(" -> "),
+            Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Squash: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(if mr.squash.unwrap_or(false) { "Yes" } else { "No" }),
+        ]));
 
         // Pipeline info if available
         if let Some(pipeline) = &mr.head_pipeline {
@@ -600,7 +602,7 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
 }
 
 pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
-    let area = centered_rect(60, 25, f.area());
+    let area = centered_rect(60, 35, f.area());
     app.set_rect("popup_confirm_rebase", area);
     f.render_widget(Clear, area);
     
@@ -622,6 +624,38 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
         lines.push(Line::from(vec![
             Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(&mr.title),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Branches: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
+            Span::raw(" -> "),
+            Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
+        ]));
+
+        // Pipeline info if available
+        if let Some(pipeline) = &mr.head_pipeline {
+            lines.push(Line::from(vec![
+                Span::styled("Pipeline: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(&pipeline.status, get_status_style(&pipeline.status, &app.theme)),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("Pipeline: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("None"),
+            ]));
+        }
+
+        // Merge status info if available
+        let detailed_status = mr.detailed_merge_status.as_deref().unwrap_or("unknown");
+        let status_color = match detailed_status {
+            "mergeable" => app.theme.success,
+            "conflict" => app.theme.failed,
+            _ => app.theme.pending,
+        };
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(detailed_status, Style::default().fg(status_color)),
         ]));
     }
     

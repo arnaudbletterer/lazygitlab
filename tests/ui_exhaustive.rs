@@ -92,7 +92,7 @@ async fn test_ui_all_view_modes() {
 
     // Detail Mode
     app.view_mode = ViewMode::Detail;
-    app.selected_mr = Some(MergeRequest { iid: 1, project_id: 1, title: "T".into(), description: Some("D".into()), author: Author::new(1, "u".into()), web_url: "u".into(), state: "opened".into(), references: None, upvotes: None, downvotes: None, labels: vec![], milestone: None, assignees: vec![], reviewers: vec![], squash: None, created_at: None, draft: None, diff_refs: None, reactions: vec![], merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None });
+    app.selected_mr = Some(MergeRequest { iid: 1, project_id: 1, title: "T".into(), description: Some("D".into()), author: Author::new(1, "u".into()), web_url: "u".into(), state: "opened".into(), references: None, upvotes: None, downvotes: None, labels: vec![], milestone: None, assignees: vec![], reviewers: vec![], squash: None, created_at: None, draft: None, diff_refs: None, reactions: vec![], merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 
     // JobLog Mode
@@ -103,7 +103,7 @@ async fn test_ui_all_view_modes() {
 
     // Diff Mode
     app.view_mode = ViewMode::Diff;
-    app.selected_mr = Some(MergeRequest { iid: 1, project_id: 1, title: "T".into(), description: Some("D".into()), author: Author::new(1, "u".into()), web_url: "u".into(), state: "opened".into(), references: None, upvotes: None, downvotes: None, labels: vec![], milestone: None, assignees: vec![], reviewers: vec![], squash: None, created_at: None, draft: None, diff_refs: None, reactions: vec![], merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None });
+    app.selected_mr = Some(MergeRequest { iid: 1, project_id: 1, title: "T".into(), description: Some("D".into()), author: Author::new(1, "u".into()), web_url: "u".into(), state: "opened".into(), references: None, upvotes: None, downvotes: None, labels: vec![], milestone: None, assignees: vec![], reviewers: vec![], squash: None, created_at: None, draft: None, diff_refs: None, reactions: vec![], merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
     app.mr_diffs = vec![MRDiff { old_path: "a".into(), new_path: "b".into(), diff: "d".into(), collapsed: false, display_lines: vec![DiffDisplayLine::Code("d".into(), Some(1), Some(1))] }];
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 }

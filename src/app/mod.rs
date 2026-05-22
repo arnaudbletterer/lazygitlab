@@ -872,7 +872,7 @@ impl App {
                                 && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != todo.project.id)
                             {
                                 self.selected_issue = None; self.discussions.clear();
-                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None });
+                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
                                 let _ = self.fetch_discussions(todo.project.id, iid).await;
                             } else if todo.target_type == "Issue"
                                 && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != todo.project.id)

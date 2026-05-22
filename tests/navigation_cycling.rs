@@ -37,6 +37,8 @@ async fn setup_app() -> (MockServer, App) {
         detailed_merge_status: None,
         has_conflicts: None,
         head_pipeline: None,
+        source_branch: "".into(),
+        target_branch: "".into(),
     });
     (server, app)
 }
@@ -108,6 +110,8 @@ async fn test_panel_cycling_backward() {
         detailed_merge_status: None,
         has_conflicts: None,
         head_pipeline: None,
+        source_branch: "".into(),
+        target_branch: "".into(),
     });
     app.handle_key(shift_tab).await;
     assert_eq!(app.active_panel, Panel::MainDetail);

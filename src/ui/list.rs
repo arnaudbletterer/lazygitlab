@@ -69,7 +69,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .constraints([
                     Constraint::Percentage(35), // Main List (Top)
                     Constraint::Percentage(30), // Detail View (Description)
-                    Constraint::Length(10),     // Metadata
+                    Constraint::Length(11),     // Metadata
                     Constraint::Min(10),        // Discussions (Bottom)
                 ])
                 .split(chunks[1])
@@ -411,6 +411,13 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { mr.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
         
+        lines.push(Line::from(vec![
+            Span::raw(" Branches: "),
+            Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
+            Span::raw(" -> "),
+            Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
+        ]));
+
         let mut label_spans = vec![Span::raw(" Labels: ")];
         if mr.labels.is_empty() { label_spans.push(Span::styled("None", field_style(MetadataField::Labels))); }
         else {

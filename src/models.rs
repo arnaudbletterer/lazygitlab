@@ -100,6 +100,10 @@ pub struct MergeRequest {
     pub has_conflicts: Option<bool>,
     #[serde(default)]
     pub head_pipeline: Option<PipelineMin>,
+    #[serde(default)]
+    pub source_branch: String,
+    #[serde(default)]
+    pub target_branch: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

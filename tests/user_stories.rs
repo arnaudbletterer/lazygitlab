@@ -34,7 +34,8 @@ async fn test_user_story_label_editing() {
         upvotes: Some(0), downvotes: Some(0), labels: vec![dummy_label(0, "bug", "#808080")], 
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
     app.detail_section = lazygitlab::models::DetailSection::Metadata;
@@ -81,7 +82,8 @@ async fn test_user_story_discussion_reply() {
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
     
@@ -182,7 +184,8 @@ async fn test_user_story_post_comment_and_visibility() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
     
@@ -268,7 +271,8 @@ async fn test_user_story_multiline_deleted_comment() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
     
@@ -348,7 +352,8 @@ async fn test_user_story_comment_validation_and_errors() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
     
@@ -579,7 +584,8 @@ async fn test_user_story_diff_navigation_and_reviewers() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false),
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }),
         reactions: vec![],
-        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "target".into()
     };
     app.selected_mr = Some(mr);
 

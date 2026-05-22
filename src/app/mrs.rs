@@ -343,9 +343,9 @@ impl App {
 
     pub async fn merge_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mr) = &self.selected_mr {
-            let pid = mr.project_id; let iid = mr.iid; let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+            let pid = mr.project_id; let iid = mr.iid; let squash = mr.squash.unwrap_or(false); let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let endpoint = AcceptMergeRequest { project: pid, merge_request: iid, squash: false, should_remove_source_branch: true };
+                let endpoint = AcceptMergeRequest { project: pid, merge_request: iid, squash, should_remove_source_branch: true };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
                 if res.is_err() { let _ = tx.send(DataUpdate::Error("Merge MR timed out".into())); }
                 let _ = tx.send(DataUpdate::Loading(false)); let _ = tx.send(DataUpdate::TriggerRefresh);
