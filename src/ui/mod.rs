@@ -278,6 +278,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
+    app.job_log_viewport_height = area.height.saturating_sub(2);
     let block = Block::default()
         .title(format!(" File Content: {} ", app.selected_file_content.as_ref().map(|f| f.file_path.as_str()).unwrap_or("")))
         .borders(Borders::ALL)

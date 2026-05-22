@@ -46,19 +46,40 @@ impl Endpoint for CreateMergeRequestDiscussion {
             if let Some(path) = &self.new_path { params.push("position[new_path]", path); }
             if let Some(path) = &self.old_path { params.push("position[old_path]", path); }
             
-            if let Some(rs_new) = self.range_start_new {
+            if let Some(line) = self.new_line { params.push("position[new_line]", line); }
+            if let Some(line) = self.old_line { params.push("position[old_line]", line); }
+
+            if self.range_start_new.is_some() || self.range_start_old.is_some() {
                 // Multi-line range
-                params.push("position[line_range][start][new_line]", rs_new);
-                if let Some(rs_old) = self.range_start_old { params.push("position[line_range][start][old_line]", rs_old); }
-                params.push("position[line_range][start][type]", if self.range_start_old.is_some() && self.range_start_new.is_some() { "text" } else if self.range_start_new.is_some() { "new" } else { "old" });
+                if let Some(rs_new) = self.range_start_new {
+                    params.push("position[line_range][start][new_line]", rs_new);
+                }
+                if let Some(rs_old) = self.range_start_old {
+                    params.push("position[line_range][start][old_line]", rs_old);
+                }
+                let start_type = if self.range_start_old.is_some() && self.range_start_new.is_some() {
+                    "text"
+                } else if self.range_start_new.is_some() {
+                    "new"
+                } else {
+                    "old"
+                };
+                params.push("position[line_range][start][type]", start_type);
                 
-                params.push("position[line_range][end][new_line]", self.new_line.unwrap());
-                if let Some(old) = self.old_line { params.push("position[line_range][end][old_line]", old); }
-                params.push("position[line_range][end][type]", if self.old_line.is_some() && self.new_line.is_some() { "text" } else if self.new_line.is_some() { "new" } else { "old" });
-            } else {
-                // Single line
-                if let Some(line) = self.new_line { params.push("position[new_line]", line); }
-                if let Some(line) = self.old_line { params.push("position[old_line]", line); }
+                if let Some(nl) = self.new_line {
+                    params.push("position[line_range][end][new_line]", nl);
+                }
+                if let Some(ol) = self.old_line {
+                    params.push("position[line_range][end][old_line]", ol);
+                }
+                let end_type = if self.old_line.is_some() && self.new_line.is_some() {
+                    "text"
+                } else if self.new_line.is_some() {
+                    "new"
+                } else {
+                    "old"
+                };
+                params.push("position[line_range][end][type]", end_type);
             }
         }
         params.into_body()

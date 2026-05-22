@@ -265,42 +265,52 @@ impl App {
             && let Some(mr_diff) = self.mr_diffs.get(diff_idx)
             && let Some(line_idx) = self.diff_line_state.selected()
         {
-                    let start_idx = self.diff_selection_start.unwrap_or(line_idx).min(line_idx);
-                    let end_idx = self.diff_selection_start.unwrap_or(line_idx).max(line_idx);
+            let start_idx = self.diff_selection_start.unwrap_or(line_idx).min(line_idx);
+            let end_idx = self.diff_selection_start.unwrap_or(line_idx).max(line_idx);
+            let mut success = false;
 
-                    if let (Some(DiffDisplayLine::Code(_, old_start, new_start)), Some(DiffDisplayLine::Code(_, old_end, new_end))) = 
-                        (mr_diff.display_lines.get(start_idx), mr_diff.display_lines.get(end_idx)) 
-                    {
-                        let refs = if let Some(refs) = &mr.diff_refs { refs.clone() } else { return Ok(()); };
-                        let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
-                        let new_path = Some(mr_diff.new_path.clone());
-                        let old_path = Some(mr_diff.old_path.clone());
-                        let new_line = *new_end;
-                        let old_line = *old_end;
-                        let rs_new = if start_idx != end_idx { *new_start } else { None };
-                        let rs_old = if start_idx != end_idx { *old_start } else { None };
+            if let (Some(DiffDisplayLine::Code(_, old_start, new_start)), Some(DiffDisplayLine::Code(_, old_end, new_end))) = 
+                (mr_diff.display_lines.get(start_idx), mr_diff.display_lines.get(end_idx)) 
+            {
+                let new_line = new_end.filter(|&l| l > 0);
+                let old_line = old_end.filter(|&l| l > 0);
+                let rs_new = if start_idx != end_idx { new_start.filter(|&l| l > 0) } else { None };
+                let rs_old = if start_idx != end_idx { old_start.filter(|&l| l > 0) } else { None };
 
-                        tokio::spawn(async move {
-                            let endpoint = CreateMergeRequestDiscussion {
-                                project: pid, merge_request: iid, body,
-                                base_sha: Some(refs.base_sha.clone()),
-                                start_sha: Some(refs.start_sha.clone()),
-                                head_sha: Some(refs.head_sha.clone()),
-                                new_path, old_path, new_line, old_line,
-                                range_start_new: rs_new,
-                                range_start_old: rs_old,
-                            };
-                            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
-                            match res {
-                                Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post comment failed: {}", e))); }
-                                Err(_) => { let _ = tx.send(DataUpdate::Error("Post comment timed out".into())); }
-                            }
-                            let _ = tx.send(DataUpdate::Loading(false));
-                        });
-                        self.input_mode = false; self.textarea = ratatui_textarea::TextArea::default();
-                        self.diff_selection_start = None;
-                    }
+                if new_line.is_some() || old_line.is_some() {
+                    let refs = if let Some(refs) = &mr.diff_refs { refs.clone() } else { return Ok(()); };
+                    let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+                    let new_path = Some(mr_diff.new_path.clone());
+                    let old_path = Some(mr_diff.old_path.clone());
+
+                    tokio::spawn(async move {
+                        let endpoint = CreateMergeRequestDiscussion {
+                            project: pid, merge_request: iid, body,
+                            base_sha: Some(refs.base_sha.clone()),
+                            start_sha: Some(refs.start_sha.clone()),
+                            head_sha: Some(refs.head_sha.clone()),
+                            new_path, old_path, new_line, old_line,
+                            range_start_new: rs_new,
+                            range_start_old: rs_old,
+                        };
+                        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                        match res {
+                            Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                            Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post comment failed: {}", e))); }
+                            Err(_) => { let _ = tx.send(DataUpdate::Error("Post comment timed out".into())); }
+                        }
+                        let _ = tx.send(DataUpdate::Loading(false));
+                    });
+                    success = true;
+                }
+            }
+
+            if !success {
+                self.last_error = Some("Cannot comment on this line (no valid line number)".into());
+            }
+            self.input_mode = false;
+            self.textarea = ratatui_textarea::TextArea::default();
+            self.diff_selection_start = None;
         }
         Ok(())
     }

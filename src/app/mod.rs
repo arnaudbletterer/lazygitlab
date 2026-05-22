@@ -1204,6 +1204,7 @@ impl App {
                         }) {
                             if item.r#type == "blob" {
                                 self.view_mode = ViewMode::Tree;
+                                self.job_log_scroll = 0;
                                 let _ = self.fetch_repository_file(selected_path.clone()).await;
                             } else {
                                 self.repository_tree_state.toggle_selected();
@@ -1725,8 +1726,28 @@ impl App {
             if self.view_mode == ViewMode::Tree {
                 match processed_key.code {
                     KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => { self.view_mode = ViewMode::List; let _ = self.update_preview().await; return; }
-                    KeyCode::Down | KeyCode::Char('j') => { self.job_log_scroll = self.job_log_scroll.saturating_add(1); let _ = self.update_preview().await; return; }
-                    KeyCode::Up | KeyCode::Char('k') => { self.job_log_scroll = self.job_log_scroll.saturating_sub(1); let _ = self.update_preview().await; return; }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let line_count = if let Some(file) = &self.selected_file_content {
+                            use base64::{Engine as _, engine::general_purpose};
+                            let clean_content = file.content.replace(['\n', '\r'], "");
+                            if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
+                                if let Ok(text) = String::from_utf8(decoded) {
+                                    text.lines().count()
+                                } else { 0 }
+                            } else { 0 }
+                        } else { 0 };
+                        let max_scroll = line_count.saturating_sub(self.job_log_viewport_height as usize) as u16;
+                        if self.job_log_scroll < max_scroll {
+                            self.job_log_scroll = self.job_log_scroll.saturating_add(1);
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.job_log_scroll = self.job_log_scroll.saturating_sub(1);
+                        let _ = self.update_preview().await;
+                        return;
+                    }
                     KeyCode::Char('y') => {
                         if let Some(file) = &self.selected_file_content {
                             use base64::{Engine as _, engine::general_purpose};
@@ -1842,17 +1863,37 @@ impl App {
                         return;
                     }
                     KeyCode::Char('c') => {
-                        if let Some(DiffDisplayLine::Code(..)) = self.mr_diff_state.selected()
+                        let selected_valid = self.mr_diff_state.selected()
                             .zip(self.diff_line_state.selected())
                             .and_then(|(sel_idx, line_idx)| {
                                 self.mr_diffs.get(sel_idx)
-                                    .and_then(|mr_diff| mr_diff.display_lines.get(line_idx))
-                            })
-                        {
-                            self.input_mode = true;
-                            self.input_target = InputTarget::NewComment;
-                            self.textarea = ratatui_textarea::TextArea::default();
-                            return;
+                                    .map(|mr_diff| (mr_diff, line_idx))
+                            });
+
+                        if let Some((mr_diff, line_idx)) = selected_valid {
+                            let current_line = mr_diff.display_lines.get(line_idx);
+                            let start_line = self.diff_selection_start
+                                .and_then(|start_idx| mr_diff.display_lines.get(start_idx));
+
+                            let is_valid_line = |dl: &DiffDisplayLine| {
+                                if let DiffDisplayLine::Code(_, old_line, new_line) = dl {
+                                    old_line.is_some_and(|l| l > 0) || new_line.is_some_and(|l| l > 0)
+                                } else {
+                                    false
+                                }
+                            };
+
+                            let current_valid = current_line.map_or(false, |dl| is_valid_line(dl));
+                            let start_valid = start_line.map_or(true, |dl| is_valid_line(dl));
+
+                            if current_valid && start_valid {
+                                self.input_mode = true;
+                                self.input_target = InputTarget::NewComment;
+                                self.textarea = ratatui_textarea::TextArea::default();
+                                return;
+                            } else {
+                                self.last_error = Some("Cannot comment on this line (no valid line number)".into());
+                            }
                         }
                     }
                     KeyCode::Char('r') => {
@@ -1946,7 +1987,7 @@ impl App {
                     KeyCode::Char('L') => { let _ = self.move_board_issue(1).await; return; }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if let Some(list) = self.board_lists_state.selected().and_then(|idx| self.board_lists.get(idx)) {
-                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let issues = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
                             if issues > 0 {
                                 let state = self.board_issue_states.entry(list.id).or_default();
                                 let current = state.selected().unwrap_or(0);
@@ -1957,7 +1998,7 @@ impl App {
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         if let Some(list) = self.board_lists_state.selected().and_then(|idx| self.board_lists.get(idx)) {
-                            let issues = self.board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let issues = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
                             if issues > 0 {
                                 let state = self.board_issue_states.entry(list.id).or_default();
                                 let current = state.selected().unwrap_or(0);
@@ -1969,7 +2010,7 @@ impl App {
                     KeyCode::Enter => {
                         if let Some(list) = self.board_lists_state.selected().and_then(|idx| self.board_lists.get(idx)) {
                             let state = self.board_issue_states.entry(list.id).or_default();
-                            if let Some(issue) = state.selected().and_then(|issue_idx| self.board_issues.get(&list.id).and_then(|v| v.get(issue_idx))).cloned() {
+                            if let Some(issue) = state.selected().and_then(|issue_idx| self.filtered_board_issues.get(&list.id).and_then(|v| v.get(issue_idx))).cloned() {
                                 self.selected_issue = Some(issue);
                                 self.view_mode = ViewMode::Detail;
                                 self.detail_section = DetailSection::Metadata;
@@ -2654,7 +2695,7 @@ impl App {
             if let Some(i) = state.selected() { i } else { return Ok(()); }
         } else { return Ok(()); };
         
-        let issue = if let Some(issues) = self.board_issues.get(&from_list.id) {
+        let issue = if let Some(issues) = self.filtered_board_issues.get(&from_list.id) {
             if let Some(i) = issues.get(issue_idx) { i.clone() } else { return Ok(()); }
         } else { return Ok(()); };
         
@@ -2748,7 +2789,7 @@ impl App {
         let list = self.board_lists_state.selected().and_then(|idx| self.board_lists.get(idx))?;
         let state = self.board_issue_states.get(&list.id)?;
         let issue_idx = state.selected()?;
-        self.board_issues.get(&list.id)
+        self.filtered_board_issues.get(&list.id)
             .and_then(|v| v.get(issue_idx))
             .map(|i| i.web_url.clone())
     }
