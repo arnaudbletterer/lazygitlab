@@ -1,6 +1,6 @@
 [package]
 name = "lazygitlab"
-version = "0.10.21"
+version = "0.11.0"
 edition = "2024"
 
 [lints.rust]
