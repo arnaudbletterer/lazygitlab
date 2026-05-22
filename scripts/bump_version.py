@@ -66,10 +66,10 @@ def main():
     run_command(f'git add Cargo.toml Cargo.lock && git commit -m "chore: bump version to {new_version}"', "Committing version bump")
 
     # Git Tag
-    run_command(f'git tag v{new_version}', f"Tagging v{new_version}")
+    run_command(f'git tag -a v{new_version} -m "chore: bump version to {new_version}"', f"Tagging v{new_version}")
 
     print(f"\nSuccessfully bumped and tagged v{new_version}!")
-    print("Run 'git push origin master --tags' to publish.")
+    print("Run 'git push origin master --tags' to publish both the commit and the tag.")
 
 if __name__ == "__main__":
     main()
