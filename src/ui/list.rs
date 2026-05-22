@@ -145,25 +145,31 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     let list_inner = list_block.inner(area);
     f.render_widget(list_block, area);
 
-    let list_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(0)])
-        .split(list_inner);
-
     let (titles, selected) = match app.active_selection {
-        MenuSelection::Todos => (vec!["Pending", "Snoozed", "Done"], match app.todo_filter { TodoFilter::Pending => 0, TodoFilter::Snoozed => 1, TodoFilter::Done => 2 }),
-        MenuSelection::MergeRequests => (vec!["Opened", "Merged", "Closed", "All"], match app.mr_filter { MergeRequestFilter::Opened => 0, MergeRequestFilter::Merged => 1, MergeRequestFilter::Closed => 2, MergeRequestFilter::All => 3 }),
-        MenuSelection::Issues => (vec!["Opened", "Closed", "All"], match app.issue_filter { IssueFilter::Opened => 0, IssueFilter::Closed => 1, IssueFilter::All => 2 }),
-        _ => (vec!["List"], 0),
+        MenuSelection::Todos => (vec!["Pending", "Snoozed", "Done"], Some(match app.todo_filter { TodoFilter::Pending => 0, TodoFilter::Snoozed => 1, TodoFilter::Done => 2 })),
+        MenuSelection::MergeRequests => (vec!["Opened", "Merged", "Closed", "All"], Some(match app.mr_filter { MergeRequestFilter::Opened => 0, MergeRequestFilter::Merged => 1, MergeRequestFilter::Closed => 2, MergeRequestFilter::All => 3 })),
+        MenuSelection::Issues => (vec!["Opened", "Closed", "All"], Some(match app.issue_filter { IssueFilter::Opened => 0, IssueFilter::Closed => 1, IssueFilter::All => 2 })),
+        _ => (vec![], None),
     };
 
-    let tabs = Tabs::new(titles)
-        .select(selected)
-        .divider(Span::raw(" "))
-        .style(Style::default().fg(app.theme.dim))
-        .highlight_style(Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD).add_modifier(Modifier::UNDERLINED));
-    
-    f.render_widget(tabs, list_chunks[0]);
+    let list_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(if !titles.is_empty() {
+            [Constraint::Length(1), Constraint::Min(0)]
+        } else {
+            [Constraint::Length(0), Constraint::Min(0)]
+        })
+        .split(list_inner);
+
+    if !titles.is_empty() {
+        let tabs = Tabs::new(titles)
+            .select(selected.unwrap_or(0))
+            .divider(Span::styled(" │ ", Style::default().fg(app.theme.dim)))
+            .style(Style::default().fg(app.theme.dim))
+            .highlight_style(Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD));
+        
+        f.render_widget(tabs, list_chunks[0]);
+    }
 
     let highlight_style = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
     let no_highlight = Style::default();
