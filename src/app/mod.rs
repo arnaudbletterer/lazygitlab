@@ -84,6 +84,9 @@ impl App {
             show_assignee_popup: false,
             assignee_state: ListState::default(),
             selected_assignee_ids: Vec::new(),
+            show_reviewer_popup: false,
+            reviewer_state: ListState::default(),
+            selected_reviewer_ids: Vec::new(),
             show_milestone_popup: false,
             milestone_state: ListState::default(),
             selected_milestone_id: None,
@@ -708,7 +711,13 @@ impl App {
     }
 
     pub fn trigger_project_metadata_fetch(&self, project_id: u64) {
-        if self.project_label_cache.contains_key(&project_id) { return; }
+        if self.project_label_cache.contains_key(&project_id) {
+            let labels = self.project_label_cache.get(&project_id).cloned().unwrap_or_default();
+            let milestones = self.project_milestone_cache.get(&project_id).cloned().unwrap_or_default();
+            let members = self.project_member_cache.get(&project_id).cloned().unwrap_or_default();
+            let _ = self.tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
+            return;
+        }
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -861,7 +870,7 @@ impl App {
                                 && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != todo.project.id)
                             {
                                 self.selected_issue = None; self.discussions.clear();
-                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
+                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), created_at: Some("".into()), draft: Some(false), diff_refs: None });
                                 let _ = self.fetch_discussions(todo.project.id, iid).await;
                             } else if todo.target_type == "Issue"
                                 && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != todo.project.id)
@@ -1027,9 +1036,12 @@ impl App {
                             MetadataField::Title => self.selected_metadata_field = MetadataField::Labels,
                             MetadataField::Labels => self.selected_metadata_field = MetadataField::Assignees,
                             MetadataField::Assignees => {
-                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
+                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
                                 else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
                                 else { self.detail_section = DetailSection::Description; }
+                            }
+                            MetadataField::Reviewers => {
+                                self.selected_metadata_field = MetadataField::Milestone;
                             }
                             MetadataField::Milestone | MetadataField::Weight => {
                                 self.detail_section = DetailSection::Description;
@@ -1130,7 +1142,9 @@ impl App {
                             }
                             MetadataField::Labels => self.selected_metadata_field = MetadataField::Title,
                             MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
-                            MetadataField::Milestone | MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
+                            MetadataField::Reviewers => self.selected_metadata_field = MetadataField::Assignees,
+                            MetadataField::Milestone => self.selected_metadata_field = MetadataField::Reviewers,
+                            MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
                             _ => self.selected_metadata_field = MetadataField::Title,
                         }
                     }
@@ -1282,6 +1296,13 @@ impl App {
         ];
         if self.view_mode == ViewMode::Diff {
             items.push(HelpItem { shortcut: "e / E".into(), description: "Expand collapsed diff file".into(), action: HelpAction::ExpandCollapsedDiff, category: "Diff".into() });
+        }
+        if self.selected_mr.is_some() {
+            items.push(HelpItem { shortcut: "A".into(), description: "Approve Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "R".into(), description: "Unapprove Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "M".into(), description: "Merge Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "D".into(), description: "Toggle Draft state".into(), action: HelpAction::None, category: "Merge Request".into() });
+            items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
         items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
@@ -1476,13 +1497,14 @@ impl App {
         }
 
         // 1.5 Selection Popups (Simple List/Selection Popups)
-        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_milestone_popup || self.show_weight_popup {
+        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_weight_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; }
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.show_project_popup { self.move_down(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
                     else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.assignee_state.selected().unwrap_or(0) + 1) % members.len(); self.assignee_state.select(Some(i)); } }
+                    else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.reviewer_state.selected().unwrap_or(0) + 1) % members.len(); self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
                     else if self.show_weight_popup { let i = (self.weight_state.selected().unwrap_or(0) + 1) % 21; self.weight_state.select(Some(i)); }
                 }
@@ -1490,6 +1512,7 @@ impl App {
                     if self.show_project_popup { self.move_up(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = if self.label_state.selected().unwrap_or(0) == 0 { labels.len() - 1 } else { self.label_state.selected().unwrap() - 1 }; self.label_state.select(Some(i)); } }
                     else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.assignee_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.assignee_state.selected().unwrap() - 1 }; self.assignee_state.select(Some(i)); } }
+                    else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.reviewer_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.reviewer_state.selected().unwrap() - 1 }; self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
                     else if self.show_weight_popup { let i = if self.weight_state.selected().unwrap_or(0) == 0 { 20 } else { self.weight_state.selected().unwrap() - 1 }; self.weight_state.select(Some(i)); }
                 }
@@ -1516,12 +1539,24 @@ impl App {
                                 self.selected_assignee_ids.push(id);
                             }
                         }
+                    } else if self.show_reviewer_popup {
+                        let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
+                        let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members);
+                        if let Some(member) = self.reviewer_state.selected().and_then(|i| members.get(i)) {
+                            let id = member.id;
+                            if self.selected_reviewer_ids.contains(&id) {
+                                self.selected_reviewer_ids.retain(|&x| x != id);
+                            } else {
+                                self.selected_reviewer_ids.push(id);
+                            }
+                        }
                     }
                 }
                 KeyCode::Enter => {
                     if self.show_project_popup { let _ = self.select_project().await; }
                     else if self.show_label_popup { if self.selected_issue.is_some() { let _ = self.update_issue_labels().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_labels().await; } }
                     else if self.show_assignee_popup { if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; } }
+                    else if self.show_reviewer_popup { if self.selected_mr.is_some() { let _ = self.update_mr_reviewers().await; } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
                     else if self.show_weight_popup { let _ = self.update_issue_weight().await; }
                 }
@@ -1771,13 +1806,29 @@ impl App {
                 match processed_key.code {
                     KeyCode::Esc => { self.view_mode = ViewMode::List; self.diff_selection_start = None; let _ = self.update_preview().await; return; }
                     KeyCode::Left | KeyCode::Char('h') => { if self.diff_line_state.selected().is_some() { self.diff_line_state.select(None); self.diff_selection_start = None; } else { self.view_mode = ViewMode::List; } let _ = self.update_preview().await; return; }
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => { self.diff_line_state.select(Some(0)); self.diff_selection_start = None; let _ = self.update_preview().await; return; }
+                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if self.diff_line_state.selected().is_none() => {
+                        let idx = self.mr_diff_state.selected()
+                            .and_then(|i| self.mr_diffs.get(i))
+                            .and_then(|d| d.display_lines.iter().position(is_selectable_diff_line))
+                            .unwrap_or(0);
+                        self.diff_line_state.select(Some(idx));
+                        self.diff_selection_start = None;
+                        let _ = self.update_preview().await;
+                        return;
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if let Some(current) = self.diff_line_state.selected() {
                             if let Some(mr_diff) = self.mr_diff_state.selected().and_then(|idx| self.mr_diffs.get(idx)) {
                                 let line_count = mr_diff.display_lines.len();
                                 if line_count > 0 {
-                                    let next = (current + 1) % line_count;
+                                    let mut next = current;
+                                    for step in 1..=line_count {
+                                        let candidate = (current + step) % line_count;
+                                        if is_selectable_diff_line(&mr_diff.display_lines[candidate]) {
+                                            next = candidate;
+                                            break;
+                                        }
+                                    }
                                     if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
                                         if self.diff_selection_start.is_none() {
                                             self.diff_selection_start = Some(current);
@@ -1802,7 +1853,14 @@ impl App {
                             if let Some(mr_diff) = self.mr_diff_state.selected().and_then(|idx| self.mr_diffs.get(idx)) {
                                 let line_count = mr_diff.display_lines.len();
                                 if line_count > 0 {
-                                    let prev = if current == 0 { line_count - 1 } else { current - 1 };
+                                    let mut prev = current;
+                                    for step in 1..=line_count {
+                                        let candidate = if current >= step { current - step } else { line_count - (step - current) };
+                                        if is_selectable_diff_line(&mr_diff.display_lines[candidate]) {
+                                            prev = candidate;
+                                            break;
+                                        }
+                                    }
                                     if processed_key.modifiers.contains(KeyModifiers::SHIFT) {
                                         if self.diff_selection_start.is_none() {
                                             self.diff_selection_start = Some(current);
@@ -1883,8 +1941,8 @@ impl App {
                                 }
                             };
 
-                            let current_valid = current_line.map_or(false, |dl| is_valid_line(dl));
-                            let start_valid = start_line.map_or(true, |dl| is_valid_line(dl));
+                            let current_valid = current_line.is_some_and(is_valid_line);
+                            let start_valid = start_line.is_none_or(is_valid_line);
 
                             if current_valid && start_valid {
                                 self.input_mode = true;
@@ -2160,6 +2218,7 @@ impl App {
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
+            KeyCode::Char('M') => { if self.selected_mr.is_some() { let _ = self.merge_mr().await; } }
             KeyCode::Char('C') => {
                 if let Some(p) = (self.active_selection == MenuSelection::Pipelines)
                     .then(|| self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)))
@@ -2250,6 +2309,7 @@ impl App {
                         MetadataField::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; let text = if let Some(i) = &self.selected_issue { i.description.clone().unwrap_or_default() } else if let Some(m) = &self.selected_mr { m.description.clone().unwrap_or_default() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
                         MetadataField::Labels => { self.show_label_popup = true; self.selected_label_ids = if let Some(i) = &self.selected_issue { i.labels.iter().map(|l| l.id()).collect() } else if let Some(m) = &self.selected_mr { m.labels.iter().map(|l| l.id()).collect() } else { Vec::new() }; self.label_state.select(Some(0)); }
                         MetadataField::Assignees => { self.show_assignee_popup = true; self.selected_assignee_ids = if let Some(i) = &self.selected_issue { i.assignees.iter().map(|a| a.id).collect() } else if let Some(m) = &self.selected_mr { m.assignees.iter().map(|a| a.id).collect() } else { Vec::new() }; self.assignee_state.select(Some(0)); }
+                        MetadataField::Reviewers => { self.show_reviewer_popup = true; self.selected_reviewer_ids = if let Some(m) = &self.selected_mr { m.reviewers.iter().map(|a| a.id).collect() } else { Vec::new() }; self.reviewer_state.select(Some(0)); }
                         MetadataField::Milestone => { self.show_milestone_popup = true; let mid = if let Some(i) = &self.selected_issue { i.milestone.as_ref().map(|m| m.id) } else if let Some(m) = &self.selected_mr { m.milestone.as_ref().map(|mi| mi.id) } else { None }; let idx = mid.and_then(|id| self.project_milestones.iter().position(|m| m.id == id)).map(|p| p + 1).unwrap_or(0); self.milestone_state.select(Some(idx)); }
                         MetadataField::Weight => { if self.selected_issue.is_some() { self.show_weight_popup = true; let w = self.selected_issue.as_ref().and_then(|i| i.weight).unwrap_or(0); self.weight_state.select(Some(w as usize)); } }
                         _ => {}
@@ -2495,6 +2555,18 @@ impl App {
                     return;
                 }
 
+                if let Some(r) = self.show_reviewer_popup.then(|| self.get_rect("popup_reviewer")).flatten() {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                          let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                          if !self.project_members.is_empty() {
+                              let idx = (self.reviewer_state.offset() + inner_y as usize).min(self.project_members.len() - 1);
+                              self.reviewer_state.select(Some(idx));
+                          }
+                    }
+                    let _ = self.update_preview().await;
+                    return;
+                }
+
                 if let Some(r) = self.show_milestone_popup.then(|| self.get_rect("popup_milestone")).flatten() {
                     if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
                          let inner_y = y.saturating_sub(r.y).saturating_sub(1);
@@ -2655,7 +2727,20 @@ impl App {
                         0 => MetadataField::Title,
                         1 => MetadataField::Labels,
                         2 => MetadataField::Assignees,
-                        3 => MetadataField::Milestone,
+                        3 => {
+                            if self.selected_mr.is_some() {
+                                MetadataField::Reviewers
+                            } else {
+                                MetadataField::Weight
+                            }
+                        }
+                        4 => {
+                            if self.selected_mr.is_some() {
+                                MetadataField::Milestone
+                            } else {
+                                MetadataField::Description
+                            }
+                        }
                         _ => MetadataField::Description,
                     };
                     let _ = self.update_preview().await;
@@ -2936,5 +3021,12 @@ pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoj
         if let Some(n) = name { let display_name = if let Some(emoji) = emojis::get_by_shortcode(n) { emoji.as_str().to_string() } else { n.to_string() }; reactions.push(AwardEmoji { name: display_name }); }
     }
     reactions
+}
+
+fn is_selectable_diff_line(dl: &DiffDisplayLine) -> bool {
+    match dl {
+        DiffDisplayLine::Discussion(_) => true,
+        DiffDisplayLine::Code(_, old, new) => old.unwrap_or(0) > 0 || new.unwrap_or(0) > 0,
+    }
 }
 

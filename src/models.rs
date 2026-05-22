@@ -77,6 +77,8 @@ pub struct MergeRequest {
     #[serde(default)]
     pub assignees: Vec<Author>,
     #[serde(default)]
+    pub reviewers: Vec<Author>,
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub diff_refs: Option<DiffRefs>,
@@ -483,6 +485,7 @@ pub enum DetailSection {
 pub enum MetadataField {
     Title,
     Assignees,
+    Reviewers,
     Labels,
     Milestone,
     DueDate,
@@ -748,6 +751,10 @@ pub struct App {
     pub show_assignee_popup: bool,
     pub assignee_state: ListState,
     pub selected_assignee_ids: Vec<u64>,
+
+    pub show_reviewer_popup: bool,
+    pub reviewer_state: ListState,
+    pub selected_reviewer_ids: Vec<u64>,
 
     pub show_milestone_popup: bool,
     pub milestone_state: ListState,

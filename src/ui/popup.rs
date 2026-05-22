@@ -83,6 +83,34 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
     f.render_stateful_widget(list, area, &mut app.assignee_state);
 }
 
+pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(50, 60, f.area());
+    app.set_rect("popup_reviewer", area);
+    f.render_widget(Clear, area);
+    f.render_widget(Block::default().bg(Color::Black), area);
+
+    let project_id = app.selected_mr.as_ref().map(|m| m.project_id)
+        .or_else(|| app.selected_issue.as_ref().map(|i| i.project_id))
+        .unwrap_or(0);
+
+    let members_source = app.project_member_cache.get(&project_id).unwrap_or(&app.project_members);
+
+    let members: Vec<ListItem> = members_source
+        .iter()
+        .map(|m| {
+            let prefix = if app.selected_reviewer_ids.contains(&m.id) { "[x] " } else { "[ ] " };
+            ListItem::new(format!("{}{}", prefix, m.username))
+        })
+        .collect();
+
+    let list = List::new(members)
+        .block(Block::default().borders(Borders::ALL).title(" Edit Reviewers (Space to toggle, Enter to save) "))
+        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD));
+
+    f.render_stateful_widget(list, area, &mut app.reviewer_state);
+}
+
+
 pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 40, f.area());
     app.set_rect("popup_milestone", area);

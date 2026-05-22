@@ -440,6 +440,21 @@ impl App {
         Ok(())
     }
 
+    pub async fn update_mr_reviewers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let pid = mr.project_id; let iid = mr.iid; let client = self.gitlab.clone(); let tx = self.tx.clone();
+            let reviewer_ids = self.selected_reviewer_ids.clone();
+            self.show_reviewer_popup = false; let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: Some(reviewer_ids), milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
+                match res { Ok(Ok(val)) => { if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) { let _ = tx.send(DataUpdate::MRDetail(updated_mr)); } let _ = tx.send(DataUpdate::TriggerRefresh); } Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR reviewers timed out".into())); } }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
     pub async fn update_mr_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id; let iid = mr.iid; let client = self.gitlab.clone(); let tx = self.tx.clone();

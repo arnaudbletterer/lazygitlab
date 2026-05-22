@@ -32,7 +32,7 @@ async fn test_user_story_label_editing() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![dummy_label(0, "bug", "#808080")], 
-        milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![]
     };
     app.selected_mr = Some(mr);
@@ -78,7 +78,7 @@ async fn test_user_story_discussion_reply() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![]
     };
     app.selected_mr = Some(mr);
@@ -177,7 +177,7 @@ async fn test_user_story_post_comment_and_visibility() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -262,7 +262,7 @@ async fn test_user_story_multiline_deleted_comment() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -341,7 +341,7 @@ async fn test_user_story_comment_validation_and_errors() {
         iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
         web_url: "u".into(), state: "opened".into(), references: None,
         upvotes: Some(0), downvotes: Some(0), labels: vec![], 
-        milestone: None, assignees: vec![], created_at: Some("t".into()), draft: Some(false), 
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false), 
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![]
     };
@@ -555,4 +555,91 @@ async fn test_user_story_tree_scroll_and_clamp() {
     // Scroll up (k).
     app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
     assert_eq!(app.job_log_scroll, 2);
+}
+
+#[tokio::test]
+async fn test_user_story_diff_navigation_and_reviewers() {
+    let (server, mut app, mut _rx) = setup_app().await;
+
+    // 1. Test Diff Navigation Skipping Hunk Headers
+    app.active_context = Context::Project;
+    app.active_selection = MenuSelection::MergeRequests;
+    app.active_panel = Panel::MainDetail;
+    app.view_mode = ViewMode::Diff;
+
+    let mr = MergeRequest {
+        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
+        web_url: "u".into(), state: "opened".into(), references: None,
+        upvotes: Some(0), downvotes: Some(0), labels: vec![],
+        milestone: None, assignees: vec![], reviewers: vec![], created_at: Some("t".into()), draft: Some(false),
+        diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }),
+        reactions: vec![]
+    };
+    app.selected_mr = Some(mr);
+
+    let diff = MRDiff {
+        old_path: "file.rs".into(),
+        new_path: "file.rs".into(),
+        diff: "@@ -1,3 +1,3 @@\n line1\n-old\n+new".into(),
+        collapsed: false,
+        display_lines: Vec::new(),
+    };
+    app.mr_diffs = vec![diff];
+    app.enrich_diffs_with_discussions();
+    app.mr_diff_state.select(Some(0));
+
+    // Verify display lines:
+    // Index 0: @@ -1,3 +1,3 @@ (header) -> not selectable (old=None, new=None)
+    // Index 1:  line1 -> selectable (old=Some(1), new=Some(1))
+    // Index 2: -old -> selectable (old=Some(2), new=None)
+    // Index 3: +new -> selectable (old=None, new=Some(2))
+    
+    // Press Right (l/Enter) to enter diff lines. It should skip the header and select index 1.
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)).await;
+    assert_eq!(app.diff_line_state.selected(), Some(1));
+
+    // Press Down (j). It should move to index 2.
+    app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)).await;
+    assert_eq!(app.diff_line_state.selected(), Some(2));
+
+    // Press Down (j). It should move to index 3.
+    app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)).await;
+    assert_eq!(app.diff_line_state.selected(), Some(3));
+
+    // Press Down (j). It should wrap and skip index 0 (header), selecting index 1.
+    app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)).await;
+    assert_eq!(app.diff_line_state.selected(), Some(1));
+
+    // Press Up (k). It should wrap and skip index 0, selecting index 3.
+    app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE)).await;
+    assert_eq!(app.diff_line_state.selected(), Some(3));
+
+    // 2. Test Reviewers popup and updates
+    app.active_panel = Panel::MainDetail;
+    app.detail_section = lazygitlab::models::DetailSection::Metadata;
+    app.selected_metadata_field = lazygitlab::models::MetadataField::Reviewers;
+
+    // Mock Members list in Metadata
+    let members = vec![Author::new(2, "dev1".into())];
+    app.tx.send(DataUpdate::Metadata { project_id: 1, labels: vec![], milestones: vec![], members: members.clone() }).unwrap();
+    app.process_updates(&mut _rx).await;
+
+    // Press Enter to open reviewers popup
+    app.enter_detail_action().await;
+    assert!(app.show_reviewer_popup);
+
+    // Toggle dev1 (index 0)
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)).await;
+    assert!(app.selected_reviewer_ids.contains(&2));
+
+    // Save changes
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/merge_requests/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"iid":1,"project_id":1,"reviewer_ids":[2]})))
+        .mount(&server)
+        .await;
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+    app.process_updates(&mut _rx).await;
+    assert!(!app.show_reviewer_popup);
 }

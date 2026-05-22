@@ -67,6 +67,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_project_popup { render_project_popup(f, app); }
     if app.show_label_popup { render_label_popup(f, app); }
     if app.show_assignee_popup { render_assignee_popup(f, app); }
+    if app.show_reviewer_popup { render_reviewer_popup(f, app); }
     if app.show_milestone_popup { render_milestone_popup(f, app); }
     if app.show_calendar_popup { render_calendar_popup(f, app); }
     if app.show_weight_popup { render_weight_popup(f, app); }
@@ -87,6 +88,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_project_popup ||
                                    app.show_label_popup ||
                                    app.show_assignee_popup ||
+                                   app.show_reviewer_popup ||
                                    app.show_milestone_popup ||
                                    app.show_weight_popup;
 
@@ -345,6 +347,7 @@ mod tests {
             |a: &mut App| a.show_project_popup = true,
             |a: &mut App| a.show_label_popup = true,
             |a: &mut App| a.show_assignee_popup = true,
+            |a: &mut App| a.show_reviewer_popup = true,
             |a: &mut App| a.show_milestone_popup = true,
             |a: &mut App| a.show_weight_popup = true,
             |a: &mut App| a.show_pipeline_popup = true,
@@ -353,6 +356,7 @@ mod tests {
 
         for setup in popups {
             app.show_project_popup = false; app.show_label_popup = false; app.show_assignee_popup = false;
+            app.show_reviewer_popup = false;
             app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
             app.show_calendar_popup = false;
             setup(&mut app);

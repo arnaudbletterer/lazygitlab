@@ -55,7 +55,7 @@ async fn run_monolithic_tests() {
     let mr_json = r##"{"iid": 1, "project_id": 1, "title": "M", "description": "desc\nline2", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "references": {"full": "r"}, "upvotes": 1, "downvotes": 1, "labels": [], "milestone": null, "assignees": [{"id":1,"username":"u1"}], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     app.selected_mr = Some(serde_json::from_str(mr_json).unwrap());
 
-    for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential] {
+    for field in [MetadataField::Title, MetadataField::Description, MetadataField::Labels, MetadataField::Assignees, MetadataField::Reviewers, MetadataField::Milestone, MetadataField::DueDate, MetadataField::Weight, MetadataField::Confidential] {
         app.selected_metadata_field = field;
         terminal.draw(|f| ui(f, &mut app)).unwrap();
     }

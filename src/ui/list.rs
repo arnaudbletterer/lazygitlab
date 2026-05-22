@@ -69,7 +69,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .constraints([
                     Constraint::Percentage(35), // Main List (Top)
                     Constraint::Percentage(30), // Detail View (Description)
-                    Constraint::Length(6),      // Metadata
+                    Constraint::Length(7),      // Metadata
                     Constraint::Min(10),        // Discussions (Bottom)
                 ])
                 .split(chunks[1])
@@ -433,6 +433,16 @@ fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         lines.push(Line::from(assign_spans));
+
+        let mut reviewer_spans = vec![Span::raw(" Review: ")];
+        if mr.reviewers.is_empty() { reviewer_spans.push(Span::styled("None", field_style(MetadataField::Reviewers))); }
+        else {
+            for (i, a) in mr.reviewers.iter().enumerate() {
+                if i > 0 { reviewer_spans.push(Span::raw(", ")); }
+                reviewer_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Reviewers).fg(app.theme.author)));
+            }
+        }
+        lines.push(Line::from(reviewer_spans));
 
         lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(mr.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
     } else if let Some(issue) = &app.selected_issue {

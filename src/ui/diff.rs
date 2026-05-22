@@ -226,6 +226,7 @@ mod tests {
             description: Some("D".into()),
             author: Author::new(1, "u".into()),
             assignees: vec![],
+            reviewers: vec![],
             state: "opened".into(),
             web_url: "u".into(),
             references: Some(References { full: "r".into() }),
