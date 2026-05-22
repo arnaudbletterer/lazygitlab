@@ -239,6 +239,10 @@ mod tests {
             squash: Some(false),
             diff_refs: None,
             reactions: vec![],
+            merge_status: None,
+            detailed_merge_status: None,
+            has_conflicts: None,
+            head_pipeline: None,
         });
 
         app.mr_diffs = vec![

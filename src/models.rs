@@ -50,6 +50,12 @@ pub struct AwardEmoji {
     pub name: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct PipelineMin {
+    pub id: u64,
+    pub status: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MergeRequest {
     pub iid: u64,
@@ -86,6 +92,14 @@ pub struct MergeRequest {
     pub diff_refs: Option<DiffRefs>,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
+    #[serde(default)]
+    pub merge_status: Option<String>,
+    #[serde(default)]
+    pub detailed_merge_status: Option<String>,
+    #[serde(default)]
+    pub has_conflicts: Option<bool>,
+    #[serde(default)]
+    pub head_pipeline: Option<PipelineMin>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -797,6 +811,9 @@ pub struct App {
     pub show_create_issue_popup: bool,
     pub create_issue_title: String,
     pub create_issue_description: String,
+
+    pub show_confirm_merge_popup: bool,
+    pub show_confirm_rebase_popup: bool,
 
     pub show_create_mr_popup: bool,
     pub create_mr_title: String,

@@ -33,6 +33,10 @@ async fn setup_app() -> (MockServer, App) {
         created_at: None,
         draft: None,
         diff_refs: None,
+        merge_status: None,
+        detailed_merge_status: None,
+        has_conflicts: None,
+        head_pipeline: None,
     });
     (server, app)
 }
@@ -100,6 +104,10 @@ async fn test_panel_cycling_backward() {
         created_at: None,
         draft: None,
         diff_refs: None,
+        merge_status: None,
+        detailed_merge_status: None,
+        has_conflicts: None,
+        head_pipeline: None,
     });
     app.handle_key(shift_tab).await;
     assert_eq!(app.active_panel, Panel::MainDetail);

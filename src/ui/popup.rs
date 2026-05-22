@@ -525,6 +525,117 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     render_shortcuts(f, chunks[2], vec![("arrows", "nav"), ("enter", "select"), ("esc", "close")], &app.theme);
 }
 
+use crate::ui::widgets::get_status_style;
+
+pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 35, f.area());
+    app.set_rect("popup_confirm_merge", area);
+    f.render_widget(Clear, area);
+    
+    let block = Block::default()
+        .bg(Color::Black)
+        .borders(Borders::ALL)
+        .title(" Confirm Merge Request ")
+        .border_style(Style::default().fg(app.theme.border));
+        
+    f.render_widget(block.clone(), area);
+    
+    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+    
+    let mut lines = Vec::new();
+    lines.push(Line::from("Are you sure you want to merge this Merge Request?"));
+    lines.push(Line::from(""));
+    
+    if let Some(mr) = &app.selected_mr {
+        lines.push(Line::from(vec![
+            Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(&mr.title),
+        ]));
+        
+        let mut branches = vec![
+            Span::styled("Merge: ", Style::default().add_modifier(Modifier::BOLD)),
+        ];
+        if let Some(refs) = &mr.references {
+            branches.push(Span::styled(&refs.full, Style::default().fg(app.theme.author)));
+        } else {
+            branches.push(Span::styled(format!("!{}", mr.iid), Style::default().fg(app.theme.author)));
+        }
+        lines.push(Line::from(branches));
+
+        // Pipeline info if available
+        if let Some(pipeline) = &mr.head_pipeline {
+            lines.push(Line::from(vec![
+                Span::styled("Pipeline: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(&pipeline.status, get_status_style(&pipeline.status, &app.theme)),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("Pipeline: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("None"),
+            ]));
+        }
+
+        // Merge status info if available
+        let detailed_status = mr.detailed_merge_status.as_deref().unwrap_or("unknown");
+        let status_color = match detailed_status {
+            "mergeable" => app.theme.success,
+            "conflict" => app.theme.failed,
+            _ => app.theme.pending,
+        };
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(detailed_status, Style::default().fg(status_color)),
+        ]));
+    }
+    
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  [y/Enter] Confirm  ", Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)),
+        Span::raw("   "),
+        Span::styled("  [n/Esc] Cancel  ", Style::default().bg(app.theme.dim).fg(Color::Black)),
+    ]));
+
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    f.render_widget(paragraph, inner);
+}
+
+pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(60, 25, f.area());
+    app.set_rect("popup_confirm_rebase", area);
+    f.render_widget(Clear, area);
+    
+    let block = Block::default()
+        .bg(Color::Black)
+        .borders(Borders::ALL)
+        .title(" Confirm Rebase ")
+        .border_style(Style::default().fg(app.theme.border));
+        
+    f.render_widget(block.clone(), area);
+    
+    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+    
+    let mut lines = Vec::new();
+    lines.push(Line::from("Are you sure you want to rebase this Merge Request?"));
+    lines.push(Line::from(""));
+    
+    if let Some(mr) = &app.selected_mr {
+        lines.push(Line::from(vec![
+            Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(&mr.title),
+        ]));
+    }
+    
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  [y/Enter] Confirm  ", Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)),
+        Span::raw("   "),
+        Span::styled("  [n/Esc] Cancel  ", Style::default().bg(app.theme.dim).fg(Color::Black)),
+    ]));
+
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    f.render_widget(paragraph, inner);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

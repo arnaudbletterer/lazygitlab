@@ -107,6 +107,8 @@ impl App {
             mrs_page: 1, mrs_has_more: true,
             issues_page: 1, issues_has_more: true,
             pipelines_page: 1, pipelines_has_more: true,
+            show_confirm_merge_popup: false,
+            show_confirm_rebase_popup: false,
             show_help_popup: false,
             help_state: ListState::default(),
             help_filter_input: String::new(),
@@ -870,7 +872,7 @@ impl App {
                                 && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != todo.project.id)
                             {
                                 self.selected_issue = None; self.discussions.clear();
-                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None });
+                                self.selected_mr = Some(MergeRequest { iid, project_id: todo.project.id, title: todo.body.clone(), author: Author::new(0, "".into()), web_url: todo.target_url.clone(), state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None });
                                 let _ = self.fetch_discussions(todo.project.id, iid).await;
                             } else if todo.target_type == "Issue"
                                 && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != todo.project.id)
@@ -1568,6 +1570,28 @@ impl App {
             return;
         }
 
+        // 1.6 Confirmation Popups
+        if self.show_confirm_merge_popup || self.show_confirm_rebase_popup {
+            match processed_key.code {
+                KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                    self.show_confirm_merge_popup = false;
+                    self.show_confirm_rebase_popup = false;
+                }
+                KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    if self.show_confirm_merge_popup {
+                        self.show_confirm_merge_popup = false;
+                        let _ = self.merge_mr().await;
+                    } else if self.show_confirm_rebase_popup {
+                        self.show_confirm_rebase_popup = false;
+                        let _ = self.rebase_mr().await;
+                    }
+                }
+                _ => {}
+            }
+            let _ = self.update_preview().await;
+            return;
+        }
+
         // 1.7 Creation Forms (Create Issue/MR)
         if self.show_create_issue_popup || self.show_create_mr_popup {
             match processed_key.code {
@@ -2220,7 +2244,7 @@ impl App {
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
-            KeyCode::Char('M') => { if self.selected_mr.is_some() { let _ = self.merge_mr().await; } }
+            KeyCode::Char('M') => { if self.selected_mr.is_some() { self.show_confirm_merge_popup = true; } }
             KeyCode::Char('C') => {
                 if let Some(p) = (self.active_selection == MenuSelection::Pipelines)
                     .then(|| self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)))
@@ -2240,7 +2264,7 @@ impl App {
                 } 
             }
             KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
-            KeyCode::Char('E') => { if self.selected_mr.is_some() { let _ = self.rebase_mr().await; } }
+            KeyCode::Char('E') => { if self.selected_mr.is_some() { self.show_confirm_rebase_popup = true; } }
             KeyCode::Char('S') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_squash().await; } }
             KeyCode::Char('s') => {
                 if self.active_selection == MenuSelection::Todos {
@@ -2256,7 +2280,7 @@ impl App {
             }
             KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => { let _ = self.mark_todo_as_done().await; }
             KeyCode::Char('n') => {
-                if self.show_create_issue_popup || self.show_create_mr_popup || self.show_pipeline_popup || self.show_project_popup || self.show_help_popup || self.show_search { return; }
+                if self.show_create_issue_popup || self.show_create_mr_popup || self.show_pipeline_popup || self.show_project_popup || self.show_help_popup || self.show_search || self.show_confirm_merge_popup || self.show_confirm_rebase_popup { return; }
                 match self.active_selection {
                     MenuSelection::Issues => {
                         self.show_create_issue_popup = true;

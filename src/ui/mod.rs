@@ -77,6 +77,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_snooze_popup { render_snooze_popup(f, app); }
     if app.show_search { render_search_popup(f, app); }
     if app.show_help_popup { render_help_popup(f, app); }
+    if app.show_confirm_merge_popup { render_confirm_merge_popup(f, app); }
+    if app.show_confirm_rebase_popup { render_confirm_rebase_popup(f, app); }
 
     let is_complex_popup_visible = app.show_pipeline_popup || 
                                    app.show_create_issue_popup || 
@@ -90,7 +92,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_assignee_popup ||
                                    app.show_reviewer_popup ||
                                    app.show_milestone_popup ||
-                                   app.show_weight_popup;
+                                   app.show_weight_popup ||
+                                   app.show_confirm_merge_popup ||
+                                   app.show_confirm_rebase_popup;
 
     if app.input_mode && !is_complex_popup_visible && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search) {
         let title = match app.input_target {
@@ -352,6 +356,8 @@ mod tests {
             |a: &mut App| a.show_weight_popup = true,
             |a: &mut App| a.show_pipeline_popup = true,
             |a: &mut App| a.show_calendar_popup = true,
+            |a: &mut App| a.show_confirm_merge_popup = true,
+            |a: &mut App| a.show_confirm_rebase_popup = true,
         ];
 
         for setup in popups {
@@ -359,6 +365,7 @@ mod tests {
             app.show_reviewer_popup = false;
             app.show_milestone_popup = false; app.show_weight_popup = false; app.show_pipeline_popup = false;
             app.show_calendar_popup = false;
+            app.show_confirm_merge_popup = false; app.show_confirm_rebase_popup = false;
             setup(&mut app);
             terminal.draw(|f| ui(f, &mut app)).unwrap();
         }
