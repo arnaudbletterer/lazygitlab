@@ -1102,21 +1102,6 @@ impl App {
                     return;
                 }
                 match self.detail_section {
-                    DetailSection::Discussions => {
-                        if !self.discussions.is_empty() {
-                            let current = self.discussion_state.selected().unwrap_or(0);
-                            if current >= self.discussions.len().saturating_sub(1) {
-                                self.detail_section = DetailSection::Metadata;
-                                self.selected_metadata_field = MetadataField::Title;
-                                self.discussion_state.select(None);
-                            } else {
-                                self.discussion_state.select(Some(current + 1));
-                            }
-                        } else {
-                            self.detail_section = DetailSection::Metadata;
-                            self.selected_metadata_field = MetadataField::Title;
-                        }
-                    }
                     DetailSection::Metadata => {
                         match self.selected_metadata_field {
                             MetadataField::Title => self.selected_metadata_field = MetadataField::Labels,
@@ -1136,16 +1121,19 @@ impl App {
                         }
                     }
                     DetailSection::Description => {
-                        if self.selected_mr.is_some() {
-                            self.detail_section = DetailSection::Changes;
-                        } else {
-                            self.detail_section = DetailSection::Discussions;
-                            if !self.discussions.is_empty() { self.discussion_state.select(Some(0)); }
+                        // Do nothing (it is the bottom sub-panel of Tab 0)
+                    }
+                    DetailSection::Discussions => {
+                        if !self.discussions.is_empty() {
+                            let i = (self.discussion_state.selected().unwrap_or(0) + 1) % self.discussions.len();
+                            self.discussion_state.select(Some(i));
                         }
                     }
                     DetailSection::Changes => {
-                        self.detail_section = DetailSection::Discussions;
-                        if !self.discussions.is_empty() { self.discussion_state.select(Some(0)); }
+                        if !self.mr_diffs.is_empty() {
+                            let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len();
+                            self.mr_diff_state.select(Some(i));
+                        }
                     }
                 }
             }
@@ -1204,33 +1192,16 @@ impl App {
                     return;
                 }
                 match self.detail_section {
-                    DetailSection::Discussions => {
-                        let current = self.discussion_state.selected().unwrap_or(0);
-                        if current == 0 {
-                            if self.selected_mr.is_some() {
-                                self.detail_section = DetailSection::Changes;
-                            } else {
-                                self.detail_section = DetailSection::Description;
-                            }
-                            self.discussion_state.select(None);
-                        } else {
-                            self.discussion_state.select(Some(current - 1));
-                        }
-                    }
-                    DetailSection::Changes => {
-                        self.detail_section = DetailSection::Description;
-                    }
                     DetailSection::Metadata => {
                         match self.selected_metadata_field {
                             MetadataField::Title => {
-                                self.detail_section = DetailSection::Discussions;
-                                if !self.discussions.is_empty() { self.discussion_state.select(Some(self.discussions.len().saturating_sub(1))); }
+                                // Do nothing (it is the top sub-panel of Tab 0)
                             }
                             MetadataField::Labels => self.selected_metadata_field = MetadataField::Title,
                             MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
                             MetadataField::Reviewers => self.selected_metadata_field = MetadataField::Assignees,
-                            MetadataField::Milestone => self.selected_metadata_field = MetadataField::Reviewers,
                             MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
+                            MetadataField::Milestone => self.selected_metadata_field = MetadataField::Reviewers,
                             _ => self.selected_metadata_field = MetadataField::Title,
                         }
                     }
@@ -1240,9 +1211,54 @@ impl App {
                         else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
                         else { self.selected_metadata_field = MetadataField::Assignees; }
                     }
+                    DetailSection::Discussions => {
+                        if !self.discussions.is_empty() {
+                            let i = if self.discussion_state.selected().unwrap_or(0) == 0 { self.discussions.len() - 1 } else { self.discussion_state.selected().unwrap() - 1 };
+                            self.discussion_state.select(Some(i));
+                        }
+                    }
+                    DetailSection::Changes => {
+                        if !self.mr_diffs.is_empty() {
+                            let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len() - 1 } else { self.mr_diff_state.selected().unwrap() - 1 };
+                            self.mr_diff_state.select(Some(i));
+                        }
+                    }
                 }
             }
         }
+    }
+
+    pub fn cycle_detail_tab(&mut self, forward: bool) {
+        let has_changes = self.selected_mr.is_some();
+        let max_tabs = if has_changes { 3 } else { 2 };
+        let current_idx = match self.detail_section {
+            DetailSection::Description | DetailSection::Metadata => 0,
+            DetailSection::Discussions => 1,
+            DetailSection::Changes => 2,
+        };
+        let next_idx = if forward {
+            (current_idx + 1) % max_tabs
+        } else {
+            (current_idx + max_tabs - 1) % max_tabs
+        };
+        self.detail_section = match next_idx {
+            0 => {
+                self.selected_metadata_field = MetadataField::Title;
+                DetailSection::Metadata
+            }
+            1 => {
+                if self.discussion_state.selected().is_none() && !self.discussions.is_empty() {
+                    self.discussion_state.select(Some(0));
+                }
+                DetailSection::Discussions
+            }
+            _ => {
+                if self.mr_diff_state.selected().is_none() && !self.mr_diffs.is_empty() {
+                    self.mr_diff_state.select(Some(0));
+                }
+                DetailSection::Changes
+            }
+        };
     }
 
     pub fn toggle_group_collapse(&mut self) -> bool {
@@ -1322,7 +1338,9 @@ impl App {
                     }
                     MenuSelection::MergeRequests if self.selected_mr.is_some() => {
                         self.view_mode = ViewMode::Diff;
-                        self.mr_diff_state.select(Some(0));
+                        if self.mr_diff_state.selected().is_none() {
+                            self.mr_diff_state.select(Some(0));
+                        }
                         let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
                         let _ = self.fetch_mr_diffs(pid, iid).await;
                     }
@@ -1337,7 +1355,9 @@ impl App {
                 // Enter specialized views from Detail
                 if self.detail_section == DetailSection::Changes && self.selected_mr.is_some() {
                     self.view_mode = ViewMode::Diff;
-                    self.mr_diff_state.select(Some(0));
+                    if self.mr_diff_state.selected().is_none() {
+                        self.mr_diff_state.select(Some(0));
+                    }
                     let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
                     let _ = self.fetch_mr_diffs(pid, iid).await;
                 } else if self.active_selection == MenuSelection::Pipelines {
@@ -2241,33 +2261,60 @@ impl App {
 
         match processed_key.code {
             KeyCode::Tab => {
-                self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
-                    Panel::Main => Panel::MainDetail,
-                    Panel::MainDetail => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
-                };
-                let _ = self.update_preview().await;
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.active_panel = match self.active_panel {
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
-                    Panel::Main => Panel::MainDetail,
-                    Panel::MainDetail => Panel::MainDetail,
-                };
+                if self.active_panel == Panel::MainDetail {
+                    self.cycle_detail_tab(true);
+                } else {
+                    self.active_panel = match self.active_panel {
+                        Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                        Panel::Main => match self.active_context {
+                            Context::Dashboard => Panel::Dashboard,
+                            Context::Explore => Panel::Explore,
+                            Context::Project => Panel::Project,
+                        },
+                        _ => Panel::Main,
+                    };
+                }
                 let _ = self.update_preview().await;
             }
             KeyCode::BackTab => {
+                if self.active_panel == Panel::MainDetail {
+                    self.cycle_detail_tab(false);
+                } else {
+                    self.active_panel = match self.active_panel {
+                        Panel::Main => match self.active_context {
+                            Context::Dashboard => Panel::Dashboard,
+                            Context::Explore => Panel::Explore,
+                            Context::Project => Panel::Project,
+                        },
+                        Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                        _ => Panel::Main,
+                    };
+                }
+                let _ = self.update_preview().await;
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                let is_item_selected = self.selected_mr.is_some() || self.selected_issue.is_some() || self.selected_pipeline.is_some();
                 self.active_panel = match self.active_panel {
-                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
-                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::MainDetail,
-                    Panel::MainDetail => Panel::Main,
+                    Panel::Dashboard | Panel::Explore | Panel::Project => Panel::Main,
+                    Panel::Main => {
+                        if is_item_selected {
+                            Panel::MainDetail
+                        } else {
+                            Panel::Main
+                        }
+                    }
+                    Panel::MainDetail => Panel::MainDetail,
                 };
                 let _ = self.update_preview().await;
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 self.active_panel = match self.active_panel {
                     Panel::MainDetail => Panel::Main,
-                    Panel::Main => match self.active_context { Context::Dashboard => Panel::Dashboard, Context::Explore => Panel::Explore, Context::Project => Panel::Project },
+                    Panel::Main => match self.active_context {
+                        Context::Dashboard => Panel::Dashboard,
+                        Context::Explore => Panel::Explore,
+                        Context::Project => Panel::Project,
+                    },
                     _ => self.active_panel,
                 };
                 let _ = self.update_preview().await;
@@ -2275,10 +2322,13 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => { self.move_down(); let _ = self.update_preview().await; }
             KeyCode::Up | KeyCode::Char('k') => { self.move_up(); let _ = self.update_preview().await; }
             KeyCode::Enter => { let _ = self.update_preview().await; self.go_forward().await; }
-            KeyCode::Esc => { self.go_back().await; }            KeyCode::Char('v') => {
+            KeyCode::Esc => { self.go_back().await; }
+            KeyCode::Char('v') => {
                 if self.selected_mr.is_some() {
                     self.view_mode = ViewMode::Diff;
-                    self.mr_diff_state.select(Some(0));
+                    if self.mr_diff_state.selected().is_none() {
+                        self.mr_diff_state.select(Some(0));
+                    }
                     let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
                     let _ = self.fetch_mr_diffs(pid, iid).await;
                     let _ = self.update_preview().await;

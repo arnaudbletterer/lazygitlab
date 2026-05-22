@@ -4,10 +4,26 @@ use crate::ui::detail::render_detail_view;
 use crate::ui::Theme;
 
 pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
-        .split(area);
+    let is_item_selected = app.selected_mr.is_some() || app.selected_issue.is_some() || app.selected_pipeline.is_some();
+
+    let chunks = if is_item_selected {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(20), // Column 1: Navigation
+                Constraint::Percentage(35), // Column 2: Main List
+                Constraint::Percentage(45), // Column 3: Detail Panel
+            ])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(20), // Column 1: Navigation
+                Constraint::Min(0),         // Column 2: Main List
+            ])
+            .split(area)
+    };
 
     // --- LEFT COLUMN: STATUS & NAVIGATION (Filling the space) ---
     let side_chunks = Layout::default()
@@ -51,57 +67,22 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         render_nav_panel(f, app.active_panel == Panel::Project, &app.theme, side_chunks[3], " Project ", &mut app.project_menu_state, project_items);
     }
 
-    // --- RIGHT COLUMN: MAIN REGION (LIST -> DESCRIPTION -> CONTEXT) ---
-    let is_item_selected = app.selected_mr.is_some() || app.selected_issue.is_some() || app.selected_pipeline.is_some();
-    
-    let main_chunks = if is_item_selected {
-        if app.active_selection == MenuSelection::Pipelines {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Percentage(40), // Pipelines List
-                    Constraint::Min(0),        // Jobs List
-                ])
-                .split(chunks[1])
-        } else {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Percentage(35), // Main List (Top)
-                    Constraint::Percentage(30), // Detail View (Description)
-                    Constraint::Length(11),     // Metadata
-                    Constraint::Min(10),        // Discussions (Bottom)
-                ])
-                .split(chunks[1])
-        }
-    } else {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0),         // Main List (Full height when nothing selected)
-            ])
-            .split(chunks[1])
-    };
-
+    // --- RIGHT COLUMN: MAIN REGION (LIST & DETAIL COLUMN) ---
     if is_item_selected {
         if app.active_selection == MenuSelection::Pipelines {
-            app.set_rect("main_list", main_chunks[0]);
-            render_main_list(f, app, main_chunks[0]);
-            app.set_rect("jobs_panel", main_chunks[1]);
-            render_jobs_panel(f, app, main_chunks[1]);
+            app.set_rect("main_list", chunks[1]);
+            render_main_list(f, app, chunks[1]);
+            app.set_rect("jobs_panel", chunks[2]);
+            render_jobs_panel(f, app, chunks[2]);
         } else {
-            app.set_rect("main_list", main_chunks[0]);
-            render_main_list(f, app, main_chunks[0]);
-            app.set_rect("detail_view", main_chunks[1]);
-            render_detail_view(f, app, main_chunks[1]);
-            app.set_rect("metadata_panel", main_chunks[2]);
-            render_metadata_panel(f, app, main_chunks[2]);
-            app.set_rect("discussions_panel", main_chunks[3]);
-            render_discussions_panel(f, app, main_chunks[3]);
+            app.set_rect("main_list", chunks[1]);
+            render_main_list(f, app, chunks[1]);
+            app.set_rect("detail_view", chunks[2]);
+            render_detail_view(f, app, chunks[2]);
         }
     } else {
-        app.set_rect("main_list", main_chunks[0]);
-        render_main_list(f, app, main_chunks[0]);
+        app.set_rect("main_list", chunks[1]);
+        render_main_list(f, app, chunks[1]);
     }
 }
 
@@ -314,7 +295,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
+pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let is_disc_focused = app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Discussions;
     let block = Block::default()
         .borders(Borders::ALL)
@@ -371,7 +352,7 @@ fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
+pub fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let is_jobs_focused = app.active_panel == Panel::MainDetail;
     let block = Block::default()
         .borders(Borders::ALL)
@@ -400,7 +381,7 @@ fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
+pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let is_meta_focused = app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Metadata;
     let block = Block::default()
         .borders(Borders::ALL)

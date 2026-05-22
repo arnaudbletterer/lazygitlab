@@ -12,8 +12,8 @@ async fn setup_app() -> (MockServer, App) {
     let mut app = App::new(client, tx);
     app.dashboard_menu_state.select(Some(1));
     app.active_selection = MenuSelection::MergeRequests;
-    // Set a dummy selected MR so that the stability check in update_preview doesn't reset active_panel from MainDetail back to Main.
-    app.selected_mr = Some(MergeRequest {
+    
+    let mr = MergeRequest {
         iid: 1,
         project_id: 1,
         title: "Test MR".into(),
@@ -39,7 +39,11 @@ async fn setup_app() -> (MockServer, App) {
         head_pipeline: None,
         source_branch: "".into(),
         target_branch: "".into(),
-    });
+    };
+    app.selected_mr = Some(mr.clone());
+    app.merge_requests = vec![mr.clone()];
+    app.filtered_mrs = vec![GroupedItem::Item(mr)];
+    app.mrs_state.select(Some(0));
     (server, app)
 }
 
@@ -51,19 +55,26 @@ async fn test_panel_cycling_forward() {
     let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
 
-    // Under app's logic, Tab goes: Main -> MainDetail -> Sidebar (Dashboard) -> Main
+    // Under app's new logic:
+    // Tab cycles Sidebar <-> Main panels (excluding MainDetail).
     
-    // Main -> MainDetail
-    app.handle_key(tab).await;
-    assert_eq!(app.active_panel, Panel::MainDetail);
-
-    // MainDetail -> Sidebar (Dashboard)
+    // Main -> Sidebar (Dashboard)
     app.handle_key(tab).await;
     assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
 
     // Sidebar -> Main
     app.handle_key(tab).await;
     assert_eq!(app.active_panel, Panel::Main);
+
+    // Main -> MainDetail via Right/l
+    app.handle_key(right).await;
+    assert_eq!(app.active_panel, Panel::MainDetail);
+
+    // When focused on MainDetail, Tab cycles detail tabs locally instead of changing active_panel
+    app.detail_section = DetailSection::Metadata;
+    app.handle_key(tab).await;
+    assert_eq!(app.active_panel, Panel::MainDetail);
+    assert_eq!(app.detail_section, DetailSection::Discussions);
 
     // Dashboard -> Main via Right (under app's logic, Sidebar + Right -> Main)
     app.active_panel = Panel::Dashboard;
@@ -79,49 +90,31 @@ async fn test_panel_cycling_backward() {
     let left = KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
     let shift_tab = KeyEvent { code: KeyCode::BackTab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
 
-    // Under app's logic, BackTab goes: Main -> Sidebar (Dashboard) -> MainDetail -> Main
+    // Under app's new logic:
+    // BackTab cycles Sidebar <-> Main panels (excluding MainDetail).
 
     // Main -> Sidebar
     app.handle_key(shift_tab).await;
     assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
 
-    // Sidebar -> MainDetail (re-set selected_mr as going to Sidebar cleared it)
-    app.selected_mr = Some(MergeRequest {
-        iid: 1,
-        project_id: 1,
-        title: "Test MR".into(),
-        author: Author::new(1, "u".into()),
-        web_url: "http://example.com".into(),
-        state: "opened".into(),
-        reactions: vec![],
-        description: None,
-        references: None,
-        upvotes: None,
-        downvotes: None,
-        labels: vec![],
-        milestone: None,
-        assignees: vec![],
-        reviewers: vec![],
-        squash: None,
-        created_at: None,
-        draft: None,
-        diff_refs: None,
-        merge_status: None,
-        detailed_merge_status: None,
-        has_conflicts: None,
-        head_pipeline: None,
-        source_branch: "".into(),
-        target_branch: "".into(),
-    });
-    app.handle_key(shift_tab).await;
-    assert_eq!(app.active_panel, Panel::MainDetail);
-
-    // MainDetail -> Main
+    // Sidebar -> Main
     app.handle_key(shift_tab).await;
     assert_eq!(app.active_panel, Panel::Main);
 
-    // MainDetail -> Main via Left
+    // Main -> Sidebar via Left
+    app.handle_key(left).await;
+    assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
+
+    // Focus MainDetail again to test Tab cycling and Left navigation
     app.active_panel = Panel::MainDetail;
+    app.detail_section = DetailSection::Discussions;
+    
+    // Focused on MainDetail + BackTab cycles detail tabs backward locally
+    app.handle_key(shift_tab).await;
+    assert_eq!(app.active_panel, Panel::MainDetail);
+    assert_eq!(app.detail_section, DetailSection::Metadata);
+
+    // MainDetail -> Main via Left
     app.handle_key(left).await;
     assert_eq!(app.active_panel, Panel::Main);
 }

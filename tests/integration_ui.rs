@@ -94,12 +94,17 @@ async fn test_mr_visual_completeness() {
         state: KeyEventState::NONE,
     }).await;
 
+    app.detail_section = DetailSection::Metadata;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 
     assert_buffer_contains(&terminal, "Title: Implement Feature X");
     assert_buffer_contains(&terminal, "Labels:  bug");
     assert_buffer_contains(&terminal, "Assign: @bob");
     assert_buffer_contains(&terminal, "Miles: v1.0");
+
+    app.detail_section = DetailSection::Discussions;
+    terminal.draw(|f| ui(f, &mut app)).unwrap();
+
     assert_buffer_contains(&terminal, "@bob :");
     assert_buffer_contains(&terminal, "Please review this part.");
 }
