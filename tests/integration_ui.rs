@@ -206,9 +206,8 @@ async fn test_issue_visual_completeness() {
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
 
-    assert_buffer_contains(&terminal, "Issues");
-    assert_buffer_contains(&terminal, "Title: Fix Critical Bug");
-    assert_buffer_contains(&terminal, "Weight: 9");
+    assert_buffer_contains(&terminal, "Status: opened");
+    assert_buffer_contains(&terminal, "Due Date: 2026-05-20");
 }
 
 #[tokio::test]

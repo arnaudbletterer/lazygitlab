@@ -192,9 +192,14 @@ impl App {
                     _ => return,
                 }
                 let ep = ep_builder.build().unwrap();
-                let res: Result<Issue, _> = ep.query_async(&c).await;
-                if let Ok(data) = res {
-                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue timed out".into())); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -204,83 +209,173 @@ impl App {
     }
 
     pub async fn update_issue_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &self.selected_issue {
-            let _pid = issue.project_id;
-            let _iid = issue.iid;
-            let _labels = self.selected_label_ids.clone();
-            let _c = self.gitlab.clone();
+        if let Some(issue) = &mut self.selected_issue {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            let updated_labels: Vec<Label> = {
+                let labels_list = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels);
+                labels_list.iter()
+                    .filter(|l| self.selected_label_ids.contains(&l.id()))
+                    .cloned()
+                    .collect()
+            };
+            let labels = updated_labels.iter().map(|l| l.name().to_string()).collect::<Vec<_>>().join(",");
+
+            issue.labels = updated_labels.clone();
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].labels = updated_labels;
+            }
+            self.filter_lists();
+
+            let c = self.gitlab.clone();
             let tx = self.tx.clone();
+            self.show_label_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                // To update labels we need to provide the full list of names
-                // But we only have IDs. Actually GitLab Edit Issue accepts label names or a comma-separated string.
-                // We'll use the names from the cache.
+                let ep = EditIssue { project: pid, issue: iid, labels: Some(labels), ..Default::default() };
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue labels timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
-        self.show_label_popup = false;
         Ok(())
     }
 
     pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &self.selected_issue {
+        if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
+            let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members);
+            let updated_assignees: Vec<Author> = members.iter()
+                .filter(|m| self.selected_assignee_ids.contains(&m.id))
+                .cloned()
+                .collect();
+            issue.assignees = updated_assignees.clone();
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].assignees = updated_assignees;
+            }
+            self.filter_lists();
+
             let assignees = self.selected_assignee_ids.clone();
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
+            self.show_assignee_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, assignee_ids: Some(assignees), ..Default::default() };
-                let res: Result<Issue, _> = ep.query_async(&c).await;
-                if let Ok(data) = res {
-                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue assignees timed out".into())); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
         }
-        self.show_assignee_popup = false;
         Ok(())
     }
 
     pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &self.selected_issue {
+        if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
             let mid = self.selected_milestone_id;
+            let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones);
+            let updated_milestone = mid.and_then(|id| milestones.iter().find(|m| m.id == id).cloned());
+            issue.milestone = updated_milestone.clone();
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].milestone = updated_milestone;
+            }
+            self.filter_lists();
+
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
+            self.show_milestone_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, milestone_id: Some(mid), ..Default::default() };
-                let res: Result<Issue, _> = ep.query_async(&c).await;
-                if let Ok(data) = res {
-                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue milestone timed out".into())); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
         }
-        self.show_milestone_popup = false;
         Ok(())
     }
 
-    pub async fn update_issue_weight(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &self.selected_issue {
+    pub async fn update_issue_start_date(&mut self, date: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
-            let weight = self.weight_state.selected().map(|i| i as i64);
+            issue.start_date = date.clone();
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].start_date = date.clone();
+            }
+            self.filter_lists();
+
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let ep = EditIssue { project: pid, issue: iid, weight: Some(weight), ..Default::default() };
-                let res: Result<Issue, _> = ep.query_async(&c).await;
-                if let Ok(data) = res {
-                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                let ep = EditIssue { project: pid, issue: iid, start_date: Some(date), ..Default::default() };
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue start date timed out".into())); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
         }
-        self.show_weight_popup = false;
+        Ok(())
+    }
+
+    pub async fn update_issue_due_date(&mut self, date: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &mut self.selected_issue {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            issue.due_date = date.clone();
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].due_date = date.clone();
+            }
+            self.filter_lists();
+
+            let c = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = EditIssue { project: pid, issue: iid, due_date: Some(date), ..Default::default() };
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Update Issue due date timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
         Ok(())
     }
 
@@ -294,9 +389,46 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = EditIssue { project: pid, issue: iid, state_event: Some(new_state.to_string()), ..Default::default() };
-                let res: Result<Issue, _> = ep.query_async(&c).await;
-                if let Ok(data) = res {
-                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Toggle Issue state timed out".into())); }
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn toggle_issue_confidential(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &mut self.selected_issue {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            let current_confidential = issue.confidential;
+            let next_confidential = !current_confidential;
+            issue.confidential = next_confidential;
+            if let Some(idx) = self.issues.iter_mut().position(|i| i.iid == iid && i.project_id == pid) {
+                self.issues[idx].confidential = next_confidential;
+            }
+            self.filter_lists();
+
+            let c = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            tokio::spawn(async move {
+                let ep = EditIssue { project: pid, issue: iid, confidential: Some(next_confidential), ..Default::default() };
+                let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let _ = tx.send(DataUpdate::IssueDetail(data));
+                        let _ = tx.send(DataUpdate::TriggerRefresh);
+                    }
+                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e))); }
+                    Err(_) => { let _ = tx.send(DataUpdate::Error("Toggle Issue confidentiality timed out".into())); }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
@@ -345,9 +477,23 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
             let ep = SingleIssue { project: project_id, issue: iid };
-            let res: Result<Result<Issue, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+            let pep = crate::api::IssueParticipants { project: project_id, issue: iid };
+            let pager = gitlab::api::paged(pep, gitlab::api::Pagination::All);
+            let (res, pres): (Result<Result<Issue, _>, _>, Result<Result<Vec<Author>, _>, _>) = tokio::join!(
+                tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)),
+                tokio::time::timeout(std::time::Duration::from_secs(30), pager.query_async(&c))
+            );
+
+            let participants: Vec<Author> = match pres {
+                Ok(Ok(parts)) => parts,
+                _ => Vec::new(),
+            };
+
             match res {
-                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::IssueDetail(data)); }
+                Ok(Ok(mut data)) => {
+                    data.participants = participants;
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Issue detail fetch failed: {}", e))); }
                 Err(_) => { let _ = tx.send(DataUpdate::Error("Issue detail fetch timed out".into())); }
             }

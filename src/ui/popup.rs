@@ -178,7 +178,13 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(40, 15, f.area());
     app.set_rect("popup_calendar", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(format!(" Due Date: {} ", app.calendar_date.format("%B %Y"))), area);
+
+    let title = match app.input_target {
+        InputTarget::EditIssueStartDate => format!(" Start Date: {} ", app.calendar_date.format("%B %Y")),
+        InputTarget::EditIssueDueDate => format!(" Due Date: {} ", app.calendar_date.format("%B %Y")),
+        _ => format!(" Select Date: {} ", app.calendar_date.format("%B %Y")),
+    };
+    f.render_widget(Block::default().bg(Color::Black).borders(Borders::ALL).title(title), area);
 
     let inner = area.inner(Margin { horizontal: 1, vertical: 1 });
     let cols = [Constraint::Length(4); 7];

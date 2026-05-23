@@ -151,6 +151,7 @@ pub struct EditIssue {
     pub assignee_ids: Option<Vec<u64>>,
     pub milestone_id: Option<Option<u64>>,
     pub due_date: Option<Option<String>>,
+    pub start_date: Option<Option<String>>,
     pub weight: Option<Option<i64>>,
     pub confidential: Option<bool>,
 }
@@ -193,6 +194,9 @@ impl Endpoint for EditIssue {
         }
         if let Some(dd) = &self.due_date {
             match dd { Some(val) => { params.push("due_date", val); }, None => { params.push("due_date", ""); } }
+        }
+        if let Some(sd) = &self.start_date {
+            match sd { Some(val) => { params.push("start_date", val); }, None => { params.push("start_date", ""); } }
         }
         if let Some(w) = &self.weight {
             match w { Some(val) => { params.push("weight", *val as u64); }, None => { params.push("weight", ""); } }
@@ -335,12 +339,26 @@ impl Endpoint for ProjectMilestones {
 impl Pageable for ProjectMilestones {}
 
 #[derive(Debug, Clone)]
-pub struct ProjectMembers { pub project: u64 }
-impl Endpoint for ProjectMembers {
+pub struct ProjectMembersAll { pub project: u64 }
+impl Endpoint for ProjectMembersAll {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/members/all", self.project).into() }
 }
+impl Pageable for ProjectMembersAll {}
+
+pub struct ProjectMembers { pub project: u64 }
+impl Endpoint for ProjectMembers {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/members", self.project).into() }
+}
 impl Pageable for ProjectMembers {}
+
+pub struct ProjectUsers { pub project: u64 }
+impl Endpoint for ProjectUsers {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/users", self.project).into() }
+}
+impl Pageable for ProjectUsers {}
 
 #[derive(Debug, Clone)]
 pub struct Groups { pub page: Option<u64>, pub per_page: Option<u64>, pub min_access_level: Option<u64>, pub top_level_only: Option<bool> }
@@ -994,6 +1012,22 @@ impl Endpoint for GroupEpics {
 }
 impl Pageable for GroupEpics {}
 
+#[derive(Debug, Clone)]
+pub struct IssueParticipants { pub project: u64, pub issue: u64 }
+impl Endpoint for IssueParticipants {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}/participants", self.project, self.issue).into() }
+}
+impl Pageable for IssueParticipants {}
+
+#[derive(Debug, Clone)]
+pub struct MergeRequestParticipants { pub project: u64, pub mr: u64 }
+impl Endpoint for MergeRequestParticipants {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/participants", self.project, self.mr).into() }
+}
+impl Pageable for MergeRequestParticipants {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1028,7 +1062,7 @@ mod tests {
             state_event: Some("close".into()), labels: Some("l".into()),
             add_labels: None, remove_labels: None,
             assignee_ids: Some(vec![1]), milestone_id: Some(Some(1)),
-            due_date: Some(Some("2021-01-01".into())), weight: Some(Some(1)), confidential: Some(true)
+            due_date: Some(Some("2021-01-01".into())), start_date: Some(Some("2021-01-01".into())), weight: Some(Some(1)), confidential: Some(true)
         };
         assert_eq!(edit_issue.method(), Method::PUT);
         assert!(edit_issue.body().is_ok());
@@ -1037,7 +1071,7 @@ mod tests {
             project: 1, issue: 2, title: None, description: None,
             state_event: None, labels: None, add_labels: None, remove_labels: None,
             assignee_ids: Some(vec![]),
-            milestone_id: Some(None), due_date: Some(None), weight: Some(None), confidential: None
+            milestone_id: Some(None), due_date: Some(None), start_date: Some(None), weight: Some(None), confidential: None
         };
         assert!(edit_issue_nulls.body().is_ok());
 

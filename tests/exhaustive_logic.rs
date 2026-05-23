@@ -20,9 +20,9 @@ fn dummy_issue(iid: u64, title: &str) -> Issue {
     Issue {
         iid, project_id: 1, title: title.into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u".into(), references: Some(References { full: "r".into() }),
-        issue_type: None, labels: vec![], milestone: None, due_date: None, weight: None,
+        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: None,
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![]
+        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
     }
 }
 

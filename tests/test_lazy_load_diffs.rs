@@ -20,7 +20,7 @@ fn dummy_mr(iid: u64, title: &str) -> MergeRequest {
         upvotes: Some(0), downvotes: Some(0), labels: vec![], milestone: None,
         assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), diff_refs: None, reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     }
 }
 
@@ -149,8 +149,8 @@ async fn test_lazy_load_mrs_diffs() {
         iid: 1, project_id: 1, title: "issue".into(), description: None,
         author: Author::new(1, "u".into()), assignees: vec![], state: "opened".into(),
         web_url: "url".into(), references: None, issue_type: None, labels: vec![],
-        milestone: None, due_date: None, weight: None, task_completion_status: None,
-        confidential: false, created_at: None, upvotes: None, downvotes: None, reactions: vec![]
+        milestone: None, due_date: None, start_date: None, weight: None, task_completion_status: None,
+        confidential: false, created_at: None, upvotes: None, downvotes: None, reactions: vec![], participants: vec![]
     });
 
     let search_mr = SearchResult::MergeRequest(dummy_mr(3, "Search MR"));

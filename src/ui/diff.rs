@@ -261,6 +261,7 @@ mod tests {
             head_pipeline: None,
             source_branch: "".into(),
             target_branch: "".into(),
+            participants: vec![],
         });
 
         app.mr_diffs = vec![

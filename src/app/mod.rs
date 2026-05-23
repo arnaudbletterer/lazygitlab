@@ -818,12 +818,22 @@ impl App {
     }
 
     pub fn trigger_project_metadata_fetch(&self, project_id: u64) {
-        if self.project_label_cache.contains_key(&project_id) {
+        self.trigger_project_metadata_fetch_impl(project_id, false);
+    }
+
+    pub fn trigger_project_metadata_fetch_force(&self, project_id: u64) {
+        self.trigger_project_metadata_fetch_impl(project_id, true);
+    }
+
+    fn trigger_project_metadata_fetch_impl(&self, project_id: u64, force: bool) {
+        if !force && self.project_label_cache.contains_key(&project_id) {
             let labels = self.project_label_cache.get(&project_id).cloned().unwrap_or_default();
             let milestones = self.project_milestone_cache.get(&project_id).cloned().unwrap_or_default();
             let members = self.project_member_cache.get(&project_id).cloned().unwrap_or_default();
-            let _ = self.tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
-            return;
+            if !members.is_empty() {
+                let _ = self.tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
+                return;
+            }
         }
         {
             let mut fetches = self.project_metadata_fetches_in_progress.lock().unwrap();
@@ -837,23 +847,88 @@ impl App {
         tokio::spawn(async move {
             let lp_ep = ProjectLabels { project: project_id };
             let mp_ep = ProjectMilestones { project: project_id };
-            let memp_ep = ProjectMembers { project: project_id };
+            let memp_all_ep = ProjectMembersAll { project: project_id };
 
             let lp = gitlab::api::paged(lp_ep, gitlab::api::Pagination::All);
             let mp = gitlab::api::paged(mp_ep, gitlab::api::Pagination::All);
-            let memp = gitlab::api::paged(memp_ep, gitlab::api::Pagination::All);
+            let memp_all = gitlab::api::paged(memp_all_ep, gitlab::api::Pagination::All);
 
-            let (l_res, m_res, mem_res) = tokio::join!(
+            let (l_res, m_res, mem_all_res) = tokio::join!(
                 tokio::time::timeout(std::time::Duration::from_secs(20), lp.query_async(&client)),
                 tokio::time::timeout(std::time::Duration::from_secs(20), mp.query_async(&client)),
-                tokio::time::timeout(std::time::Duration::from_secs(20), memp.query_async(&client))
+                tokio::time::timeout(std::time::Duration::from_secs(20), memp_all.query_async(&client))
             );
 
-            let labels: Vec<Label> = match l_res { Ok(Ok(data)) => data, _ => Vec::new() };
-            let milestones: Vec<Milestone> = match m_res { Ok(Ok(data)) => data, _ => Vec::new() };
-            let members: Vec<Author> = match mem_res { Ok(Ok(data)) => data, _ => Vec::new() };
+            let labels: Vec<Label> = match l_res {
+                Ok(Ok(data)) => data,
+                Ok(Err(err)) => {
+                    tracing::error!("Failed to fetch project labels for project {}: {:?}", project_id, err);
+                    Vec::new()
+                }
+                Err(_) => {
+                    tracing::error!("Timeout fetching project labels for project {}", project_id);
+                    Vec::new()
+                }
+            };
+            let milestones: Vec<Milestone> = match m_res {
+                Ok(Ok(data)) => data,
+                Ok(Err(err)) => {
+                    tracing::error!("Failed to fetch project milestones for project {}: {:?}", project_id, err);
+                    Vec::new()
+                }
+                Err(_) => {
+                    tracing::error!("Timeout fetching project milestones for project {}", project_id);
+                    Vec::new()
+                }
+            };
+            let mut members: Vec<Author> = match mem_all_res {
+                Ok(Ok(data)) => data,
+                Ok(Err(err)) => {
+                    tracing::warn!("Failed to fetch all project members for project {}: {:?}", project_id, err);
+                    Vec::new()
+                }
+                Err(_) => {
+                    tracing::warn!("Timeout fetching all project members for project {}", project_id);
+                    Vec::new()
+                }
+            };
+
+            if members.is_empty() {
+                // Fallback 1: GET /projects/:id/members
+                let memp_ep = ProjectMembers { project: project_id };
+                let memp = gitlab::api::paged(memp_ep, gitlab::api::Pagination::All);
+                match tokio::time::timeout(std::time::Duration::from_secs(20), memp.query_async(&client)).await {
+                    Ok(Ok(data)) => {
+                        members = data;
+                    }
+                    Ok(Err(err)) => {
+                        tracing::warn!("Failed fallback 1 (direct project members) for project {}: {:?}", project_id, err);
+                    }
+                    Err(_) => {
+                        tracing::warn!("Timeout fallback 1 (direct project members) for project {}", project_id);
+                    }
+                }
+            }
+
+            if members.is_empty() {
+                // Fallback 2: GET /projects/:id/users
+                let users_ep = ProjectUsers { project: project_id };
+                let users = gitlab::api::paged(users_ep, gitlab::api::Pagination::All);
+                match tokio::time::timeout(std::time::Duration::from_secs(20), users.query_async(&client)).await {
+                    Ok(Ok(data)) => {
+                        members = data;
+                    }
+                    Ok(Err(err)) => {
+                        tracing::error!("Failed fallback 2 (project users) for project {}: {:?}", project_id, err);
+                    }
+                    Err(_) => {
+                        tracing::error!("Timeout fallback 2 (project users) for project {}", project_id);
+                    }
+                }
+            }
 
             if !labels.is_empty() || !milestones.is_empty() || !members.is_empty() {
+                tracing::info!("Sending metadata for project {}: {} labels, {} milestones, {} members", project_id, labels.len(), milestones.len(), members.len());
                 let _ = tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
             }
             let _ = fetches_in_progress.lock().unwrap().remove(&project_id);
@@ -1028,7 +1103,7 @@ impl App {
                                 && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != project_id)
                             {
                                 self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
-                                self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into() });
+                                self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into(), participants: Vec::new() });
                                 let _ = self.fetch_discussions(project_id, iid).await;
                                 if self.active_panel == Panel::MainDetail {
                                     self.trigger_project_metadata_fetch(project_id);
@@ -1037,7 +1112,7 @@ impl App {
                                 && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != project_id)
                             {
                                 self.selected_mr = None; self.discussions.clear();
-                                self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new() });
+                                self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, start_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new(), participants: Vec::new() });
                                 let _ = self.fetch_issue_discussions(project_id, iid).await;
                                 if self.active_panel == Panel::MainDetail {
                                     self.trigger_project_metadata_fetch(project_id);
@@ -1219,13 +1294,26 @@ impl App {
                             MetadataField::Labels => self.selected_metadata_field = MetadataField::Assignees,
                             MetadataField::Assignees => {
                                 if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
-                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
+                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
                                 else { self.detail_section = DetailSection::Description; }
                             }
                             MetadataField::Reviewers => {
                                 self.selected_metadata_field = MetadataField::Milestone;
                             }
-                            MetadataField::Milestone | MetadataField::Weight => {
+                            MetadataField::Milestone => {
+                                if self.selected_mr.is_some() { self.detail_section = DetailSection::Description; }
+                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::StartDate; }
+                                else { self.detail_section = DetailSection::Description; }
+                            }
+                            MetadataField::StartDate => {
+                                if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::DueDate; }
+                                else { self.detail_section = DetailSection::Description; }
+                            }
+                            MetadataField::DueDate => {
+                                if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Confidential; }
+                                else { self.detail_section = DetailSection::Description; }
+                            }
+                            MetadataField::Confidential => {
                                 self.detail_section = DetailSection::Description;
                             }
                             _ => self.detail_section = DetailSection::Description,
@@ -1318,15 +1406,20 @@ impl App {
                             }
                             MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
                             MetadataField::Reviewers => self.selected_metadata_field = MetadataField::Assignees,
-                            MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
-                            MetadataField::Milestone => self.selected_metadata_field = MetadataField::Reviewers,
+                            MetadataField::Milestone => {
+                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
+                                else { self.selected_metadata_field = MetadataField::Assignees; }
+                            }
+                            MetadataField::StartDate => self.selected_metadata_field = MetadataField::Milestone,
+                            MetadataField::DueDate => self.selected_metadata_field = MetadataField::StartDate,
+                            MetadataField::Confidential => self.selected_metadata_field = MetadataField::DueDate,
                             _ => self.selected_metadata_field = MetadataField::Title,
                         }
                     }
                     DetailSection::Description => {
                         self.detail_section = DetailSection::Metadata;
                         if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
-                        else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Weight; }
+                        else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Confidential; }
                         else { self.selected_metadata_field = MetadataField::Assignees; }
                     }
                     DetailSection::Discussions => {
@@ -1705,8 +1798,33 @@ impl App {
                 KeyCode::Left | KeyCode::Char('h') => { self.calendar_date -= Duration::days(1); }
                 KeyCode::Right | KeyCode::Char('l') => { self.calendar_date += Duration::days(1); }
                 KeyCode::Enter => {
-                    let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d"));
-                    let _ = self.snooze_todo(snooze_until).await;
+                    match self.input_target {
+                        InputTarget::SnoozeUntil => {
+                            let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d"));
+                            let _ = self.snooze_todo(snooze_until).await;
+                        }
+                        InputTarget::EditIssueStartDate => {
+                            let date_str = self.calendar_date.format("%Y-%m-%d").to_string();
+                            let _ = self.update_issue_start_date(Some(date_str)).await;
+                        }
+                        InputTarget::EditIssueDueDate => {
+                            let date_str = self.calendar_date.format("%Y-%m-%d").to_string();
+                            let _ = self.update_issue_due_date(Some(date_str)).await;
+                        }
+                        _ => {}
+                    }
+                    self.show_calendar_popup = false;
+                }
+                KeyCode::Char('c') | KeyCode::Char('x') | KeyCode::Backspace | KeyCode::Delete => {
+                    match self.input_target {
+                        InputTarget::EditIssueStartDate => {
+                            let _ = self.update_issue_start_date(None).await;
+                        }
+                        InputTarget::EditIssueDueDate => {
+                            let _ = self.update_issue_due_date(None).await;
+                        }
+                        _ => {}
+                    }
                     self.show_calendar_popup = false;
                 }
                 KeyCode::Esc => { self.show_calendar_popup = false; }
@@ -1782,16 +1900,15 @@ impl App {
         }
 
         // 1.5 Selection Popups (Simple List/Selection Popups)
-        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_weight_popup || self.show_target_branch_popup {
+        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_target_branch_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; self.show_target_branch_popup = false; }
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_target_branch_popup = false; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.show_project_popup { self.move_down(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
                     else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.assignee_state.selected().unwrap_or(0) + 1) % members.len(); self.assignee_state.select(Some(i)); } }
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.reviewer_state.selected().unwrap_or(0) + 1) % members.len(); self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
-                    else if self.show_weight_popup { let i = (self.weight_state.selected().unwrap_or(0) + 1) % 21; self.weight_state.select(Some(i)); }
                     else if self.show_target_branch_popup { if !self.project_branches.is_empty() { let i = (self.target_branch_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.target_branch_state.select(Some(i)); } }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
@@ -1800,7 +1917,6 @@ impl App {
                     else if self.show_assignee_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.assignee_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.assignee_state.selected().unwrap() - 1 }; self.assignee_state.select(Some(i)); } }
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.reviewer_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.reviewer_state.selected().unwrap() - 1 }; self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
-                    else if self.show_weight_popup { let i = if self.weight_state.selected().unwrap_or(0) == 0 { 20 } else { self.weight_state.selected().unwrap() - 1 }; self.weight_state.select(Some(i)); }
                     else if self.show_target_branch_popup { if !self.project_branches.is_empty() { let i = if self.target_branch_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.target_branch_state.selected().unwrap() - 1 }; self.target_branch_state.select(Some(i)); } }
                 }
                 KeyCode::Char(' ') => {
@@ -1842,10 +1958,15 @@ impl App {
                 KeyCode::Enter => {
                     if self.show_project_popup { let _ = self.select_project().await; }
                     else if self.show_label_popup { if self.selected_issue.is_some() { let _ = self.update_issue_labels().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_labels().await; } }
-                    else if self.show_assignee_popup { if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; } }
+                    else if self.show_assignee_popup {
+                        if self.selected_issue.is_some() { let _ = self.update_issue_assignees().await; }
+                        else if self.selected_mr.is_some() { let _ = self.update_mr_assignees().await; }
+                        // Clear selection after persisting and hide popup
+                        self.selected_assignee_ids.clear();
+                        self.show_assignee_popup = false;
+                    }
                     else if self.show_reviewer_popup { if self.selected_mr.is_some() { let _ = self.update_mr_reviewers().await; } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
-                    else if self.show_weight_popup { let _ = self.update_issue_weight().await; }
                     else if self.show_target_branch_popup { let _ = self.update_mr_target_branch().await; }
                 }
                 _ => {}
@@ -2696,10 +2817,44 @@ impl App {
                         MetadataField::Title => { self.input_mode = true; self.input_target = InputTarget::EditTitle; let text = if let Some(i) = &self.selected_issue { i.title.clone() } else if let Some(m) = &self.selected_mr { m.title.clone() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
                         MetadataField::Description => { self.input_mode = true; self.input_target = InputTarget::EditDescription; let text = if let Some(i) = &self.selected_issue { i.description.clone().unwrap_or_default() } else if let Some(m) = &self.selected_mr { m.description.clone().unwrap_or_default() } else { String::new() }; self.textarea = ratatui_textarea::TextArea::from(text.lines()); self.textarea.move_cursor(ratatui_textarea::CursorMove::End); }
                         MetadataField::Labels => { self.show_label_popup = true; self.selected_label_ids = if let Some(i) = &self.selected_issue { i.labels.iter().map(|l| l.id()).collect() } else if let Some(m) = &self.selected_mr { m.labels.iter().map(|l| l.id()).collect() } else { Vec::new() }; self.label_state.select(Some(0)); }
-                        MetadataField::Assignees => { self.show_assignee_popup = true; self.selected_assignee_ids = if let Some(i) = &self.selected_issue { i.assignees.iter().map(|a| a.id).collect() } else if let Some(m) = &self.selected_mr { m.assignees.iter().map(|a| a.id).collect() } else { Vec::new() }; self.assignee_state.select(Some(0)); }
-                        MetadataField::Reviewers => { self.show_reviewer_popup = true; self.selected_reviewer_ids = if let Some(m) = &self.selected_mr { m.reviewers.iter().map(|a| a.id).collect() } else { Vec::new() }; self.reviewer_state.select(Some(0)); }
+                        MetadataField::Assignees => {
+                            let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
+                            if self.project_member_cache.get(&pid).map(|m| m.is_empty()).unwrap_or(true) {
+                                self.trigger_project_metadata_fetch_force(pid);
+                            }
+                            self.show_assignee_popup = true;
+                            self.selected_assignee_ids = if let Some(i) = &self.selected_issue { i.assignees.iter().map(|a| a.id).collect() } else if let Some(m) = &self.selected_mr { m.assignees.iter().map(|a| a.id).collect() } else { Vec::new() };
+                            self.assignee_state.select(Some(0));
+                        }
+                        MetadataField::Reviewers => {
+                            let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0);
+                            if self.project_member_cache.get(&pid).map(|m| m.is_empty()).unwrap_or(true) {
+                                self.trigger_project_metadata_fetch_force(pid);
+                            }
+                            self.show_reviewer_popup = true;
+                            self.selected_reviewer_ids = if let Some(m) = &self.selected_mr { m.reviewers.iter().map(|a| a.id).collect() } else { Vec::new() };
+                            self.reviewer_state.select(Some(0));
+                        }
                         MetadataField::Milestone => { self.show_milestone_popup = true; let mid = if let Some(i) = &self.selected_issue { i.milestone.as_ref().map(|m| m.id) } else if let Some(m) = &self.selected_mr { m.milestone.as_ref().map(|mi| mi.id) } else { None }; let idx = mid.and_then(|id| self.project_milestones.iter().position(|m| m.id == id)).map(|p| p + 1).unwrap_or(0); self.milestone_state.select(Some(idx)); }
-                        MetadataField::Weight => { if self.selected_issue.is_some() { self.show_weight_popup = true; let w = self.selected_issue.as_ref().and_then(|i| i.weight).unwrap_or(0); self.weight_state.select(Some(w as usize)); } }
+                        MetadataField::StartDate => {
+                            if let Some(i) = &self.selected_issue {
+                                self.show_calendar_popup = true;
+                                self.input_target = InputTarget::EditIssueStartDate;
+                                self.calendar_date = i.start_date.as_ref()
+                                    .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                                    .unwrap_or_else(|| chrono::Local::now().date_naive());
+                            }
+                        }
+                        MetadataField::DueDate => {
+                            if let Some(i) = &self.selected_issue {
+                                self.show_calendar_popup = true;
+                                self.input_target = InputTarget::EditIssueDueDate;
+                                self.calendar_date = i.due_date.as_ref()
+                                    .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                                    .unwrap_or_else(|| chrono::Local::now().date_naive());
+                            }
+                        }
+                        MetadataField::Confidential => { if self.selected_issue.is_some() { let _ = self.toggle_issue_confidential().await; } }
                         MetadataField::TargetBranch => {
                             if let Some(mr) = &self.selected_mr {
                                 let pid = mr.project_id;
@@ -2710,7 +2865,6 @@ impl App {
                                 let _ = self.fetch_branches(pid).await;
                             }
                         }
-                        _ => {}
                     }
                 }
                 DetailSection::Discussions => { self.input_mode = true; self.input_target = InputTarget::Reply; self.textarea = ratatui_textarea::TextArea::default(); }
@@ -3147,10 +3301,13 @@ impl App {
                     } else {
                         match inner_y {
                             0 => MetadataField::Title,
-                            1 => MetadataField::Labels,
-                            2 => MetadataField::Assignees,
-                            3 => MetadataField::Milestone,
-                            4 => MetadataField::Weight,
+                            1 => MetadataField::Title, // status line is at row 0, title is row 1
+                            2 => MetadataField::Labels,
+                            3 => MetadataField::Assignees,
+                            4 => MetadataField::Milestone,
+                            5 => MetadataField::StartDate,
+                            6 => MetadataField::DueDate,
+                            7 => MetadataField::Confidential,
                             _ => MetadataField::Title,
                         }
                     };
@@ -3268,6 +3425,7 @@ impl App {
                 assignee_ids: None,
                 milestone_id: None,
                 due_date: None,
+                start_date: None,
                 weight: None,
                 confidential: None,
             };

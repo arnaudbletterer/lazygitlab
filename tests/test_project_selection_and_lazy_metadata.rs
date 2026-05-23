@@ -80,7 +80,7 @@ async fn test_project_selection_focus_and_lazy_metadata() {
         upvotes: Some(0), downvotes: Some(0), labels: vec![], milestone: None,
         assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), diff_refs: None, reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.active_panel = Panel::Main;
     app.active_context = Context::Project;

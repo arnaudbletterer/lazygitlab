@@ -104,6 +104,8 @@ pub struct MergeRequest {
     pub source_branch: String,
     #[serde(default)]
     pub target_branch: String,
+    #[serde(default)]
+    pub participants: Vec<Author>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -463,6 +465,8 @@ pub struct Issue {
     #[serde(default)]
     pub due_date: Option<String>,
     #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default)]
     pub weight: Option<i64>,
     #[serde(default)]
     pub task_completion_status: Option<TaskCompletionStatus>,
@@ -476,6 +480,8 @@ pub struct Issue {
     pub downvotes: Option<u64>,
     #[serde(default)]
     pub reactions: Vec<AwardEmoji>,
+    #[serde(default)]
+    pub participants: Vec<Author>,
 }
 
 
@@ -501,6 +507,8 @@ pub enum InputTarget {
     SnoozeUntil,
     Search,
     NewFileComment,
+    EditIssueStartDate,
+    EditIssueDueDate,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -525,8 +533,8 @@ pub enum MetadataField {
     Reviewers,
     Labels,
     Milestone,
+    StartDate,
     DueDate,
-    Weight,
     Confidential,
     Description,
     TargetBranch,

@@ -35,7 +35,7 @@ async fn test_user_story_label_editing() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
     app.detail_section = lazygitlab::models::DetailSection::Metadata;
@@ -83,7 +83,7 @@ async fn test_user_story_discussion_reply() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
     
@@ -129,9 +129,9 @@ async fn test_user_story_assignee_milestone_editing() {
     let issue = Issue {
         iid: 1, project_id: 1, title: "I1".into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u".into(), references: None,
-        issue_type: None, labels: vec![], milestone: None, due_date: None, weight: Some(1),
+        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: Some(1),
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![]
+        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
     };
     app.selected_issue = Some(issue);
 
@@ -185,7 +185,7 @@ async fn test_user_story_post_comment_and_visibility() {
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
     
@@ -272,7 +272,7 @@ async fn test_user_story_multiline_deleted_comment() {
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
     
@@ -353,7 +353,7 @@ async fn test_user_story_comment_validation_and_errors() {
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }), 
         reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
     
@@ -420,23 +420,23 @@ async fn test_user_story_kanban_filtering_coherency() {
     let issue1 = Issue {
         iid: 1, project_id: 1, title: "Apple".into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u1".into(), references: None,
-        issue_type: None, labels: vec![], milestone: None, due_date: None, weight: Some(1),
+        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: Some(1),
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![]
+        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
     };
     let issue2 = Issue {
         iid: 2, project_id: 1, title: "Banana".into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u2".into(), references: None,
-        issue_type: None, labels: vec![], milestone: None, due_date: None, weight: Some(1),
+        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: Some(1),
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![]
+        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
     };
     let issue3 = Issue {
         iid: 3, project_id: 1, title: "Cherry".into(), description: None, author: Author::new(1, "u".into()),
         assignees: vec![], state: "opened".into(), web_url: "u3".into(), references: None,
-        issue_type: None, labels: vec![], milestone: None, due_date: None, weight: Some(1),
+        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: Some(1),
         task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![]
+        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
     };
 
     app.board_issues.insert(10, vec![issue1, issue2, issue3]);
@@ -585,7 +585,7 @@ async fn test_user_story_diff_navigation_and_reviewers() {
         diff_refs: Some(DiffRefs { base_sha: "base".into(), head_sha: "head".into(), start_sha: "start".into() }),
         reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "target".into()
+        source_branch: "source".into(), target_branch: "target".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
 
@@ -673,7 +673,7 @@ async fn test_user_story_target_branch_editing() {
         milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
         diff_refs: None, reactions: vec![],
         merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
-        source_branch: "source".into(), target_branch: "master".into()
+        source_branch: "source".into(), target_branch: "master".into(), participants: vec![]
     };
     app.selected_mr = Some(mr);
 
@@ -733,3 +733,203 @@ async fn test_user_story_target_branch_editing() {
     assert!(updated);
     assert!(!app.show_target_branch_popup);
 }
+
+struct ConfidentialMatcher;
+impl wiremock::Match for ConfidentialMatcher {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let body_str = String::from_utf8_lossy(&request.body);
+        body_str.contains("confidential=")
+    }
+}
+
+struct StartDateMatcher;
+impl wiremock::Match for StartDateMatcher {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let body_str = String::from_utf8_lossy(&request.body);
+        body_str.contains("start_date=")
+    }
+}
+
+struct DueDateMatcher;
+impl wiremock::Match for DueDateMatcher {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let body_str = String::from_utf8_lossy(&request.body);
+        body_str.contains("due_date=")
+    }
+}
+
+struct LabelsMatcher;
+impl wiremock::Match for LabelsMatcher {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let body_str = String::from_utf8_lossy(&request.body);
+        body_str.contains("labels=")
+    }
+}
+
+#[tokio::test]
+async fn test_user_story_issue_metadata_editing() {
+    let (server, mut app, mut _rx) = setup_app().await;
+
+    app.active_context = Context::Project;
+    app.active_selection = MenuSelection::Issues;
+    app.active_panel = Panel::MainDetail;
+    app.detail_section = lazygitlab::models::DetailSection::Metadata;
+
+    let issue = Issue {
+        iid: 1,
+        project_id: 1,
+        title: "I1".into(),
+        description: None,
+        author: Author::new(1, "u".into()),
+        assignees: vec![],
+        state: "opened".into(),
+        web_url: "u".into(),
+        references: None,
+        issue_type: None,
+        labels: vec![],
+        milestone: None,
+        due_date: None,
+        start_date: None,
+        weight: Some(1),
+        task_completion_status: None,
+        confidential: false,
+        created_at: Some("t".into()),
+        upvotes: Some(0),
+        downvotes: Some(0),
+        reactions: vec![],
+        participants: vec![],
+    };
+    app.selected_issue = Some(issue);
+
+    // Mount PUT mock for toggling confidentiality
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/issues/1"))
+        .and(ConfidentialMatcher)
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "iid": 1, "project_id": 1, "title": "I1", "author": {"id": 1, "username": "u"},
+            "web_url": "u", "state": "opened", "confidential": true, "weight": 1, "labels": []
+        })))
+        .mount(&server)
+        .await;
+
+    // Mount PUT mock for saving start_date
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/issues/1"))
+        .and(StartDateMatcher)
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "iid": 1, "project_id": 1, "title": "I1", "author": {"id": 1, "username": "u"},
+            "web_url": "u", "state": "opened", "confidential": true, "start_date": "2026-05-23", "labels": []
+        })))
+        .mount(&server)
+        .await;
+
+    // Mount PUT mock for saving due_date
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/issues/1"))
+        .and(DueDateMatcher)
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "iid": 1, "project_id": 1, "title": "I1", "author": {"id": 1, "username": "u"},
+            "web_url": "u", "state": "opened", "confidential": true, "start_date": "2026-05-23", "due_date": "2026-05-25", "labels": []
+        })))
+        .mount(&server)
+        .await;
+
+    // Mount PUT mock for saving labels
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/issues/1"))
+        .and(LabelsMatcher)
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "iid": 1, "project_id": 1, "title": "I1", "author": {"id": 1, "username": "u"},
+            "web_url": "u", "state": "opened", "confidential": true, "start_date": "2026-05-23", "due_date": "2026-05-25",
+            "labels": [{"id": 10, "name": "bug", "color": "#ff0000", "text_color": "#ffffff"}]
+        })))
+        .mount(&server)
+        .await;
+
+    // 1. Test Toggle Confidentiality
+    app.selected_metadata_field = lazygitlab::models::MetadataField::Confidential;
+
+    // Press Enter to trigger toggling confidentiality
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+
+    let mut confidential_updated = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if app.selected_issue.as_ref().map(|i| i.confidential) == Some(true) {
+            confidential_updated = true;
+            break;
+        }
+    }
+    assert!(confidential_updated);
+
+    // 2. Test StartDate Editing
+    app.selected_metadata_field = lazygitlab::models::MetadataField::StartDate;
+    app.enter_detail_action().await;
+    assert!(app.show_calendar_popup);
+
+    app.calendar_date = chrono::NaiveDate::from_ymd_opt(2026, 5, 23).unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+
+    let mut start_date_updated = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if app.selected_issue.as_ref().and_then(|i| i.start_date.as_deref()) == Some("2026-05-23") {
+            start_date_updated = true;
+            break;
+        }
+    }
+    assert!(start_date_updated);
+    assert!(!app.show_calendar_popup);
+
+    // 3. Test DueDate Editing
+    app.selected_metadata_field = lazygitlab::models::MetadataField::DueDate;
+    app.enter_detail_action().await;
+    assert!(app.show_calendar_popup);
+
+    app.calendar_date = chrono::NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+
+    let mut due_date_updated = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if app.selected_issue.as_ref().and_then(|i| i.due_date.as_deref()) == Some("2026-05-25") {
+            due_date_updated = true;
+            break;
+        }
+    }
+    assert!(due_date_updated);
+    assert!(!app.show_calendar_popup);
+
+    // 3. Test Labels Editing
+    let full_labels = vec![dummy_label(10, "bug", "#ff0000")];
+    app.tx.send(DataUpdate::Metadata { project_id: 1, labels: full_labels, milestones: vec![], members: vec![] }).unwrap();
+    app.process_updates(&mut _rx).await;
+
+    app.selected_metadata_field = lazygitlab::models::MetadataField::Labels;
+    app.enter_detail_action().await;
+    assert!(app.show_label_popup);
+
+    // Select label at index 0 (ID 10)
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)).await;
+    assert!(app.selected_label_ids.contains(&10));
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+
+    let mut labels_updated = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if let Some(iss) = &app.selected_issue {
+            if iss.labels.iter().any(|l| l.id == 10) {
+                labels_updated = true;
+                break;
+            }
+        }
+    }
+    assert!(labels_updated);
+    assert!(!app.show_label_popup);
+}
+

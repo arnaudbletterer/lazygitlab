@@ -483,7 +483,24 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             Span::raw(" Status: "),
             Span::styled(detailed_status, Style::default().fg(status_color)),
         ]));
+
+        let mut participant_spans = vec![Span::raw(" Participants: ")];
+        if mr.participants.is_empty() {
+            participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, p) in mr.participants.iter().enumerate() {
+                if i > 0 { participant_spans.push(Span::raw(", ")); }
+                participant_spans.push(Span::styled(format!("@{}", p.username), Style::default().fg(app.theme.author)));
+            }
+        }
+        lines.push(Line::from(participant_spans));
     } else if let Some(issue) = &app.selected_issue {
+        use crate::ui::widgets::get_status_style;
+        lines.push(Line::from(vec![
+            Span::raw(" Status: "),
+            Span::styled(&issue.state, get_status_style(&issue.state, &app.theme)),
+        ]));
+
         let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { issue.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
 
@@ -510,7 +527,26 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         }
         lines.push(Line::from(assign_spans));
 
-        lines.push(Line::from(vec![Span::raw(" Weight: "), Span::styled(issue.weight.map(|w| w.to_string()).unwrap_or_else(|| "0".into()), field_style(MetadataField::Weight))]));
+        lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(issue.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
+        
+        let start_date_str = issue.start_date.as_deref().unwrap_or("None");
+        lines.push(Line::from(vec![Span::raw(" Start Date: "), Span::styled(start_date_str, field_style(MetadataField::StartDate))]));
+
+        let due_date_str = issue.due_date.as_deref().unwrap_or("None");
+        lines.push(Line::from(vec![Span::raw(" Due Date: "), Span::styled(due_date_str, field_style(MetadataField::DueDate))]));
+
+        lines.push(Line::from(vec![Span::raw(" Confidential: "), Span::styled(if issue.confidential { "Yes" } else { "No" }, field_style(MetadataField::Confidential))]));
+
+        let mut participant_spans = vec![Span::raw(" Participants: ")];
+        if issue.participants.is_empty() {
+            participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, p) in issue.participants.iter().enumerate() {
+                if i > 0 { participant_spans.push(Span::raw(", ")); }
+                participant_spans.push(Span::styled(format!("@{}", p.username), Style::default().fg(app.theme.author)));
+            }
+        }
+        lines.push(Line::from(participant_spans));
     } else if let Some(pipeline) = &app.selected_pipeline {
         lines.push(Line::from(vec![Span::raw(" Pipeline: "), Span::styled(format!("#{}", pipeline.id), field_style(MetadataField::Title))]));
         lines.push(Line::from(vec![Span::raw(" Status: "), Span::styled(&pipeline.status, crate::ui::widgets::get_status_style(&pipeline.status, &app.theme))]));

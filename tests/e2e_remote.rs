@@ -287,7 +287,7 @@ async fn test_collaboration_on_lazygitlab_test() {
             wait_for_loading_finish(&mut app, &mut rx).await;
 
             // Find a discussion that is a thread (not individual note) and has non-system notes
-            if let Some(disc_idx) = app.discussions.iter().position(|d| !d.individual_note && d.notes.iter().any(|n| !n.system)) {
+            if let Some(disc_idx) = app.discussions.iter().position(|d| !d.individual_note && d.notes.first().map(|n| !n.system).unwrap_or(false)) {
                 app.detail_section = lazygitlab::models::DetailSection::Discussions;
                 app.discussion_state.select(Some(disc_idx));
                 

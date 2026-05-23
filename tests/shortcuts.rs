@@ -129,6 +129,7 @@ async fn test_ux_interaction_refinements() {
         reactions: vec![],
         merge_status: None,
         head_pipeline: None,
+        participants: vec![],
     };
     app.filtered_mrs = vec![lazygitlab::models::GroupedItem::Item(mr.clone())];
     app.mrs_state.select(Some(0));

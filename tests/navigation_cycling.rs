@@ -39,6 +39,7 @@ async fn setup_app() -> (MockServer, App) {
         head_pipeline: None,
         source_branch: "".into(),
         target_branch: "".into(),
+        participants: vec![],
     };
     app.selected_mr = Some(mr.clone());
     app.merge_requests = vec![mr.clone()];
