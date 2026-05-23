@@ -19,7 +19,7 @@ impl App {
             };
 
             tokio::spawn(async move {
-                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { 
@@ -50,7 +50,7 @@ impl App {
                 MergeRequestFilter::All => None,
             };
             tokio::spawn(async move {
-                let ep = PagedMergeRequests { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                let ep = PagedMergeRequests { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectMRs { project_id: pid, data }); } }
@@ -84,7 +84,7 @@ impl App {
             for strategy in strategies {
                 let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,
@@ -96,7 +96,7 @@ impl App {
             if let Some(uid) = user_id {
                 let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,
@@ -155,7 +155,7 @@ impl App {
             for scope in [Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
                 let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,
@@ -166,7 +166,7 @@ impl App {
             if let Some(uid) = user_id {
                 let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,

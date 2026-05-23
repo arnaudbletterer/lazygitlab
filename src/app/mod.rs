@@ -74,6 +74,7 @@ impl App {
             project_label_cache: std::collections::HashMap::new(),
             project_milestone_cache: std::collections::HashMap::new(),
             project_member_cache: std::collections::HashMap::new(),
+            project_metadata_fetches_in_progress: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             project_variable_cache: std::collections::HashMap::new(),
             project_milestones: Vec::new(),
             project_members: Vec::new(),
@@ -824,8 +825,15 @@ impl App {
             let _ = self.tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
             return;
         }
+        {
+            let mut fetches = self.project_metadata_fetches_in_progress.lock().unwrap();
+            if !fetches.insert(project_id) {
+                return;
+            }
+        }
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
+        let fetches_in_progress = self.project_metadata_fetches_in_progress.clone();
         tokio::spawn(async move {
             let lp_ep = ProjectLabels { project: project_id };
             let mp_ep = ProjectMilestones { project: project_id };
@@ -848,6 +856,7 @@ impl App {
             if !labels.is_empty() || !milestones.is_empty() || !members.is_empty() {
                 let _ = tx.send(DataUpdate::Metadata { project_id, labels, milestones, members });
             }
+            let _ = fetches_in_progress.lock().unwrap().remove(&project_id);
         });
     }
 

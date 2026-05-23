@@ -776,6 +776,7 @@ pub struct App {
     pub project_label_cache: std::collections::HashMap<u64, Vec<Label>>,
     pub project_milestone_cache: std::collections::HashMap<u64, Vec<Milestone>>,
     pub project_member_cache: std::collections::HashMap<u64, Vec<Author>>,
+    pub project_metadata_fetches_in_progress: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
     pub project_variable_cache: std::collections::HashMap<u64, Vec<ProjectVariable>>,
     pub project_milestones: Vec<Milestone>,
     pub project_members: Vec<Author>,

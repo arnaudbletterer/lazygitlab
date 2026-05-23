@@ -79,7 +79,7 @@ impl App {
                 let scope_val = scope.to_string();
                 
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,
@@ -137,7 +137,7 @@ impl App {
             for scope in scopes {
                 let c_inner = c.clone(); let s_inner = state_str.clone(); let scope_val = scope.to_string();
                 handles.push(tokio::spawn(async move {
-                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
+                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
                     match res {
                         Ok(Ok(data)) => data,
