@@ -121,22 +121,25 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                     }
                     DiffDisplayLine::Discussion(disc) => {
                         let is_collapsed = disc.collapsed;
-                        let is_resolved = disc.resolved.unwrap_or(false);
+                        let first_note = disc.notes.first();
+                        let is_activity = first_note.map(|n| n.system).unwrap_or(false);
+                        let is_resolved = !is_activity && disc.resolved.unwrap_or(false);
                         let mut text = Vec::new();
                         
-                        let prefix = if is_resolved { " [RESOLVED] " } else { "" };
-                        // Resolved threads use Dim color; Unresolved use bright Yellow
-                        let prefix_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.pending) };
-                        let content_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default() };
-                        let author_style = if is_resolved { Style::default().fg(app.theme.dim) } else { Style::default().fg(app.theme.author) };
+                        let (prefix, prefix_style, author_style, content_style) = if is_activity {
+                            ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                        } else if is_resolved {
+                            ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                        } else {
+                            ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                        };
 
                         if is_collapsed {
-                            let first_note = disc.notes.first();
                             let author = first_note.map(|n| n.author.username.as_str()).unwrap_or("?");
                             let body = first_note.map(|n| n.body.chars().take(40).collect::<String>()).unwrap_or_else(|| "...".into());
                             text.push(Line::from(vec![
                                 Span::styled(" [+] ", prefix_style.add_modifier(Modifier::BOLD)),
-                                if is_resolved { Span::styled(prefix, prefix_style) } else { Span::raw("") },
+                                Span::styled(prefix, prefix_style),
                                 Span::styled(format!("@{}", author), author_style),
                                 Span::styled(": ", content_style),
                                 Span::styled(body.replace('\n', " "), content_style),
@@ -145,24 +148,37 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                             ]));
                         } else {
                             text.push(Line::from(vec![
-                                Span::styled(" [-] Discussion Thread", prefix_style.add_modifier(Modifier::BOLD)),
-                                if is_resolved { Span::styled(prefix, prefix_style) } else { Span::raw("") },
+                                Span::styled(" [-] ", prefix_style.add_modifier(Modifier::BOLD)),
+                                Span::styled(prefix, prefix_style),
+                                Span::styled("Discussion Thread", content_style.add_modifier(Modifier::BOLD)),
                             ]));
                             for (i, note) in disc.notes.iter().enumerate() {
                                 let indent = if i > 0 { "    " } else { "  " };
+                                let note_is_activity = note.system;
+                                let note_is_resolved = !note_is_activity && is_resolved;
+
+                                let (note_prefix, note_prefix_style, note_author_style, note_content_style) = if note_is_activity {
+                                    ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                                } else if note_is_resolved {
+                                    ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                                } else {
+                                    ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                                };
+
                                 text.push(Line::from(vec![
-                                    Span::styled(indent, content_style),
-                                    Span::styled(format!("@{}", note.author.username), if is_resolved { author_style } else { author_style.add_modifier(Modifier::BOLD) }),
-                                    Span::styled(":", content_style),
+                                    Span::styled(indent, note_content_style),
+                                    Span::styled(note_prefix, note_prefix_style),
+                                    Span::styled(format!("@{}", note.author.username), note_author_style),
+                                    Span::styled(":", note_content_style),
                                 ]));
                                 
                                 // Render markdown body with indentation
                                 let markdown_lines = render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set);
                                 for line in markdown_lines {
-                                    let mut line_spans = vec![Span::styled(format!("{}  ", indent), content_style)];
+                                    let mut line_spans = vec![Span::styled(format!("{}  ", indent), note_content_style)];
                                     for span in line.spans {
                                         let mut s = span;
-                                        if is_resolved {
+                                        if note_is_resolved || note_is_activity {
                                             s.style = s.style.patch(Style::default().fg(app.theme.dim));
                                         }
                                         line_spans.push(s);

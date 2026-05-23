@@ -261,6 +261,7 @@ pub struct EditMergeRequest {
     pub squash: Option<bool>,
     pub target_branch: Option<String>,
     pub draft: Option<bool>,
+    pub wip: Option<bool>,
 }
 impl Endpoint for EditMergeRequest {
     fn method(&self) -> Method { Method::PUT }
@@ -291,6 +292,7 @@ impl Endpoint for EditMergeRequest {
         if let Some(s) = &self.squash { params.push("squash", *s); }
         if let Some(t) = &self.target_branch { params.push("target_branch", t); }
         if let Some(d) = &self.draft { params.push("draft", *d); }
+        if let Some(w) = &self.wip { params.push("wip", if *w { "yes" } else { "no" }); }
         params.into_body()
     }
 }
@@ -1061,6 +1063,7 @@ mod tests {
             milestone_id: Some(Some(1)), remove_source_branch: Some(true),
             squash: Some(true), target_branch: Some("b".into()),
             draft: Some(true),
+            wip: None,
         };
         assert_eq!(edit_mr.method(), Method::PUT);
         assert!(edit_mr.body().is_ok());
@@ -1071,8 +1074,12 @@ mod tests {
             reviewer_ids: Some(vec![]), milestone_id: Some(None),
             remove_source_branch: None, squash: None, target_branch: None,
             draft: None,
+            wip: Some(true),
         };
         assert!(edit_mr_nulls.body().is_ok());
+        let body_bytes = edit_mr_nulls.body().unwrap().unwrap().1;
+        let body_str = String::from_utf8_lossy(&body_bytes);
+        assert!(body_str.contains("wip=yes"));
 
         let mr_notes = MergeRequestNotes { project: 1, merge_request: 2 };
         assert_eq!(mr_notes.method(), Method::GET);

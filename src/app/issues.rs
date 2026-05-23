@@ -67,7 +67,6 @@ impl App {
             IssueFilter::All => "all".to_string(),
         };
         let _ = tx.send(DataUpdate::Loading(true));
-        let _ = tx.send(DataUpdate::ClearGlobalIssues);
         self.status_message = Some("Fetching Involved Issues...".into());
 
         tokio::spawn(async move {
@@ -76,20 +75,44 @@ impl App {
 
             for scope in scopes {
                 let c_inner = c.clone();
-                let tx_inner = tx.clone();
                 let s_inner = state_str.clone();
                 let scope_val = scope.to_string();
                 
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() {
-                        let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data));
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
                     }
                 }));
             }
 
-            for h in handles { let _ = h.await; }
+            let mut all_issues = Vec::new();
+            let mut has_more = false;
+            for h in handles {
+                if let Ok(data) = h.await {
+                    if data.len() >= 50 {
+                        has_more = true;
+                    }
+                    all_issues.extend(data);
+                }
+            }
+
+            // Deduplicate based on project_id and iid
+            let mut unique_issues = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for issue in all_issues {
+                let key = (issue.project_id, issue.iid);
+                if seen.insert(key) {
+                    unique_issues.push(issue);
+                }
+            }
+
+            // Sort descending by created_at
+            unique_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            let _ = tx.send(DataUpdate::GlobalIssues { data: unique_issues, page: 1, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -112,16 +135,39 @@ impl App {
             let scopes = vec!["assigned_to_me", "created_by_me"];
             let mut handles = Vec::new();
             for scope in scopes {
-                let c_inner = c.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone(); let scope_val = scope.to_string();
+                let c_inner = c.clone(); let s_inner = state_str.clone(); let scope_val = scope.to_string();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() {
-                        let _ = tx_inner.send(DataUpdate::AppendGlobalIssues(data));
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
                     }
                 }));
             }
-            for h in handles { let _ = h.await; }
+
+            let mut all_new_issues = Vec::new();
+            let mut has_more = false;
+            for h in handles {
+                if let Ok(data) = h.await {
+                    if data.len() >= 50 {
+                        has_more = true;
+                    }
+                    all_new_issues.extend(data);
+                }
+            }
+
+            // Deduplicate the newly fetched ones
+            let mut unique_new_issues = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for issue in all_new_issues {
+                let key = (issue.project_id, issue.iid);
+                if seen.insert(key) {
+                    unique_new_issues.push(issue);
+                }
+            }
+
+            let _ = tx.send(DataUpdate::AppendGlobalIssues { data: unique_new_issues, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

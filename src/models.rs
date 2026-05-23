@@ -25,7 +25,7 @@ pub enum MergeRequestFilter {
     All,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Namespace {
     pub id: u64,
     pub name: String,
@@ -34,7 +34,7 @@ pub struct Namespace {
     pub full_path: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Project {
     pub id: u64,
     pub name: String,
@@ -44,7 +44,7 @@ pub struct Project {
     pub namespace: Option<Namespace>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct AwardEmoji {
     #[serde(alias = "emoji", alias = "emoji_name")]
     pub name: String,
@@ -56,7 +56,7 @@ pub struct PipelineMin {
     pub status: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct MergeRequest {
     pub iid: u64,
     pub project_id: u64,
@@ -106,7 +106,7 @@ pub struct MergeRequest {
     pub target_branch: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct DiffRefs {
     pub base_sha: String,
     pub head_sha: String,
@@ -168,13 +168,13 @@ pub struct Position {
     pub line_range: Option<LineRange>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct LineRange {
     pub start: LinePosition,
     pub end: LinePosition,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct LinePosition {
     pub line_code: Option<String>,
     pub r#type: Option<String>,
@@ -182,12 +182,12 @@ pub struct LinePosition {
     pub old_line: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct References {
     pub full: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Author {
     pub id: u64,
     pub username: String,
@@ -215,7 +215,7 @@ impl Author {
 }
 
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Group {
     pub id: u64,
     pub name: String,
@@ -224,7 +224,7 @@ pub struct Group {
     pub web_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Branch {
     pub name: String,
     pub merged: Option<bool>,
@@ -233,7 +233,7 @@ pub struct Branch {
     pub web_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Commit {
     pub id: String,
     pub short_id: String,
@@ -259,7 +259,7 @@ pub enum MenuSelection {
     Epics,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Todo {
     pub id: u64,
     pub project: Project,
@@ -306,7 +306,7 @@ pub struct RepositoryFile {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct Label {
     pub id: u64,
     pub name: String,
@@ -368,13 +368,13 @@ impl Label {
 }
 
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Milestone {
     pub id: u64,
     pub title: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct TaskCompletionStatus {
     pub count: u64,
     pub completed_count: u64,
@@ -386,7 +386,7 @@ pub struct PipelineVariable {
     pub value: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Pipeline {
     pub id: u64,
     pub project_id: u64,
@@ -400,12 +400,14 @@ pub struct Pipeline {
     pub duration: Option<f64>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl Eq for Pipeline {}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Runner {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Job {
     pub id: u64,
     pub name: String,
@@ -422,6 +424,8 @@ pub struct Job {
     pub tag_list: Vec<String>,
 }
 
+impl Eq for Job {}
+
 impl Pipeline {
     pub fn is_finished(&self) -> bool {
         matches!(self.status.as_str(), "success" | "failed" | "canceled" | "skipped")
@@ -434,7 +438,7 @@ impl Job {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Issue {
     pub iid: u64,
     pub project_id: u64,
@@ -496,6 +500,7 @@ pub enum InputTarget {
     CreateMRTargetBranch,
     SnoozeUntil,
     Search,
+    NewFileComment,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -524,6 +529,7 @@ pub enum MetadataField {
     Weight,
     Confidential,
     Description,
+    TargetBranch,
 }
 
 #[derive(Debug, Clone)]
@@ -608,14 +614,14 @@ pub enum GroupedItem<T> {
     Item(T),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Board {
     pub id: u64,
     pub name: String,
     pub lists: Option<Vec<BoardList>>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct BoardList {
     pub id: u64,
     pub label: Option<Label>,
@@ -624,7 +630,7 @@ pub struct BoardList {
     pub list_type: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Epic {
     pub id: u64,
     pub iid: u64,
@@ -635,7 +641,7 @@ pub struct Epic {
     pub web_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SearchResult {
     Project(Project),
     Issue(Issue),
@@ -672,10 +678,10 @@ pub enum DataUpdate {
     AppendGroups(Vec<Group>),
     GlobalMRs { data: Vec<MergeRequest>, page: u64, has_more: bool },
     ClearGlobalMRs,
-    AppendGlobalMRs(Vec<MergeRequest>),
+    AppendGlobalMRs { data: Vec<MergeRequest>, has_more: bool },
     GlobalIssues { data: Vec<Issue>, page: u64, has_more: bool },
     ClearGlobalIssues,
-    AppendGlobalIssues(Vec<Issue>),
+    AppendGlobalIssues { data: Vec<Issue>, has_more: bool },
     ProjectMRs { project_id: u64, data: Vec<MergeRequest>, page: u64, has_more: bool },
     AppendProjectMRs { project_id: u64, data: Vec<MergeRequest> },
     ProjectIssues { project_id: u64, data: Vec<Issue>, page: u64, has_more: bool },
@@ -811,6 +817,9 @@ pub struct App {
     pub branches_state: ListState,
     pub show_branches_dropdown: bool,
 
+    pub show_target_branch_popup: bool,
+    pub target_branch_state: ListState,
+
     // Pagination
     pub mrs_page: u64,
     pub mrs_has_more: bool,
@@ -851,6 +860,7 @@ pub struct App {
     pub groups_has_more: bool,
 
     pub filter_input: String,
+    pub previous_filter_input: String,
     pub show_filter_input: bool,
     pub todos: Vec<Todo>,
     pub todos_state: ListState,

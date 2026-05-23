@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, InputTarget, DetailSection};
+use crate::models::{App, InputTarget, DetailSection, LineType};
 use crate::ui::markdown::render_markdown;
 use crate::ui::list::{render_metadata_panel, render_discussions_panel};
 
@@ -51,6 +51,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
         .style(Style::default().fg(app.theme.dim))
         .highlight_style(Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, detail_chunks[0]);
+    app.set_rect("detail_tabs", detail_chunks[0]);
 
     // Render Divider Line
     let divider = Paragraph::new(Span::styled(
@@ -79,6 +80,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
 
             // Render Metadata Panel
             render_metadata_panel(f, app, desc_chunks[0]);
+            app.set_rect("metadata_panel", desc_chunks[0]);
 
             // Render Description Panel
             let desc_block = Block::default()
@@ -87,6 +89,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .border_style(if is_editing_desc || is_desc_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
             let desc_inner = desc_block.inner(desc_chunks[1]);
             f.render_widget(desc_block, desc_chunks[1]);
+            app.set_rect("detail_view", desc_chunks[1]);
 
             if is_editing_desc {
                 f.render_widget(&app.textarea, desc_inner);
@@ -116,6 +119,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
 
             // Render threads list summary panel
             render_discussions_panel(f, app, disc_chunks[0]);
+            app.set_rect("discussions_panel", disc_chunks[0]);
 
             // Render selected thread comments panel
             let comments_block = Block::default()
@@ -126,16 +130,49 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(comments_block, disc_chunks[1]);
 
             let mut content = Vec::new();
+            let mut excerpt_data = None;
+
             if let Some(idx) = app.discussion_state.selected() {
                 if let Some(disc) = app.discussions.get(idx) {
+                    // Check if first note has context
+                    if let Some(first_note) = disc.notes.first() {
+                        if let Some(context) = &first_note.context {
+                            if !context.is_empty() && disc_chunks[1].height >= 6 {
+                                excerpt_data = Some((context.clone(), first_note.position.clone()));
+                            }
+                        }
+                    }
+
                     for note in &disc.notes {
-                        let mut header = vec![
-                            Span::styled(format!("@{}", note.author.username), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD)),
-                            Span::raw(" "),
+                        let is_activity = note.system;
+                        let is_resolved = !is_activity && disc.resolved.unwrap_or(false);
+
+                        let (prefix, prefix_style, author_style, _content_style) = if is_activity {
+                            ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                        } else if is_resolved {
+                            ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                        } else {
+                            ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                        };
+
+                        let header = vec![
+                            Span::styled(prefix, prefix_style),
+                            Span::styled(format!("@{}", note.author.username), author_style),
                         ];
-                        if note.system { header.push(Span::styled(" [SYSTEM]", Style::default().fg(app.theme.dim))); }
                         content.push(Line::from(header));
-                        content.extend(render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set));
+
+                        let markdown_lines = render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set);
+                        for line in markdown_lines {
+                            let mut line_spans = Vec::new();
+                            for span in line.spans {
+                                let mut s = span;
+                                if is_resolved || is_activity {
+                                    s.style = s.style.patch(Style::default().fg(app.theme.dim));
+                                }
+                                line_spans.push(s);
+                            }
+                            content.push(Line::from(line_spans));
+                        }
                         content.push(Line::from(""));
                     }
                     if disc.notes.is_empty() { content.push(Line::from(" No notes in this discussion.")); }
@@ -143,7 +180,51 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 content.push(Line::from(" Select a discussion thread to view full conversation."));
             }
-            f.render_widget(Paragraph::new(content).wrap(Wrap { trim: false }), comments_inner);
+
+            let final_notes_inner = if let Some((context, position_opt)) = excerpt_data {
+                let needed_height = (context.len() as u16 + 2).min(disc_chunks[1].height.saturating_sub(4)).max(3);
+                let split = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(needed_height),
+                        Constraint::Min(0),
+                    ])
+                    .split(comments_inner);
+                
+                let file_name = position_opt
+                    .as_ref()
+                    .and_then(|pos| pos.new_path.as_deref().or(pos.old_path.as_deref()))
+                    .unwrap_or("Unknown File");
+
+                let excerpt_block = Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" File Excerpt: {} ", file_name))
+                    .border_style(Style::default().fg(app.theme.dim));
+                let excerpt_inner = excerpt_block.inner(split[0]);
+                f.render_widget(excerpt_block, split[0]);
+
+                let mut excerpt_lines = Vec::new();
+                for (ln, line_text, ltype, is_target) in &context {
+                    let mut line_style = match ltype {
+                        LineType::Addition => Style::default().fg(app.theme.success),
+                        LineType::Removal => Style::default().fg(app.theme.failed),
+                        LineType::Unchanged => Style::default(),
+                    };
+                    if *is_target {
+                        line_style = line_style.bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
+                    }
+                    excerpt_lines.push(Line::from(vec![
+                        Span::styled(format!("{:4} │ ", ln), if *is_target { line_style } else { Style::default().fg(app.theme.dim) }),
+                        Span::styled(line_text.clone(), line_style),
+                    ]));
+                }
+                f.render_widget(Paragraph::new(excerpt_lines), excerpt_inner);
+                split[1]
+            } else {
+                comments_inner
+            };
+
+            f.render_widget(Paragraph::new(content).wrap(Wrap { trim: false }), final_notes_inner);
         }
         _ => {
             // TAB 2: Changes / Files
@@ -155,6 +236,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .border_style(if is_changes_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
             let changes_inner = changes_block.inner(content_area);
             f.render_widget(changes_block, content_area);
+            app.set_rect("changes_panel", changes_inner);
 
             if app.mr_diffs.is_empty() {
                 f.render_widget(Paragraph::new(" No changes found or still loading...").fg(app.theme.dim), changes_inner);

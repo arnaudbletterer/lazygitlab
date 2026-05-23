@@ -154,6 +154,24 @@ pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
     f.render_stateful_widget(list, area, &mut app.weight_state);
 }
 
+pub fn render_target_branch_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(50, 40, f.area());
+    app.set_rect("popup_target_branch", area);
+    f.render_widget(Clear, area);
+    f.render_widget(Block::default().bg(Color::Black), area);
+
+    let branches: Vec<ListItem> = app.project_branches
+        .iter()
+        .map(|b| ListItem::new(b.name.clone()))
+        .collect();
+
+    let list = List::new(branches)
+        .block(Block::default().borders(Borders::ALL).title(" Select Target Branch (Enter to save) "))
+        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD));
+
+    f.render_stateful_widget(list, area, &mut app.target_branch_state);
+}
+
 pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     use chrono::{Datelike, NaiveDate};
     

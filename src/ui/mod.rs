@@ -19,9 +19,12 @@ use ansi_to_tui::IntoText;
 use crate::ui::widgets::{format_relative_time, format_time_only};
 
 pub fn ui(f: &mut Frame, app: &mut App) {
+    let has_filter = app.show_filter_input || !app.filter_input.is_empty();
+    let footer_height = if has_filter { 2 } else { 1 };
+
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Min(0), Constraint::Length(footer_height)])
         .split(f.area());
 
     match app.view_mode {
@@ -34,11 +37,34 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ViewMode::Epics => render_epics_view(f, app, main_chunks[0]),
     }
 
+    let (filter_rect, footer_rect) = if has_filter {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .split(main_chunks[1]);
+        (Some(chunks[0]), chunks[1])
+    } else {
+        (None, main_chunks[1])
+    };
+
+    if let Some(rect) = filter_rect {
+        let mut filter_spans = vec![
+            Span::styled(" Filter: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::raw(&app.filter_input),
+        ];
+        if app.show_filter_input {
+            filter_spans.push(Span::styled("█", Style::default().fg(app.theme.pending)));
+        } else {
+            filter_spans.push(Span::styled(" (Esc to clear)", Style::default().fg(app.theme.dim)));
+        }
+        f.render_widget(Paragraph::new(Line::from(filter_spans)), rect);
+    }
+
     // Footer with left shortcuts and right version info
     let footer_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(30)])
-        .split(main_chunks[1]);
+        .split(footer_rect);
 
     let mut footer_spans = vec![
         Span::styled("?", Style::default().fg(app.theme.shortcut_key)),
@@ -71,6 +97,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_milestone_popup { render_milestone_popup(f, app); }
     if app.show_calendar_popup { render_calendar_popup(f, app); }
     if app.show_weight_popup { render_weight_popup(f, app); }
+    if app.show_target_branch_popup { render_target_branch_popup(f, app); }
     if app.show_pipeline_popup { render_pipeline_popup(f, app); }
     if app.show_create_issue_popup { render_create_issue_popup(f, app); }
     if app.show_create_mr_popup { render_create_mr_popup(f, app); }
@@ -93,6 +120,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_reviewer_popup ||
                                    app.show_milestone_popup ||
                                    app.show_weight_popup ||
+                                   app.show_target_branch_popup ||
                                    app.show_confirm_merge_popup ||
                                    app.show_confirm_rebase_popup;
 
@@ -100,6 +128,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         let title = match app.input_target {
             crate::models::InputTarget::Reply => " Reply (Ctrl+Enter to send, Esc to cancel) ",
             crate::models::InputTarget::NewComment => " New Comment (Ctrl+Enter to send, Esc to cancel) ",
+            crate::models::InputTarget::NewFileComment => " New File Comment (Ctrl+Enter to send, Esc to cancel) ",
             crate::models::InputTarget::EditTitle => " Edit Title (Enter to save, Esc to cancel) ",
             crate::models::InputTarget::EditDescription => " Edit Description (Ctrl+Enter to save, Esc to cancel) ",
             crate::models::InputTarget::SnoozeUntil => " Snooze Until (Enter to confirm) ",
@@ -370,4 +399,86 @@ mod tests {
             terminal.draw(|f| ui(f, &mut app)).unwrap();
         }
     }
+
+    #[test]
+    fn test_render_discussions_styling_and_excerpt() {
+        let (_server, mut app) = tokio_test::block_on(setup_app());
+        let backend = TestBackend::new(120, 60);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let disc1 = Discussion {
+            id: "1".into(),
+            notes: vec![
+                Note {
+                    body: "Unresolved comment".into(),
+                    author: Author::new(1, "alice".into()),
+                    system: false,
+                    position: Some(crate::models::Position {
+                        new_path: Some("src/main.rs".into()),
+                        old_path: None,
+                        new_line: Some(10),
+                        old_line: None,
+                        line_range: None,
+                    }),
+                    context: Some(vec![
+                        (9, "fn main() {".into(), LineType::Unchanged, false),
+                        (10, "    println!(\"Hello\");".into(), LineType::Addition, true),
+                        (11, "}".into(), LineType::Unchanged, false),
+                    ]),
+                }
+            ],
+            individual_note: false,
+            collapsed: false,
+            resolved: Some(false),
+        };
+        
+        let disc2 = Discussion {
+            id: "2".into(),
+            notes: vec![
+                Note {
+                    body: "Resolved comment".into(),
+                    author: Author::new(2, "bob".into()),
+                    system: false,
+                    position: None,
+                    context: None,
+                }
+            ],
+            individual_note: false,
+            collapsed: false,
+            resolved: Some(true),
+        };
+
+        let disc3 = Discussion {
+            id: "3".into(),
+            notes: vec![
+                Note {
+                    body: "Activity note".into(),
+                    author: Author::new(3, "system".into()),
+                    system: true,
+                    position: None,
+                    context: None,
+                }
+            ],
+            individual_note: false,
+            collapsed: false,
+            resolved: None,
+        };
+
+        app.discussions = vec![disc1, disc2, disc3];
+        app.discussion_state.select(Some(0));
+        app.view_mode = ViewMode::Detail;
+        app.detail_section = DetailSection::Discussions;
+
+        // Render UI with first discussion (has context/excerpt, unresolved)
+        terminal.draw(|f| ui(f, &mut app)).unwrap();
+
+        // Render UI with second discussion (resolved)
+        app.discussion_state.select(Some(1));
+        terminal.draw(|f| ui(f, &mut app)).unwrap();
+
+        // Render UI with third discussion (activity)
+        app.discussion_state.select(Some(2));
+        terminal.draw(|f| ui(f, &mut app)).unwrap();
+    }
 }
+

@@ -655,3 +655,81 @@ async fn test_user_story_diff_navigation_and_reviewers() {
     app.process_updates(&mut _rx).await;
     assert!(!app.show_reviewer_popup);
 }
+
+#[tokio::test]
+async fn test_user_story_target_branch_editing() {
+    let (server, mut app, mut _rx) = setup_app().await;
+
+    app.active_context = Context::Project;
+    app.active_selection = MenuSelection::MergeRequests;
+    app.active_panel = Panel::MainDetail;
+    app.detail_section = lazygitlab::models::DetailSection::Metadata;
+    app.selected_metadata_field = lazygitlab::models::MetadataField::TargetBranch;
+
+    let mr = MergeRequest {
+        iid: 1, project_id: 1, title: "MR1".into(), description: None, author: Author::new(1, "u".into()),
+        web_url: "u".into(), state: "opened".into(), references: None,
+        upvotes: Some(0), downvotes: Some(0), labels: vec![], 
+        milestone: None, assignees: vec![], reviewers: vec![], squash: Some(false), created_at: Some("t".into()), draft: Some(false), 
+        diff_refs: None, reactions: vec![],
+        merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None,
+        source_branch: "source".into(), target_branch: "master".into()
+    };
+    app.selected_mr = Some(mr);
+
+    // Mock branches endpoint
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/1/repository/branches"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"name": "master"},
+            {"name": "feature"}
+        ])))
+        .mount(&server)
+        .await;
+
+    // Press Enter to trigger selection popup, which fetches branches
+    app.enter_detail_action().await;
+    
+    let mut fetched = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if app.show_target_branch_popup && app.project_branches.len() == 2 {
+            fetched = true;
+            break;
+        }
+    }
+    assert!(fetched);
+    assert_eq!(app.project_branches[0].name, "master");
+    assert_eq!(app.project_branches[1].name, "feature");
+    assert_eq!(app.target_branch_state.selected(), Some(0)); // Current target branch "master" was selected
+
+    // Press Down to select "feature" (index 1)
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
+    assert_eq!(app.target_branch_state.selected(), Some(1));
+
+    // Mock PUT to edit target branch
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/merge_requests/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "iid": 1, "project_id": 1, "title": "MR1", "author": {"id": 1, "username": "u"},
+            "web_url": "u", "state": "opened", "source_branch": "source", "target_branch": "feature"
+        })))
+        .mount(&server)
+        .await;
+
+    // Press Enter to save
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+    
+    let mut updated = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        app.process_updates(&mut _rx).await;
+        if app.selected_mr.as_ref().map(|m| m.target_branch.as_str()) == Some("feature") {
+            updated = true;
+            break;
+        }
+    }
+    assert!(updated);
+    assert!(!app.show_target_branch_popup);
+}

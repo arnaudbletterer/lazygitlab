@@ -323,17 +323,36 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         let is_selected = is_disc_focused && app.discussion_state.selected() == Some(idx);
         let highlight = if is_selected { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() };
         if let Some(note) = d.notes.first() {
+            let is_activity = note.system;
+            let is_resolved = !is_activity && d.resolved.unwrap_or(false);
+
             let mut spans = vec![
                 Span::styled(if is_selected { "● " } else { "  " }, highlight.fg(app.theme.border)),
-                Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)),
             ];
-            if d.resolved.unwrap_or(false) { spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.success))); }
-            spans.push(Span::styled(": ", highlight));
+
+            let text_style = if is_resolved || is_activity {
+                highlight.fg(app.theme.dim)
+            } else {
+                highlight
+            };
+
+            if is_activity {
+                spans.push(Span::styled("[ACTIVITY] ", highlight.fg(app.theme.dim)));
+                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
+            } else if is_resolved {
+                spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.dim)));
+                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
+            } else {
+                spans.push(Span::styled("[UNRESOLVED] ", highlight.fg(app.theme.pending)));
+                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)));
+            }
+
+            spans.push(Span::styled(": ", text_style));
             
             // Show more content (up to 100 chars) for a better overview
             let body = note.body.replace('\n', " ");
-            spans.push(Span::styled(body.chars().take(100).collect::<String>(), highlight));
-            if body.len() > 100 { spans.push(Span::styled("...", highlight)); }
+            spans.push(Span::styled(body.chars().take(100).collect::<String>(), text_style));
+            if body.len() > 100 { spans.push(Span::styled("...", text_style)); }
             ListItem::new(Line::from(spans))
         } else { ListItem::new(" (empty thread)") }
     }).collect();
@@ -398,11 +417,16 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { mr.title.clone() };
         lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
         
+        let target_branch_style = if is_meta_focused && app.selected_metadata_field == MetadataField::TargetBranch {
+            highlight
+        } else {
+            Style::default().fg(app.theme.project)
+        };
         lines.push(Line::from(vec![
             Span::raw(" Branches: "),
             Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
             Span::raw(" -> "),
-            Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
+            Span::styled(&mr.target_branch, target_branch_style),
         ]));
 
         let mut label_spans = vec![Span::raw(" Labels: ")];

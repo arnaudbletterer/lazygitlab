@@ -105,6 +105,8 @@ impl App {
             filtered_branches: Vec::new(),
             branches_state: ListState::default(),
             show_branches_dropdown: false,
+            show_target_branch_popup: false,
+            target_branch_state: ListState::default(),
             mrs_page: 1, mrs_has_more: true,
             issues_page: 1, issues_has_more: true,
             pipelines_page: 1, pipelines_has_more: true,
@@ -132,6 +134,7 @@ impl App {
             filtered_groups: Vec::new(),
             groups_page: 1, groups_has_more: true,
             filter_input: String::new(),
+            previous_filter_input: String::new(),
             show_filter_input: false,
             todos: Vec::new(),
             todos_state: ListState::default(),
@@ -226,96 +229,143 @@ impl App {
                 for p in &data { 
                     self.project_cache.insert(p.id, p.clone());
                 }
-                self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); 
+                if self.projects != data || self.projects_page != page || self.projects_has_more != has_more {
+                    self.projects = data; self.projects_page = page; self.projects_has_more = has_more; self.filter_lists(); 
+                }
             }
             DataUpdate::AppendProjects(mut data) => { 
                 for p in &data { 
                     self.project_cache.insert(p.id, p.clone());
                 }
-                self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); 
+                if !data.is_empty() {
+                    self.projects_has_more = data.len() >= 50; self.projects.append(&mut data); self.projects_page += 1; self.filter_lists(); 
+                }
             }
 
             DataUpdate::Todos { data, page, has_more } => { 
                 for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
-                self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); 
+                if self.todos != data || self.todos_page != page || self.todos_has_more != has_more {
+                    self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); 
+                }
             }
             DataUpdate::AppendTodos(mut data) => { 
                 for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
-                self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); 
+                if !data.is_empty() {
+                    self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); 
+                }
             }
 
-            DataUpdate::Groups { data, page, has_more } => { self.groups = data; self.groups_page = page; self.groups_has_more = has_more; self.filter_lists(); }
-            DataUpdate::AppendGroups(mut data) => { self.groups_has_more = data.len() >= 50; self.groups.append(&mut data); self.groups_page += 1; self.filter_lists(); }
+            DataUpdate::Groups { data, page, has_more } => {
+                if self.groups != data || self.groups_page != page || self.groups_has_more != has_more {
+                    self.groups = data; self.groups_page = page; self.groups_has_more = has_more; self.filter_lists();
+                }
+            }
+            DataUpdate::AppendGroups(mut data) => {
+                if !data.is_empty() {
+                    self.groups_has_more = data.len() >= 50; self.groups.append(&mut data); self.groups_page += 1; self.filter_lists();
+                }
+            }
 
             DataUpdate::GlobalMRs { data, page, has_more } => { 
                 let mut data = data;
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Dashboard { 
-                    self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
+                    if self.merge_requests != data || self.mrs_page != page || self.mrs_has_more != has_more {
+                        self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
+                    }
                 } 
             }
             DataUpdate::ProjectMRs { project_id, mut data, page, has_more } => { 
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
-                    self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
+                    if self.merge_requests != data || self.mrs_page != page || self.mrs_has_more != has_more {
+                        self.merge_requests = data; self.mrs_page = page; self.mrs_has_more = has_more; self.filter_lists(); 
+                    }
                 } 
             }
-            DataUpdate::AppendGlobalMRs(mut data) => { 
+            DataUpdate::AppendGlobalMRs { mut data, has_more } => { 
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Dashboard { 
                     let existing_keys: std::collections::HashSet<String> = self.merge_requests.iter().map(|m| format!("{}:{}", m.project_id, m.iid)).collect();
+                    let mut added = false;
                     for item in data {
                         let key = format!("{}:{}", item.project_id, item.iid);
-                        if !existing_keys.contains(&key) { self.merge_requests.push(item); }
+                        if !existing_keys.contains(&key) { self.merge_requests.push(item); added = true; }
                     }
-                    self.merge_requests.sort_by(|a, b| b.iid.cmp(&a.iid));
-                    self.filter_lists(); 
+                    self.mrs_has_more = has_more;
+                    if added {
+                        self.merge_requests.sort_by(|a, b| b.iid.cmp(&a.iid));
+                        self.filter_lists(); 
+                    }
                 } 
             }
             DataUpdate::AppendProjectMRs { project_id, mut data } => { 
                 for mr in &mut data { self.fix_mr_labels(mr); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
-                    self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
+                    if !data.is_empty() {
+                        self.mrs_has_more = data.len() >= 50; self.merge_requests.append(&mut data); self.mrs_page += 1; self.filter_lists(); 
+                    }
                 } 
             }
-            DataUpdate::ClearGlobalMRs => { if self.active_context == Context::Dashboard { self.merge_requests.clear(); self.filter_lists(); } }
+            DataUpdate::ClearGlobalMRs => { if self.active_context == Context::Dashboard { if !self.merge_requests.is_empty() { self.merge_requests.clear(); self.filter_lists(); } } }
 
             DataUpdate::GlobalIssues { data, page, has_more } => { 
                 let mut data = data;
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Dashboard { 
-                    self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
+                    if self.issues != data || self.issues_page != page || self.issues_has_more != has_more {
+                        self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
+                    }
                 } 
             }
             DataUpdate::ProjectIssues { project_id, mut data, page, has_more } => { 
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
-                    self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
+                    if self.issues != data || self.issues_page != page || self.issues_has_more != has_more {
+                        self.issues = data; self.issues_page = page; self.issues_has_more = has_more; self.filter_lists(); 
+                    }
                 } 
             }
-            DataUpdate::AppendGlobalIssues(mut data) => { 
+            DataUpdate::AppendGlobalIssues { mut data, has_more } => { 
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Dashboard { 
                     let existing_keys: std::collections::HashSet<String> = self.issues.iter().map(|i| format!("{}:{}", i.project_id, i.iid)).collect();
+                    let mut added = false;
                     for item in data {
                         let key = format!("{}:{}", item.project_id, item.iid);
-                        if !existing_keys.contains(&key) { self.issues.push(item); }
+                        if !existing_keys.contains(&key) { self.issues.push(item); added = true; }
                     }
-                    self.issues.sort_by(|a, b| b.iid.cmp(&a.iid));
-                    self.issues_has_more = true;
-                    self.filter_lists(); 
+                    self.issues_has_more = has_more;
+                    if added {
+                        self.issues.sort_by(|a, b| b.iid.cmp(&a.iid));
+                        self.filter_lists(); 
+                    }
                 } 
             }
             DataUpdate::AppendProjectIssues { project_id, mut data } => { 
                 for issue in &mut data { self.fix_issue_labels(issue); }
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
-                    self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
+                    if !data.is_empty() {
+                        self.issues_has_more = data.len() >= 50; self.issues.append(&mut data); self.issues_page += 1; self.filter_lists(); 
+                    }
                 } 
             }
-            DataUpdate::ClearGlobalIssues => { if self.active_context == Context::Dashboard { self.issues.clear(); self.filter_lists(); } }
+            DataUpdate::ClearGlobalIssues => { if self.active_context == Context::Dashboard { if !self.issues.is_empty() { self.issues.clear(); self.filter_lists(); } } }
 
-            DataUpdate::ProjectPipelines { project_id, data, page, has_more } => { if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.pipelines = data; self.pipelines_page = page; self.pipelines_has_more = has_more; self.filter_lists(); } }
-            DataUpdate::AppendProjectPipelines { project_id, mut data } => { if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.pipelines_has_more = data.len() >= 50; self.pipelines.append(&mut data); self.pipelines_page += 1; self.filter_lists(); } }
+            DataUpdate::ProjectPipelines { project_id, data, page, has_more } => { 
+                if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
+                    if self.pipelines != data || self.pipelines_page != page || self.pipelines_has_more != has_more {
+                        self.pipelines = data; self.pipelines_page = page; self.pipelines_has_more = has_more; self.filter_lists(); 
+                    }
+                } 
+            }
+            DataUpdate::AppendProjectPipelines { project_id, mut data } => { 
+                if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
+                    if !data.is_empty() {
+                        self.pipelines_has_more = data.len() >= 50; self.pipelines.append(&mut data); self.pipelines_page += 1; self.filter_lists(); 
+                    }
+                } 
+            }
 
             DataUpdate::Discussions { project_id, iid, mut data } => { 
                 if let Some(selected) = &self.selected_mr 
@@ -503,9 +553,36 @@ impl App {
                     self.selected_file_content = Some(data);
                 }
             }
-            DataUpdate::Branches { project_id, data, .. } => { if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.project_branches = data; self.filter_lists(); } }
-            DataUpdate::Commits { project_id, data, page, has_more } => { if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.commits = data; self.commits_page = page; self.commits_has_more = has_more; self.filter_lists(); } }
-            DataUpdate::AppendCommits { project_id, mut data } => { if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.commits_has_more = data.len() >= 50; self.commits.append(&mut data); self.commits_page += 1; self.filter_lists(); } }
+            DataUpdate::Branches { project_id, data, .. } => { 
+                let is_selected_project = self.selected_project.as_ref().is_some_and(|p| p.id == project_id);
+                let is_selected_mr_project = self.selected_mr.as_ref().is_some_and(|mr| mr.project_id == project_id);
+                if is_selected_project || is_selected_mr_project {
+                    if self.project_branches != data {
+                        self.project_branches = data; self.filter_lists(); 
+                    }
+                }
+                if self.show_target_branch_popup && is_selected_mr_project {
+                    if let Some(mr) = &self.selected_mr {
+                        let target = mr.target_branch.clone();
+                        let idx = self.project_branches.iter().position(|b| b.name == target).unwrap_or(0);
+                        self.target_branch_state.select(Some(idx));
+                    }
+                }
+            }
+            DataUpdate::Commits { project_id, data, page, has_more } => { 
+                if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
+                    if self.commits != data || self.commits_page != page || self.commits_has_more != has_more {
+                        self.commits = data; self.commits_page = page; self.commits_has_more = has_more; self.filter_lists(); 
+                    }
+                } 
+            }
+            DataUpdate::AppendCommits { project_id, mut data } => { 
+                if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { 
+                    if !data.is_empty() {
+                        self.commits_has_more = data.len() >= 50; self.commits.append(&mut data); self.commits_page += 1; self.filter_lists(); 
+                    }
+                } 
+            }
             DataUpdate::Boards { project_id, data } => { if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.project_boards = data; self.project_boards_state.select(if self.project_boards.is_empty() { None } else { Some(0) }); } }
             DataUpdate::BoardLists { project_id, board_id, data } => {
                 if self.selected_project.as_ref().is_some_and(|p| p.id == project_id)
@@ -598,6 +675,24 @@ impl App {
             }
             s
         };
+
+        // Populate context on discussions
+        for disc in &mut self.discussions {
+            if let Some(note) = disc.notes.first_mut() {
+                if let Some(pos) = &note.position {
+                    let pos_new_norm = pos.new_path.as_deref().map(normalize);
+                    let pos_old_norm = pos.old_path.as_deref().map(normalize);
+                    let diff_opt = self.mr_diffs.iter().find(|diff| {
+                        let diff_new_norm = normalize(&diff.new_path);
+                        let diff_old_norm = normalize(&diff.old_path);
+                        pos_new_norm == Some(diff_new_norm) || pos_old_norm == Some(diff_old_norm)
+                    });
+                    if let Some(diff) = diff_opt {
+                        note.context = mrs::parse_diff_context(&diff.diff, pos.new_line, pos.old_line);
+                    }
+                }
+            }
+        }
 
         for diff in &mut self.mr_diffs {
             if diff.diff.is_empty() {
@@ -1104,7 +1199,14 @@ impl App {
                 match self.detail_section {
                     DetailSection::Metadata => {
                         match self.selected_metadata_field {
-                            MetadataField::Title => self.selected_metadata_field = MetadataField::Labels,
+                            MetadataField::Title => {
+                                if self.selected_mr.is_some() {
+                                    self.selected_metadata_field = MetadataField::TargetBranch;
+                                } else {
+                                    self.selected_metadata_field = MetadataField::Labels;
+                                }
+                            }
+                            MetadataField::TargetBranch => self.selected_metadata_field = MetadataField::Labels,
                             MetadataField::Labels => self.selected_metadata_field = MetadataField::Assignees,
                             MetadataField::Assignees => {
                                 if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
@@ -1197,7 +1299,14 @@ impl App {
                             MetadataField::Title => {
                                 // Do nothing (it is the top sub-panel of Tab 0)
                             }
-                            MetadataField::Labels => self.selected_metadata_field = MetadataField::Title,
+                            MetadataField::TargetBranch => self.selected_metadata_field = MetadataField::Title,
+                            MetadataField::Labels => {
+                                if self.selected_mr.is_some() {
+                                    self.selected_metadata_field = MetadataField::TargetBranch;
+                                } else {
+                                    self.selected_metadata_field = MetadataField::Title;
+                                }
+                            }
                             MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
                             MetadataField::Reviewers => self.selected_metadata_field = MetadataField::Assignees,
                             MetadataField::Weight => self.selected_metadata_field = MetadataField::Assignees,
@@ -1412,8 +1521,11 @@ impl App {
             items.push(HelpItem { shortcut: "S".into(), description: "Toggle Squash on merge".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
-        items.push(HelpItem { shortcut: "/".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
-        items.push(HelpItem { shortcut: "h/j/k/l".into(), description: "Navigate panels and items".into(), action: HelpAction::None, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "f".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
+        items.push(HelpItem { shortcut: "1/2/3".into(), description: "Focus Sidebar/List/Detail".into(), action: HelpAction::None, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "h/l (Left/Right)".into(), description: "Move focus between columns".into(), action: HelpAction::None, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "j/k (Up/Down)".into(), description: "Navigate items/fields".into(), action: HelpAction::None, category: "Navigation".into() });
+        items.push(HelpItem { shortcut: "[ / ]".into(), description: "Cycle filter segments / detail tabs".into(), action: HelpAction::None, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "Enter".into(), description: "Select / Open Detail".into(), action: HelpAction::Select, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "Esc".into(), description: "Go back / Close panel".into(), action: HelpAction::Back, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "Tab".into(), description: "Next Panel".into(), action: HelpAction::ToggleFocus, category: "Navigation".into() });
@@ -1422,7 +1534,7 @@ impl App {
         items.push(HelpItem { shortcut: "g i".into(), description: "Go to Issues".into(), action: HelpAction::GotoIssues, category: "Jump".into() });
         items.push(HelpItem { shortcut: "g p".into(), description: "Go to Pipelines".into(), action: HelpAction::GotoPipelines, category: "Jump".into() });
         if self.view_mode == ViewMode::List {
-            items.push(HelpItem { shortcut: "f".into(), description: "Filter current list".into(), action: HelpAction::Filter, category: "List".into() });
+            items.push(HelpItem { shortcut: "/".into(), description: "Filter current list".into(), action: HelpAction::Filter, category: "List".into() });
         }
         if self.view_mode == ViewMode::Board {
             items.push(HelpItem { shortcut: "Shift + H/L".into(), description: "Move issue between columns".into(), action: HelpAction::None, category: "Kanban".into() });
@@ -1458,9 +1570,57 @@ impl App {
             HelpAction::Refresh => { let _ = self.refresh().await; }
             HelpAction::OpenBrowser => self.open_in_browser(),
             HelpAction::CopyUrl => self.copy_url(),
-            HelpAction::GotoTodos => { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Todos; self.active_panel = Panel::Main; let _ = self.refresh().await; }
-            HelpAction::GotoMRs => { self.active_context = Context::Project; self.active_selection = MenuSelection::MergeRequests; self.active_panel = Panel::Main; let _ = self.refresh().await; }
-            HelpAction::GotoIssues => { self.active_context = Context::Project; self.active_selection = MenuSelection::Issues; self.active_panel = Panel::Main; let _ = self.refresh().await; }
+            HelpAction::GotoTodos => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::Todos;
+                self.dashboard_menu_state.select(Some(0));
+                self.active_panel = Panel::Main;
+                let _ = self.refresh().await;
+            }
+            HelpAction::GotoMRs => {
+                if self.selected_project.is_some() {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::MergeRequests;
+                    self.project_menu_state.select(Some(0));
+                } else {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::MergeRequests;
+                    self.dashboard_menu_state.select(Some(1));
+                }
+                self.active_panel = Panel::Main;
+                let _ = self.refresh().await;
+            }
+            HelpAction::GotoIssues => {
+                if self.selected_project.is_some() {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Issues;
+                    self.project_menu_state.select(Some(1));
+                } else {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Issues;
+                    self.dashboard_menu_state.select(Some(2));
+                }
+                self.active_panel = Panel::Main;
+                let _ = self.refresh().await;
+            }
+            HelpAction::GotoPipelines => {
+                if self.selected_project.is_some() {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Pipelines;
+                    self.project_menu_state.select(Some(2));
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
+            }
+            HelpAction::GotoRepository => {
+                if self.selected_project.is_some() {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Repository;
+                    self.project_menu_state.select(Some(3));
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
+            }
             _ => {}
         }
         self.show_help_popup = false;
@@ -1613,9 +1773,9 @@ impl App {
         }
 
         // 1.5 Selection Popups (Simple List/Selection Popups)
-        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_weight_popup {
+        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_weight_popup || self.show_target_branch_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; }
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_weight_popup = false; self.show_target_branch_popup = false; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.show_project_popup { self.move_down(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
@@ -1623,6 +1783,7 @@ impl App {
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.reviewer_state.selected().unwrap_or(0) + 1) % members.len(); self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
                     else if self.show_weight_popup { let i = (self.weight_state.selected().unwrap_or(0) + 1) % 21; self.weight_state.select(Some(i)); }
+                    else if self.show_target_branch_popup { if !self.project_branches.is_empty() { let i = (self.target_branch_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.target_branch_state.select(Some(i)); } }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
                     if self.show_project_popup { self.move_up(); }
@@ -1631,6 +1792,7 @@ impl App {
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.reviewer_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.reviewer_state.selected().unwrap() - 1 }; self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
                     else if self.show_weight_popup { let i = if self.weight_state.selected().unwrap_or(0) == 0 { 20 } else { self.weight_state.selected().unwrap() - 1 }; self.weight_state.select(Some(i)); }
+                    else if self.show_target_branch_popup { if !self.project_branches.is_empty() { let i = if self.target_branch_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.target_branch_state.selected().unwrap() - 1 }; self.target_branch_state.select(Some(i)); } }
                 }
                 KeyCode::Char(' ') => {
                     if self.show_label_popup {
@@ -1675,6 +1837,7 @@ impl App {
                     else if self.show_reviewer_popup { if self.selected_mr.is_some() { let _ = self.update_mr_reviewers().await; } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
                     else if self.show_weight_popup { let _ = self.update_issue_weight().await; }
+                    else if self.show_target_branch_popup { let _ = self.update_mr_target_branch().await; }
                 }
                 _ => {}
             }
@@ -2092,6 +2255,14 @@ impl App {
                             }
                         }
                     }
+                    KeyCode::Char('C') => {
+                        if self.selected_mr.is_some() && self.mr_diff_state.selected().is_some() {
+                            self.input_mode = true;
+                            self.input_target = InputTarget::NewFileComment;
+                            self.textarea = ratatui_textarea::TextArea::default();
+                            return;
+                        }
+                    }
                     KeyCode::Char('r') => {
                         if let Some(pos) = self.mr_diff_state.selected()
                             .zip(self.diff_line_state.selected())
@@ -2225,12 +2396,27 @@ impl App {
         if self.input_mode {
             if self.input_target == InputTarget::Filter {
                 match processed_key.code {
-                    KeyCode::Esc | KeyCode::Char('/') => { self.input_mode = false; self.show_filter_input = false; self.filter_input.clear(); self.filter_lists(); }
+                    KeyCode::Esc => {
+                        self.input_mode = false;
+                        self.show_filter_input = false;
+                        self.filter_input.clear();
+                        self.filter_lists();
+                    }
                     KeyCode::Down | KeyCode::Char('j') => { self.move_down(); }
                     KeyCode::Up | KeyCode::Char('k') => { self.move_up(); }
-                    KeyCode::Enter => { self.input_mode = false; self.show_filter_input = false; let _ = self.update_preview().await; let _ = self.go_forward().await; self.filter_input.clear(); self.filter_lists(); }
-                    KeyCode::Char(c) if c != '/' => { self.filter_input.push(c); self.filter_lists(); }
-                    KeyCode::Backspace => { self.filter_input.pop(); self.filter_lists(); }
+                    KeyCode::Enter => {
+                        self.input_mode = false;
+                        self.show_filter_input = false;
+                        let _ = self.update_preview().await;
+                    }
+                    KeyCode::Char(c) => {
+                        self.filter_input.push(c);
+                        self.filter_lists();
+                    }
+                    KeyCode::Backspace => {
+                        self.filter_input.pop();
+                        self.filter_lists();
+                    }
                     _ => {}
                 }
             } else {
@@ -2322,7 +2508,16 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => { self.move_down(); let _ = self.update_preview().await; }
             KeyCode::Up | KeyCode::Char('k') => { self.move_up(); let _ = self.update_preview().await; }
             KeyCode::Enter => { let _ = self.update_preview().await; self.go_forward().await; }
-            KeyCode::Esc => { self.go_back().await; }
+            KeyCode::Esc => {
+                if !self.filter_input.is_empty() {
+                    self.filter_input.clear();
+                    self.filter_lists();
+                } else {
+                    self.go_back().await;
+                }
+            }
+            KeyCode::Char('y') => { self.copy_url(); }
+            KeyCode::Char('o') => { self.open_in_browser(); }
             KeyCode::Char('v') => {
                 if self.selected_mr.is_some() {
                     self.view_mode = ViewMode::Diff;
@@ -2348,7 +2543,7 @@ impl App {
             KeyCode::Char('3') => { self.active_panel = Panel::MainDetail; let _ = self.update_preview().await; }
             KeyCode::Char('p') => self.switch_project().await,
             KeyCode::Char('r') => { let _ = self.refresh().await; }
-            KeyCode::Char('f') => {
+            KeyCode::Char('/') => {
                 if self.active_panel == Panel::Main {
                     self.input_mode = true;
                     self.input_target = InputTarget::Filter;
@@ -2359,7 +2554,7 @@ impl App {
                 self.pending_g_prefix = true;
                 return;
             }
-            KeyCode::Char('/') => {
+            KeyCode::Char('f') => {
                 self.show_search = true;
                 self.input_mode = true;
                 self.input_target = InputTarget::Search;
@@ -2367,28 +2562,42 @@ impl App {
                 self.search_results.clear();
             }
             KeyCode::Char('[') => {
-                match self.active_selection {
-                    MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },
-                    MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::All, MergeRequestFilter::Merged => MergeRequestFilter::Opened, MergeRequestFilter::Closed => MergeRequestFilter::Merged, MergeRequestFilter::All => MergeRequestFilter::Closed },
-                    MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::All, IssueFilter::Closed => IssueFilter::Opened, IssueFilter::All => IssueFilter::Closed },
-                    _ => {}
+                if self.active_panel == Panel::MainDetail {
+                    self.cycle_detail_tab(false);
+                    let _ = self.update_preview().await;
+                } else {
+                    match self.active_selection {
+                        MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },
+                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::All, MergeRequestFilter::Merged => MergeRequestFilter::Opened, MergeRequestFilter::Closed => MergeRequestFilter::Merged, MergeRequestFilter::All => MergeRequestFilter::Closed },
+                        MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::All, IssueFilter::Closed => IssueFilter::Opened, IssueFilter::All => IssueFilter::Closed },
+                        _ => {}
+                    }
+                    self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
                 }
-                self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
             }
             KeyCode::Char(']') => {
-                match self.active_selection {
-                    MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Snoozed, TodoFilter::Snoozed => TodoFilter::Done, TodoFilter::Done => TodoFilter::Pending },
-                    MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Opened },
-                    MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::Closed, IssueFilter::Closed => IssueFilter::All, IssueFilter::All => IssueFilter::Opened },
-                    _ => {}
+                if self.active_panel == Panel::MainDetail {
+                    self.cycle_detail_tab(true);
+                    let _ = self.update_preview().await;
+                } else {
+                    match self.active_selection {
+                        MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Snoozed, TodoFilter::Snoozed => TodoFilter::Done, TodoFilter::Done => TodoFilter::Pending },
+                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Opened },
+                        MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::Closed, IssueFilter::Closed => IssueFilter::All, IssueFilter::All => IssueFilter::Opened },
+                        _ => {}
+                    }
+                    self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
                 }
-                self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
             KeyCode::Char('M') => { if self.selected_mr.is_some() { self.show_confirm_merge_popup = true; } }
             KeyCode::Char('C') => {
-                if let Some(p) = (self.active_selection == MenuSelection::Pipelines)
+                if self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Changes && self.selected_mr.is_some() && self.mr_diff_state.selected().is_some() {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::NewFileComment;
+                    self.textarea = ratatui_textarea::TextArea::default();
+                } else if let Some(p) = (self.active_selection == MenuSelection::Pipelines)
                     .then(|| self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)))
                     .flatten()
                 {
@@ -2482,6 +2691,16 @@ impl App {
                         MetadataField::Reviewers => { self.show_reviewer_popup = true; self.selected_reviewer_ids = if let Some(m) = &self.selected_mr { m.reviewers.iter().map(|a| a.id).collect() } else { Vec::new() }; self.reviewer_state.select(Some(0)); }
                         MetadataField::Milestone => { self.show_milestone_popup = true; let mid = if let Some(i) = &self.selected_issue { i.milestone.as_ref().map(|m| m.id) } else if let Some(m) = &self.selected_mr { m.milestone.as_ref().map(|mi| mi.id) } else { None }; let idx = mid.and_then(|id| self.project_milestones.iter().position(|m| m.id == id)).map(|p| p + 1).unwrap_or(0); self.milestone_state.select(Some(idx)); }
                         MetadataField::Weight => { if self.selected_issue.is_some() { self.show_weight_popup = true; let w = self.selected_issue.as_ref().and_then(|i| i.weight).unwrap_or(0); self.weight_state.select(Some(w as usize)); } }
+                        MetadataField::TargetBranch => {
+                            if let Some(mr) = &self.selected_mr {
+                                let pid = mr.project_id;
+                                self.show_target_branch_popup = true;
+                                let target = mr.target_branch.clone();
+                                let idx = self.project_branches.iter().position(|b| b.name == target).unwrap_or(0);
+                                self.target_branch_state.select(Some(idx));
+                                let _ = self.fetch_branches(pid).await;
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -2568,7 +2787,7 @@ impl App {
         }
 
         // Selection normalization
-        if !filter.is_empty() {
+        if !filter.is_empty() && self.filter_input != self.previous_filter_input {
             self.todos_state.select(Some(0));
             self.mrs_state.select(Some(0));
             self.issues_state.select(Some(0));
@@ -2577,6 +2796,7 @@ impl App {
             self.branches_state.select(Some(0));
             for list in &self.board_lists { self.board_issue_states.entry(list.id).or_default().select(Some(0)); }
         }
+        self.previous_filter_input = self.filter_input.clone();
 
         self.clamp_selections();
     }
@@ -2748,6 +2968,18 @@ impl App {
                     return;
                 }
 
+                if let Some(r) = self.show_target_branch_popup.then(|| self.get_rect("popup_target_branch")).flatten() {
+                    if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
+                         let inner_y = y.saturating_sub(r.y).saturating_sub(1);
+                         if !self.project_branches.is_empty() {
+                             let idx = (self.target_branch_state.offset() + inner_y as usize).min(self.project_branches.len() - 1);
+                             self.target_branch_state.select(Some(idx));
+                         }
+                    }
+                    let _ = self.update_preview().await;
+                    return;
+                }
+
                 if let Some(r) = self.show_snooze_popup.then(|| self.get_rect("popup_snooze")).flatten() {
                     if x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1 {
                          let inner_y = y.saturating_sub(r.y).saturating_sub(1);
@@ -2893,25 +3125,25 @@ impl App {
                     self.active_panel = Panel::MainDetail;
                     self.detail_section = DetailSection::Metadata;
                     let inner_y = y.saturating_sub(r.y).saturating_sub(1);
-                    self.selected_metadata_field = match inner_y {
-                        0 => MetadataField::Title,
-                        1 => MetadataField::Labels,
-                        2 => MetadataField::Assignees,
-                        3 => {
-                            if self.selected_mr.is_some() {
-                                MetadataField::Reviewers
-                            } else {
-                                MetadataField::Weight
-                            }
+                    self.selected_metadata_field = if self.selected_mr.is_some() {
+                        match inner_y {
+                            0 => MetadataField::Title,
+                            1 => MetadataField::TargetBranch,
+                            2 => MetadataField::Labels,
+                            3 => MetadataField::Assignees,
+                            4 => MetadataField::Reviewers,
+                            5 => MetadataField::Milestone,
+                            _ => MetadataField::Title,
                         }
-                        4 => {
-                            if self.selected_mr.is_some() {
-                                MetadataField::Milestone
-                            } else {
-                                MetadataField::Description
-                            }
+                    } else {
+                        match inner_y {
+                            0 => MetadataField::Title,
+                            1 => MetadataField::Labels,
+                            2 => MetadataField::Assignees,
+                            3 => MetadataField::Milestone,
+                            4 => MetadataField::Weight,
+                            _ => MetadataField::Title,
                         }
-                        _ => MetadataField::Description,
                     };
                     let _ = self.update_preview().await;
                     return;
@@ -2930,6 +3162,46 @@ impl App {
                         self.discussion_state.select(Some(inner_y as usize));
                     }
                     let _ = self.update_preview().await;
+                }
+                if let Some(r) = self.get_rect("detail_tabs").filter(|r| x >= r.x && x < r.x + r.width && y == r.y) {
+                    self.active_panel = Panel::MainDetail;
+                    let has_changes = self.selected_mr.is_some();
+                    let mut titles = vec![
+                        " Description ".to_string(),
+                        format!(" Discussions ({}) ", self.discussions.len()),
+                    ];
+                    if has_changes {
+                        titles.push(format!(" Changes ({}) ", self.mr_diffs.len()));
+                    }
+                    
+                    let rel_x = x.saturating_sub(r.x) as usize;
+                    let mut current_x = 0;
+                    for (idx, title) in titles.iter().enumerate() {
+                        let tab_width = title.len();
+                        if rel_x >= current_x && rel_x < current_x + tab_width {
+                            self.detail_section = match idx {
+                                0 => DetailSection::Description,
+                                1 => DetailSection::Discussions,
+                                2 => DetailSection::Changes,
+                                _ => DetailSection::Description,
+                            };
+                            let _ = self.update_preview().await;
+                            break;
+                        }
+                        current_x += tab_width + 3;
+                    }
+                    return;
+                }
+                if let Some(r) = self.get_rect("changes_panel").filter(|r| x > r.x && x < r.x + r.width - 1 && y >= r.y && y < r.y + r.height - 1) {
+                    self.active_panel = Panel::MainDetail;
+                    self.detail_section = DetailSection::Changes;
+                    let inner_y = y.saturating_sub(r.y) as usize;
+                    let idx = self.mr_diff_state.offset() + inner_y;
+                    if idx < self.mr_diffs.len() {
+                        self.mr_diff_state.select(Some(idx));
+                    }
+                    let _ = self.update_preview().await;
+                    return;
                 }
             }
             _ => {}
@@ -3109,7 +3381,7 @@ impl App {
         match self.input_target {
             InputTarget::EditTitle | InputTarget::EditDescription => { if self.selected_issue.is_some() { let _ = self.update_issue().await; } else if self.selected_mr.is_some() { let _ = self.update_mr().await; } }
             InputTarget::Reply => { let _ = self.post_reply().await; }
-            InputTarget::NewComment => { let _ = self.post_new_comment().await; }
+            InputTarget::NewComment | InputTarget::NewFileComment => { let _ = self.post_new_comment().await; }
             InputTarget::SnoozeUntil => { let snooze_until = format!("{}T09:00:00Z", self.calendar_date.format("%Y-%m-%d")); let _ = self.snooze_todo(snooze_until).await; self.show_calendar_popup = false; }
             _ => {}
         }

@@ -75,7 +75,6 @@ impl App {
         let user_id = self.current_user.as_ref().map(|u| u.id);
 
         let _ = tx.send(DataUpdate::Loading(true));
-        let _ = tx.send(DataUpdate::ClearGlobalMRs);
         self.status_message = Some("Fetching Involved Merge Requests...".into());
 
         tokio::spawn(async move {
@@ -83,24 +82,54 @@ impl App {
             let mut handles = Vec::new();
 
             for strategy in strategies {
-                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
+                    }
                 }));
             }
 
             if let Some(uid) = user_id {
-                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
+                    }
                 }));
             }
 
-            for h in handles { let _ = h.await; }
+            let mut all_mrs = Vec::new();
+            let mut has_more = false;
+            for h in handles {
+                if let Ok(data) = h.await {
+                    if data.len() >= 50 {
+                        has_more = true;
+                    }
+                    all_mrs.extend(data);
+                }
+            }
+
+            // Deduplicate based on project_id and iid
+            let mut unique_mrs = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for mr in all_mrs {
+                let key = (mr.project_id, mr.iid);
+                if seen.insert(key) {
+                    unique_mrs.push(mr);
+                }
+            }
+
+            // Sort descending by created_at
+            unique_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            let _ = tx.send(DataUpdate::GlobalMRs { data: unique_mrs, page: 1, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -111,6 +140,7 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.mrs_page + 1;
+        self.mrs_page = next_page;
         let state_str = match self.mr_filter {
             MergeRequestFilter::Opened => "opened".to_string(),
             MergeRequestFilter::Merged => "merged".to_string(),
@@ -123,22 +153,50 @@ impl App {
         tokio::spawn(async move {
             let mut handles = Vec::new();
             for scope in [Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
-                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
+                    }
                 }));
             }
             if let Some(uid) = user_id {
-                let c_inner = client.clone(); let tx_inner = tx.clone(); let s_inner = state_str.clone();
+                let c_inner = client.clone(); let s_inner = state_str.clone();
                 handles.push(tokio::spawn(async move {
                     let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(false) };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    if let Ok(Ok(data)) = res && !data.is_empty() { let _ = tx_inner.send(DataUpdate::AppendGlobalMRs(data)); }
+                    match res {
+                        Ok(Ok(data)) => data,
+                        _ => Vec::new(),
+                    }
                 }));
             }
-            for h in handles { let _ = h.await; }
+
+            let mut all_new_mrs = Vec::new();
+            let mut has_more = false;
+            for h in handles {
+                if let Ok(data) = h.await {
+                    if data.len() >= 50 {
+                        has_more = true;
+                    }
+                    all_new_mrs.extend(data);
+                }
+            }
+
+            // Deduplicate the newly fetched ones
+            let mut unique_new_mrs = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for mr in all_new_mrs {
+                let key = (mr.project_id, mr.iid);
+                if seen.insert(key) {
+                    unique_new_mrs.push(mr);
+                }
+            }
+
+            let _ = tx.send(DataUpdate::AppendGlobalMRs { data: unique_new_mrs, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -159,7 +217,7 @@ impl App {
             let res: Result<Result<Vec<Discussion>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(endpoint, gitlab::api::Pagination::All).query_async(&client)).await;
             match res {
                 Ok(Ok(mut discussions)) => {
-                    discussions.retain(|d| d.notes.first().is_some_and(|n| !n.system));
+                    discussions.retain(|d| !d.notes.is_empty());
                     let _ = tx.send(DataUpdate::Discussions { project_id, iid: mr_iid, data: discussions });
                 }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Discussions fetch failed: {}", e))); }
@@ -262,72 +320,120 @@ impl App {
         let (pid, iid) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid) } else { return Ok(()); };
         let mr = self.selected_mr.as_ref().unwrap().clone();
         
-        if let Some(diff_idx) = self.mr_diff_state.selected()
-            && let Some(mr_diff) = self.mr_diffs.get(diff_idx)
-            && let Some(line_idx) = self.diff_line_state.selected()
-        {
-            let start_idx = self.diff_selection_start.unwrap_or(line_idx).min(line_idx);
-            let end_idx = self.diff_selection_start.unwrap_or(line_idx).max(line_idx);
-            let mut success = false;
+        let mut success = false;
 
-            if let (Some(DiffDisplayLine::Code(_, old_start, new_start)), Some(DiffDisplayLine::Code(_, old_end, new_end))) = 
-                (mr_diff.display_lines.get(start_idx), mr_diff.display_lines.get(end_idx)) 
+        if self.input_target == InputTarget::NewFileComment {
+            if let Some(diff_idx) = self.mr_diff_state.selected()
+                && let Some(mr_diff) = self.mr_diffs.get(diff_idx)
             {
-                let new_line = new_end.filter(|&l| l > 0);
-                let old_line = old_end.filter(|&l| l > 0);
-                let rs_new = if start_idx != end_idx { new_start.filter(|&l| l > 0) } else { None };
-                let rs_old = if start_idx != end_idx { old_start.filter(|&l| l > 0) } else { None };
+                let refs = if let Some(refs) = &mr.diff_refs { refs.clone() } else { return Ok(()); };
+                let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+                let new_path = Some(mr_diff.new_path.clone());
+                let old_path = Some(mr_diff.old_path.clone());
 
-                if new_line.is_some() || old_line.is_some() {
-                    let refs = if let Some(refs) = &mr.diff_refs { refs.clone() } else { return Ok(()); };
-                    let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
-                    let new_path = Some(mr_diff.new_path.clone());
-                    let old_path = Some(mr_diff.old_path.clone());
-
-                    tokio::spawn(async move {
-                        let endpoint = CreateMergeRequestDiscussion {
-                            project: pid, merge_request: iid, body,
-                            base_sha: Some(refs.base_sha.clone()),
-                            start_sha: Some(refs.start_sha.clone()),
-                            head_sha: Some(refs.head_sha.clone()),
-                            new_path, old_path, new_line, old_line,
-                            range_start_new: rs_new,
-                            range_start_old: rs_old,
-                        };
-                        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
-                        match res {
-                            Ok(Ok(_)) => {
-                                let mr_endpoint = SingleMergeRequest { project: pid, merge_request: iid };
-                                let disc_endpoint = MergeRequestDiscussions { project: pid, merge_request: iid };
-                                let (mr_res, disc_res) = tokio::join!(
-                                    tokio::time::timeout(std::time::Duration::from_secs(30), mr_endpoint.query_async(&client)),
-                                    tokio::time::timeout(std::time::Duration::from_secs(30), disc_endpoint.query_async(&client))
-                                );
-                                if let Ok(Ok(val)) = mr_res 
-                                    && let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) 
-                                {
-                                    let _ = tx.send(DataUpdate::MRDetail(updated_mr));
-                                }
-                                if let Ok(Ok(discs)) = disc_res {
-                                    let _ = tx.send(DataUpdate::Discussions { project_id: pid, iid, data: discs });
-                                }
+                tokio::spawn(async move {
+                    let endpoint = CreateMergeRequestDiscussion {
+                        project: pid, merge_request: iid, body,
+                        base_sha: Some(refs.base_sha.clone()),
+                        start_sha: Some(refs.start_sha.clone()),
+                        head_sha: Some(refs.head_sha.clone()),
+                        new_path, old_path,
+                        new_line: None, old_line: None,
+                        range_start_new: None,
+                        range_start_old: None,
+                    };
+                    let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                    match res {
+                        Ok(Ok(_)) => {
+                            let mr_endpoint = SingleMergeRequest { project: pid, merge_request: iid };
+                            let disc_endpoint = MergeRequestDiscussions { project: pid, merge_request: iid };
+                            let (mr_res, disc_res) = tokio::join!(
+                                tokio::time::timeout(std::time::Duration::from_secs(30), mr_endpoint.query_async(&client)),
+                                tokio::time::timeout(std::time::Duration::from_secs(30), disc_endpoint.query_async(&client))
+                            );
+                            if let Ok(Ok(val)) = mr_res 
+                                && let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) 
+                            {
+                                let _ = tx.send(DataUpdate::MRDetail(updated_mr));
                             }
-                            Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post comment failed: {}", e))); }
-                            Err(_) => { let _ = tx.send(DataUpdate::Error("Post comment timed out".into())); }
+                            if let Ok(Ok(discs)) = disc_res {
+                                let _ = tx.send(DataUpdate::Discussions { project_id: pid, iid, data: discs });
+                            }
                         }
-                        let _ = tx.send(DataUpdate::Loading(false));
-                    });
-                    success = true;
+                        Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post comment failed: {}", e))); }
+                        Err(_) => { let _ = tx.send(DataUpdate::Error("Post comment timed out".into())); }
+                    }
+                    let _ = tx.send(DataUpdate::Loading(false));
+                });
+                success = true;
+            }
+        } else {
+            if let Some(diff_idx) = self.mr_diff_state.selected()
+                && let Some(mr_diff) = self.mr_diffs.get(diff_idx)
+                && let Some(line_idx) = self.diff_line_state.selected()
+            {
+                let start_idx = self.diff_selection_start.unwrap_or(line_idx).min(line_idx);
+                let end_idx = self.diff_selection_start.unwrap_or(line_idx).max(line_idx);
+
+                if let (Some(DiffDisplayLine::Code(_, old_start, new_start)), Some(DiffDisplayLine::Code(_, old_end, new_end))) = 
+                    (mr_diff.display_lines.get(start_idx), mr_diff.display_lines.get(end_idx)) 
+                {
+                    let new_line = new_end.filter(|&l| l > 0);
+                    let old_line = old_end.filter(|&l| l > 0);
+                    let rs_new = if start_idx != end_idx { new_start.filter(|&l| l > 0) } else { None };
+                    let rs_old = if start_idx != end_idx { old_start.filter(|&l| l > 0) } else { None };
+
+                    if new_line.is_some() || old_line.is_some() {
+                        let refs = if let Some(refs) = &mr.diff_refs { refs.clone() } else { return Ok(()); };
+                        let client = self.gitlab.clone(); let tx = self.tx.clone(); let _ = tx.send(DataUpdate::Loading(true));
+                        let new_path = Some(mr_diff.new_path.clone());
+                        let old_path = Some(mr_diff.old_path.clone());
+
+                        tokio::spawn(async move {
+                            let endpoint = CreateMergeRequestDiscussion {
+                                project: pid, merge_request: iid, body,
+                                base_sha: Some(refs.base_sha.clone()),
+                                start_sha: Some(refs.start_sha.clone()),
+                                head_sha: Some(refs.head_sha.clone()),
+                                new_path, old_path, new_line, old_line,
+                                range_start_new: rs_new,
+                                range_start_old: rs_old,
+                            };
+                            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
+                            match res {
+                                Ok(Ok(_)) => {
+                                    let mr_endpoint = SingleMergeRequest { project: pid, merge_request: iid };
+                                    let disc_endpoint = MergeRequestDiscussions { project: pid, merge_request: iid };
+                                    let (mr_res, disc_res) = tokio::join!(
+                                        tokio::time::timeout(std::time::Duration::from_secs(30), mr_endpoint.query_async(&client)),
+                                        tokio::time::timeout(std::time::Duration::from_secs(30), disc_endpoint.query_async(&client))
+                                    );
+                                    if let Ok(Ok(val)) = mr_res 
+                                        && let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) 
+                                    {
+                                        let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                                    }
+                                    if let Ok(Ok(discs)) = disc_res {
+                                        let _ = tx.send(DataUpdate::Discussions { project_id: pid, iid, data: discs });
+                                    }
+                                }
+                                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Post comment failed: {}", e))); }
+                                Err(_) => { let _ = tx.send(DataUpdate::Error("Post comment timed out".into())); }
+                            }
+                            let _ = tx.send(DataUpdate::Loading(false));
+                        });
+                        success = true;
+                    }
                 }
             }
-
-            if !success {
-                self.last_error = Some("Cannot comment on this line (no valid line number)".into());
-            }
-            self.input_mode = false;
-            self.textarea = ratatui_textarea::TextArea::default();
-            self.diff_selection_start = None;
         }
+
+        if !success {
+            self.last_error = Some("Cannot comment (no file/line selected or invalid context)".into());
+        }
+        self.input_mode = false;
+        self.textarea = ratatui_textarea::TextArea::default();
+        self.diff_selection_start = None;
         Ok(())
     }
 
@@ -404,7 +510,11 @@ impl App {
     }
 
     pub async fn toggle_mr_draft(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let (pid, iid, current_draft) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid, mr.draft.unwrap_or(false)) } else { return Ok(()); };
+        let (pid, iid, current_draft, current_title) = if let Some(mr) = &self.selected_mr { 
+            (mr.project_id, mr.iid, mr.draft.unwrap_or(false), mr.title.clone()) 
+        } else { 
+            return Ok(()); 
+        };
         let client = self.gitlab.clone(); let tx = self.tx.clone();
         if let Some(m) = &mut self.selected_mr { 
             m.draft = Some(!current_draft); 
@@ -416,7 +526,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: Some(!current_draft) };
+            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: Some(!current_draft), wip: None };
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
             match res { 
                 Ok(Ok(val)) => { 
@@ -424,7 +534,48 @@ impl App {
                         let _ = tx.send(DataUpdate::MRDetail(updated_mr));
                     }
                 } 
-                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } 
+                Ok(Err(e)) => {
+                    let err_str = e.to_string().to_lowercase();
+                    if err_str.contains("400") || err_str.contains("bad request") {
+                        let retry_edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: Some(!current_draft) };
+                        let retry_res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), retry_edit.query_async(&client)).await;
+                        match retry_res {
+                            Ok(Ok(val)) => {
+                                if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
+                                    let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                                }
+                            }
+                            Ok(Err(e2)) => {
+                                let err_str2 = e2.to_string().to_lowercase();
+                                if err_str2.contains("400") || err_str2.contains("bad request") {
+                                    let new_title = toggle_wip_title(&current_title, !current_draft);
+                                    let title_edit = EditMergeRequest { project: pid, merge_request: iid, title: Some(new_title), description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
+                                    let title_res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), title_edit.query_async(&client)).await;
+                                    match title_res {
+                                        Ok(Ok(val)) => {
+                                            if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
+                                                let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                                            }
+                                        }
+                                        Ok(Err(e3)) => {
+                                            let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e3)));
+                                        }
+                                        Err(_) => {
+                                            let _ = tx.send(DataUpdate::Error("MR update timed out".into()));
+                                        }
+                                    }
+                                } else {
+                                    let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e2)));
+                                }
+                            }
+                            Err(_) => {
+                                let _ = tx.send(DataUpdate::Error("MR update timed out".into()));
+                            }
+                        }
+                    } else {
+                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                    }
+                } 
                 Err(_) => { let _ = tx.send(DataUpdate::Error("MR update timed out".into())); } 
             }
             let _ = tx.send(DataUpdate::Loading(false));
@@ -445,7 +596,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: Some(event.to_string()), labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: Some(event.to_string()), labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
             match res { 
                 Ok(Ok(val)) => { 
@@ -464,7 +615,7 @@ impl App {
     pub async fn update_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let (pid, iid) = if let Some(mr) = &self.selected_mr { (mr.project_id, mr.iid) } else { return Ok(()); };
         let client = self.gitlab.clone(); let tx = self.tx.clone();
-        let mut edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+        let mut edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
         let body = self.textarea.lines().join("\n");
         match self.input_target {
             InputTarget::EditTitle => { 
@@ -514,7 +665,7 @@ impl App {
             let labels = self.project_labels.iter().filter(|l| self.selected_label_ids.contains(&l.id())).map(|l| l.name().to_string()).collect::<Vec<_>>().join(",");
             self.show_label_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: Some(labels), assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: Some(labels), assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { Ok(Ok(val)) => { if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) { let _ = tx.send(DataUpdate::MRDetail(updated_mr)); } let _ = tx.send(DataUpdate::TriggerRefresh); } Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR labels timed out".into())); } }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -529,7 +680,7 @@ impl App {
             let assignee_ids = self.selected_assignee_ids.clone();
             self.show_assignee_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: Some(assignee_ids), reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: Some(assignee_ids), reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { Ok(Ok(val)) => { if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) { let _ = tx.send(DataUpdate::MRDetail(updated_mr)); } let _ = tx.send(DataUpdate::TriggerRefresh); } Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR assignees timed out".into())); } }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -544,7 +695,7 @@ impl App {
             let reviewer_ids = self.selected_reviewer_ids.clone();
             self.show_reviewer_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: Some(reviewer_ids), milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None };
+                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: Some(reviewer_ids), milestone_id: None, remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { Ok(Ok(val)) => { if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) { let _ = tx.send(DataUpdate::MRDetail(updated_mr)); } let _ = tx.send(DataUpdate::TriggerRefresh); } Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR reviewers timed out".into())); } }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -559,11 +710,48 @@ impl App {
             let mid = if let Some(i) = self.milestone_state.selected() { if i == 0 { None } else { Some(self.project_milestones[i - 1].id) } } else { None };
             self.show_milestone_popup = false; let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: Some(mid), remove_source_branch: None, squash: None, target_branch: None, draft: None };
+                let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: Some(mid), remove_source_branch: None, squash: None, target_branch: None, draft: None, wip: None };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
                 match res { Ok(Ok(val)) => { if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) { let _ = tx.send(DataUpdate::MRDetail(updated_mr)); } let _ = tx.send(DataUpdate::TriggerRefresh); } Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); } Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR milestone timed out".into())); } }
                 let _ = tx.send(DataUpdate::Loading(false));
             });
+        }
+        Ok(())
+    }
+
+    pub async fn update_mr_target_branch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(mr) = &self.selected_mr {
+            let pid = mr.project_id; let iid = mr.iid; let client = self.gitlab.clone(); let tx = self.tx.clone();
+            let branch_name = if let Some(i) = self.target_branch_state.selected() {
+                if i < self.project_branches.len() {
+                    Some(self.project_branches[i].name.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            self.show_target_branch_popup = false;
+            if let Some(branch) = branch_name {
+                self.mr_diffs.clear();
+                self.mr_diff_state = ratatui::widgets::ListState::default();
+                let _ = tx.send(DataUpdate::Loading(true));
+                tokio::spawn(async move {
+                    let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: None, target_branch: Some(branch), draft: None, wip: None };
+                    let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
+                    match res {
+                        Ok(Ok(val)) => {
+                            if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
+                                let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                            }
+                            let _ = tx.send(DataUpdate::TriggerRefresh);
+                        }
+                        Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e))); }
+                        Err(_) => { let _ = tx.send(DataUpdate::Error("Update MR target branch timed out".into())); }
+                    }
+                    let _ = tx.send(DataUpdate::Loading(false));
+                });
+            }
         }
         Ok(())
     }
@@ -581,7 +769,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: Some(!current_squash), target_branch: None, draft: None };
+            let edit = EditMergeRequest { project: pid, merge_request: iid, title: None, description: None, state_event: None, labels: None, assignee_ids: None, reviewer_ids: None, milestone_id: None, remove_source_branch: None, squash: Some(!current_squash), target_branch: None, draft: None, wip: None };
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), edit.query_async(&client)).await;
             match res { 
                 Ok(Ok(val)) => { 
@@ -680,6 +868,56 @@ impl App {
     }
 }
 
+fn strip_draft_prefix(title: &str) -> String {
+    let mut t = title.trim();
+    loop {
+        let lower = t.to_lowercase();
+        if lower.starts_with("draft:") {
+            t = t["draft:".len()..].trim_start();
+        } else if lower.starts_with("draft -") {
+            t = t["draft -".len()..].trim_start();
+        } else if lower.starts_with("draft") {
+            let rest = &t["draft".len()..];
+            if rest.is_empty() || rest.chars().next().map(|c| c.is_whitespace() || c.is_ascii_punctuation()).unwrap_or(false) {
+                t = rest.trim_start();
+            } else {
+                break;
+            }
+        } else if lower.starts_with("wip:") {
+            t = t["wip:".len()..].trim_start();
+        } else if lower.starts_with("wip -") {
+            t = t["wip -".len()..].trim_start();
+        } else if lower.starts_with("wip") {
+            let rest = &t["wip".len()..];
+            if rest.is_empty() || rest.chars().next().map(|c| c.is_whitespace() || c.is_ascii_punctuation()).unwrap_or(false) {
+                t = rest.trim_start();
+            } else {
+                break;
+            }
+        } else if lower.starts_with("[draft]") {
+            t = t["[draft]".len()..].trim_start();
+        } else if lower.starts_with("[wip]") {
+            t = t["[wip]".len()..].trim_start();
+        } else if lower.starts_with("(draft)") {
+            t = t["(draft)".len()..].trim_start();
+        } else if lower.starts_with("(wip)") {
+            t = t["(wip)".len()..].trim_start();
+        } else {
+            break;
+        }
+    }
+    t.to_string()
+}
+
+fn toggle_wip_title(title: &str, make_draft: bool) -> String {
+    let clean = strip_draft_prefix(title);
+    if make_draft {
+        format!("Draft: {}", clean)
+    } else {
+        clean
+    }
+}
+
 pub fn parse_diff_context(diff: &str, new_line: Option<u64>, old_line: Option<u64>) -> Option<Vec<(u64, String, LineType, bool)>> {
     let target = new_line.or(old_line)?;
     let mut all_diff_lines = Vec::new();
@@ -750,5 +988,21 @@ mod tests {
         app.selected_mr = Some(app.merge_requests[0].clone()); app.fetch_discussions(1, 1).await.unwrap();
         let _ = tokio::time::timeout(Duration::from_secs(2), async { while app.is_loading { app.process_updates(&mut rx).await; tokio::time::sleep(Duration::from_millis(10)).await; } }).await;
         app.approve_mr().await.unwrap(); app.unapprove_mr().await.unwrap(); app.merge_mr().await.unwrap(); app.toggle_mr_state().await.unwrap(); app.input_target = InputTarget::EditTitle; app.textarea = ratatui_textarea::TextArea::from(vec!["new"]); app.update_mr().await.unwrap(); app.project_labels = vec![Label { id: 1, name: "l".into(), color: "c".into(), text_color: Some("t".into()) }]; app.selected_label_ids.push(1); app.update_mr_labels().await.unwrap(); app.selected_assignee_ids.push(1); app.update_mr_assignees().await.unwrap(); app.project_milestones = vec![Milestone { id: 1, title: "m".into() }]; app.milestone_state.select(Some(1)); app.update_mr_milestone().await.unwrap(); app.resolve_discussion().await.unwrap();
+    }
+
+    #[test]
+    fn test_draft_prefix_manipulation() {
+        assert_eq!(strip_draft_prefix("My MR"), "My MR");
+        assert_eq!(strip_draft_prefix("Draft: My MR"), "My MR");
+        assert_eq!(strip_draft_prefix("WIP: My MR"), "My MR");
+        assert_eq!(strip_draft_prefix("wip - My MR"), "My MR");
+        assert_eq!(strip_draft_prefix("Drafting new feature"), "Drafting new feature");
+        assert_eq!(strip_draft_prefix("[Draft] My MR"), "My MR");
+        assert_eq!(strip_draft_prefix("(WIP) My MR"), "My MR");
+
+        assert_eq!(toggle_wip_title("My MR", true), "Draft: My MR");
+        assert_eq!(toggle_wip_title("Draft: My MR", true), "Draft: My MR");
+        assert_eq!(toggle_wip_title("Draft: My MR", false), "My MR");
+        assert_eq!(toggle_wip_title("WIP: My MR", false), "My MR");
     }
 }
