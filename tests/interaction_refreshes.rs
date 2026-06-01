@@ -24,7 +24,7 @@ async fn test_selection_coherence_on_navigation() {
     assert_eq!(app.todos_state.selected(), None);
 
     // 2. Load data and verify auto-selection
-    app.todos = vec![Todo { id: 1, action_name: "t".into(), body: "b".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None } }];
+    app.todos = vec![Todo { id: 1, action_name: "t".into(), body: "b".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Some(Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None }), group: None }];
     app.filter_lists(); // This calls clamp_selections
 
     assert_eq!(app.todos_state.selected(), Some(0), "First item should be auto-selected when data arrives");
@@ -47,8 +47,8 @@ async fn test_selection_coherence_on_navigation() {
     let (_server, mut app, _rx) = setup_app().await;
 
     app.todos = vec![
-        Todo { id: 1, action_name: "match".into(), body: "match".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None } },
-        Todo { id: 2, action_name: "other".into(), body: "other".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None } },
+        Todo { id: 1, action_name: "match".into(), body: "match".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Some(Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None }), group: None },
+        Todo { id: 2, action_name: "other".into(), body: "other".into(), target_url: "u".into(), target_type: "Issue".into(), state: "pending".into(), created_at: "t".into(), project: Some(Project { id: 1, name: "p".into(), web_url: None, path_with_namespace: None, default_branch: None, namespace: None }), group: None },
     ];
     app.filter_lists();
     app.todos_state.select(Some(2)); // Select "other" (index 0 is Header, 1 is "match", 2 is "other")

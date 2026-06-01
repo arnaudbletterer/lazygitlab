@@ -28,10 +28,10 @@ fn dummy_issue(iid: u64, title: &str) -> Issue {
 
 fn dummy_todo(id: u64, body: &str) -> Todo {
     Todo {
-        id, project: dummy_project(1, "p"),
+        id, project: Some(dummy_project(1, "p")),
         action_name: "assigned".into(), target_type: "Issue".into(),
         target_url: "u".into(), body: body.into(), state: "pending".into(),
-        created_at: "t".into()
+        created_at: "t".into(), group: None,
     }
 }
 

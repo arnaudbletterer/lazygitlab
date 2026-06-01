@@ -103,20 +103,21 @@ async fn test_lazy_load_mrs_diffs() {
     // Select target Todo pointing to a DIFFERENT MR (iid = 2)
     let todo = Todo {
         id: 1,
-        project: Project {
+        project: Some(Project {
             id: 1,
             name: "p".into(),
             path_with_namespace: Some("p/n".into()),
             web_url: Some("url".into()),
             default_branch: None,
             namespace: None,
-        },
+        }),
         action_name: "assigned".into(),
         target_type: "MergeRequest".into(),
         target_url: "https://gitlab.com/p/n/-/merge_requests/2".into(),
         body: "todo".into(),
         state: "pending".into(),
         created_at: "t".into(),
+        group: None,
     };
     app.active_panel = Panel::Main;
     app.active_context = Context::Dashboard;

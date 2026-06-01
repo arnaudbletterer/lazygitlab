@@ -260,13 +260,21 @@ impl App {
             }
 
             DataUpdate::Todos { data, page, has_more } => { 
-                for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
+                for t in &data {
+                    if let Some(ref p) = t.project {
+                        self.project_cache.insert(p.id, p.clone());
+                    }
+                }
                 if self.todos != data || self.todos_page != page || self.todos_has_more != has_more {
                     self.todos = data; self.todos_page = page; self.todos_has_more = has_more; self.filter_lists(); 
                 }
             }
             DataUpdate::AppendTodos(mut data) => { 
-                for t in &data { self.project_cache.insert(t.project.id, t.project.clone()); }
+                for t in &data {
+                    if let Some(ref p) = t.project {
+                        self.project_cache.insert(p.id, p.clone());
+                    }
+                }
                 if !data.is_empty() {
                     self.todos_has_more = data.len() >= 50; self.todos.append(&mut data); self.todos_page += 1; self.filter_lists(); 
                 }
@@ -1111,27 +1119,29 @@ impl App {
                         let iid = re.captures(&todo.target_url).and_then(|cap| cap.get(1)).and_then(|m| m.as_str().parse().ok());
 
                         if let Some(iid) = iid {
-                            let project_id = todo.project.id;
-                            let target_type = todo.target_type.clone();
-                            let title = todo.body.clone();
-                            let target_url = todo.target_url.clone();
-                            if target_type == "MergeRequest"
-                                && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != project_id)
-                            {
-                                self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
-                                self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into(), participants: Vec::new() });
-                                let _ = self.fetch_discussions(project_id, iid).await;
-                                if self.active_panel == Panel::MainDetail {
-                                    self.trigger_project_metadata_fetch(project_id);
-                                }
-                            } else if target_type == "Issue"
-                                && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != project_id)
-                            {
-                                self.selected_mr = None; self.discussions.clear();
-                                self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, start_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new(), participants: Vec::new() });
-                                let _ = self.fetch_issue_discussions(project_id, iid).await;
-                                if self.active_panel == Panel::MainDetail {
-                                    self.trigger_project_metadata_fetch(project_id);
+                            if let Some(ref p) = todo.project {
+                                let project_id = p.id;
+                                let target_type = todo.target_type.clone();
+                                let title = todo.body.clone();
+                                let target_url = todo.target_url.clone();
+                                if target_type == "MergeRequest"
+                                    && self.selected_mr.as_ref().is_none_or(|m| m.iid != iid || m.project_id != project_id)
+                                {
+                                    self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
+                                    self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into(), participants: Vec::new() });
+                                    let _ = self.fetch_discussions(project_id, iid).await;
+                                    if self.active_panel == Panel::MainDetail {
+                                       self.trigger_project_metadata_fetch(project_id);
+                                    }
+                                } else if target_type == "Issue"
+                                    && self.selected_issue.as_ref().is_none_or(|iss| iss.iid != iid || iss.project_id != project_id)
+                                {
+                                    self.selected_mr = None; self.discussions.clear();
+                                    self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, start_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new(), participants: Vec::new() });
+                                    let _ = self.fetch_issue_discussions(project_id, iid).await;
+                                    if self.active_panel == Panel::MainDetail {
+                                       self.trigger_project_metadata_fetch(project_id);
+                                    }
                                 }
                             }
                         }
@@ -2959,7 +2969,13 @@ impl App {
         let mut grouped_todos = Vec::new();
         let mut todos_by_project: std::collections::BTreeMap<String, Vec<Todo>> = std::collections::BTreeMap::new();
         for t in self.todos.iter().filter(|t| t.body.to_lowercase().contains(&filter)) {
-            let p_name = t.project.path_with_namespace.as_deref().unwrap_or(&t.project.name).to_string();
+            let p_name = if let Some(ref p) = t.project {
+                p.path_with_namespace.as_deref().unwrap_or(&p.name).to_string()
+            } else if let Some(ref g) = t.group {
+                g.full_path.clone()
+            } else {
+                "Global".to_string()
+            };
             todos_by_project.entry(p_name).or_default().push(t.clone());
         }
         for (p_name, items) in todos_by_project {

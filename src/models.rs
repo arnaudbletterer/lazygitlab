@@ -264,13 +264,14 @@ pub enum MenuSelection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Todo {
     pub id: u64,
-    pub project: Project,
+    pub project: Option<Project>,
     pub action_name: String,
     pub target_type: String,
     pub target_url: String,
     pub body: String,
     pub state: String,
     pub created_at: String,
+    pub group: Option<Group>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
