@@ -72,64 +72,56 @@ impl App {
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
-        let user_id = self.current_user.as_ref().map(|u| u.id);
 
         let _ = tx.send(DataUpdate::Loading(true));
-        self.status_message = Some("Fetching Involved Merge Requests...".into());
+        self.status_message = Some("Fetching Merge Requests...".into());
+
+        let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
         tokio::spawn(async move {
-            let strategies = vec![Some("assigned_to_me".to_string()), Some("created_by_me".to_string())];
-            let mut handles = Vec::new();
-
-            for strategy in strategies {
-                let c_inner = client.clone(); let s_inner = state_str.clone();
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: strategy, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    match res {
-                        Ok(Ok(data)) => data,
-                        _ => Vec::new(),
-                    }
-                }));
-            }
-
-            if let Some(uid) = user_id {
-                let c_inner = client.clone(); let s_inner = state_str.clone();
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(1), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    match res {
-                        Ok(Ok(data)) => data,
-                        _ => Vec::new(),
-                    }
-                }));
+            if project_ids.is_empty() {
+                let _ = tx.send(DataUpdate::GlobalMRs { data: Vec::new(), page: 1, has_more: false });
+                let _ = tx.send(DataUpdate::Loading(false));
+                return;
             }
 
             let mut all_mrs = Vec::new();
-            let mut has_more = false;
-            for h in handles {
-                if let Ok(data) = h.await {
-                    if data.len() >= 50 {
-                        has_more = true;
+            let mut handles = Vec::new();
+
+            for pid in project_ids {
+                let c = client.clone();
+                let state = state_str.clone();
+                let handle = tokio::spawn(async move {
+                    let ep = PagedMergeRequests {
+                        project: pid,
+                        state: Some(state),
+                        page: 1,
+                        per_page: 50,
+                        order_by: Some("created_at".into()),
+                        sort: Some("desc".into()),
+                        with_labels_details: Some(true),
+                    };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c)).await;
+                    match res {
+                        Ok(Ok(mrs)) => mrs,
+                        _ => Vec::new(),
                     }
-                    all_mrs.extend(data);
-                }
+                });
+                handles.push(handle);
             }
 
-            // Deduplicate based on project_id and iid
-            let mut unique_mrs = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for mr in all_mrs {
-                let key = (mr.project_id, mr.iid);
-                if seen.insert(key) {
-                    unique_mrs.push(mr);
+            for handle in handles {
+                if let Ok(mrs) = handle.await {
+                    all_mrs.extend(mrs);
                 }
             }
 
             // Sort descending by created_at
-            unique_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            all_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let has_more = all_mrs.len() >= 50;
+            all_mrs.truncate(50);
 
-            let _ = tx.send(DataUpdate::GlobalMRs { data: unique_mrs, page: 1, has_more });
+            let _ = tx.send(DataUpdate::GlobalMRs { data: all_mrs, page: 1, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -147,56 +139,54 @@ impl App {
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
-        let user_id = self.current_user.as_ref().map(|u| u.id);
 
         let _ = tx.send(DataUpdate::Loading(true));
+
+        let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
+
         tokio::spawn(async move {
+            if project_ids.is_empty() {
+                let _ = tx.send(DataUpdate::Loading(false));
+                return;
+            }
+
+            let mut all_mrs = Vec::new();
             let mut handles = Vec::new();
-            for scope in [Some("assigned_to_me".to_string()), Some("created_by_me".to_string())] {
-                let c_inner = client.clone(); let s_inner = state_str.clone();
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
+
+            for pid in project_ids {
+                let c = client.clone();
+                let state = state_str.clone();
+                let handle = tokio::spawn(async move {
+                    let ep = PagedMergeRequests {
+                        project: pid,
+                        state: Some(state),
+                        page: next_page,
+                        per_page: 50,
+                        order_by: Some("created_at".into()),
+                        sort: Some("desc".into()),
+                        with_labels_details: Some(true),
+                    };
+                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c)).await;
                     match res {
-                        Ok(Ok(data)) => data,
+                        Ok(Ok(mrs)) => mrs,
                         _ => Vec::new(),
                     }
-                }));
-            }
-            if let Some(uid) = user_id {
-                let c_inner = client.clone(); let s_inner = state_str.clone();
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalMergeRequests { scope: None, state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, reviewer_id: Some(uid), page: Some(next_page), per_page: Some(50), order_by: Some("created_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c_inner)).await;
-                    match res {
-                        Ok(Ok(data)) => data,
-                        _ => Vec::new(),
-                    }
-                }));
+                });
+                handles.push(handle);
             }
 
-            let mut all_new_mrs = Vec::new();
-            let mut has_more = false;
-            for h in handles {
-                if let Ok(data) = h.await {
-                    if data.len() >= 50 {
-                        has_more = true;
-                    }
-                    all_new_mrs.extend(data);
+            for handle in handles {
+                if let Ok(mrs) = handle.await {
+                    all_mrs.extend(mrs);
                 }
             }
 
-            // Deduplicate the newly fetched ones
-            let mut unique_new_mrs = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for mr in all_new_mrs {
-                let key = (mr.project_id, mr.iid);
-                if seen.insert(key) {
-                    unique_new_mrs.push(mr);
-                }
-            }
+            // Sort descending by created_at
+            all_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let has_more = all_mrs.len() >= 50;
+            all_mrs.truncate(50);
 
-            let _ = tx.send(DataUpdate::AppendGlobalMRs { data: unique_new_mrs, has_more });
+            let _ = tx.send(DataUpdate::AppendGlobalMRs { data: all_mrs, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

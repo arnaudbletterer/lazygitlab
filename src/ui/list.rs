@@ -106,21 +106,33 @@ fn render_nav_panel(f: &mut Frame, is_focused: bool, theme: &Theme, area: Rect, 
 fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     let is_main_focused = app.active_panel == Panel::Main;
     let list_title = match app.active_selection {
-        MenuSelection::Todos => " To-Do List ",
-        MenuSelection::MergeRequests => " Merge Requests ",
-        MenuSelection::Issues => " Issues ",
-        MenuSelection::Pipelines => " Pipelines ",
-        MenuSelection::Projects => " Projects ",
-        MenuSelection::Groups => " Groups ",
-        MenuSelection::Repository => " Repository ",
-        MenuSelection::Branches => " Branches ",
-        MenuSelection::Commits => " Commits ",
-        MenuSelection::Boards => " Boards ",
-        MenuSelection::Epics => " Epics ",
+        MenuSelection::Todos => " To-Do List ".to_string(),
+        MenuSelection::MergeRequests => {
+            if app.show_involved_only {
+                " Merge Requests (Involved Only) ".to_string()
+            } else {
+                " Merge Requests ".to_string()
+            }
+        }
+        MenuSelection::Issues => {
+            if app.show_involved_only {
+                " Issues (Involved Only) ".to_string()
+            } else {
+                " Issues ".to_string()
+            }
+        }
+        MenuSelection::Pipelines => " Pipelines ".to_string(),
+        MenuSelection::Projects => " Projects ".to_string(),
+        MenuSelection::Groups => " Groups ".to_string(),
+        MenuSelection::Repository => " Repository ".to_string(),
+        MenuSelection::Branches => " Branches ".to_string(),
+        MenuSelection::Commits => " Commits ".to_string(),
+        MenuSelection::Boards => " Boards ".to_string(),
+        MenuSelection::Epics => " Epics ".to_string(),
     };
     let list_block = Block::default()
         .borders(Borders::ALL)
-        .title(list_title)
+        .title(list_title.as_str())
         .border_style(if is_main_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
     
     let list_inner = list_block.inner(area);
@@ -174,7 +186,22 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 match item {
                     GroupedItem::Item(mr) => {
                         use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
-                        let mut spans = vec![Span::raw(format!("!{} {}", mr.iid, mr.title)), Span::raw(" ")];
+                        let mut involved = false;
+                        if let Some(ref me) = app.current_user {
+                            if mr.author.id == me.id 
+                                || mr.assignees.iter().any(|a| a.id == me.id) 
+                                || mr.reviewers.iter().any(|r| r.id == me.id)
+                                || mr.participants.iter().any(|p| p.id == me.id)
+                            {
+                                involved = true;
+                            }
+                        }
+                        let mut spans = Vec::new();
+                        if involved {
+                            spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
+                        }
+                        spans.push(Span::raw(format!("!{} {}", mr.iid, mr.title)));
+                        spans.push(Span::raw(" "));
                         for label in &mr.labels {
                             let bg = hex_to_color(label.color());
                             let fg = get_contrasting_text_color(label.color());
@@ -198,7 +225,21 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 match item {
                     GroupedItem::Item(i) => {
                         use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
-                        let mut spans = vec![Span::raw(format!("#{} {}", i.iid, i.title)), Span::raw(" ")];
+                        let mut involved = false;
+                        if let Some(ref me) = app.current_user {
+                            if i.author.id == me.id 
+                                || i.assignees.iter().any(|a| a.id == me.id)
+                                || i.participants.iter().any(|p| p.id == me.id)
+                            {
+                                involved = true;
+                            }
+                        }
+                        let mut spans = Vec::new();
+                        if involved {
+                            spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
+                        }
+                        spans.push(Span::raw(format!("#{} {}", i.iid, i.title)));
+                        spans.push(Span::raw(" "));
                         for label in &i.labels {
                             let bg = hex_to_color(label.color());
                             let fg = get_contrasting_text_color(label.color());

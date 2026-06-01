@@ -67,59 +67,60 @@ impl App {
             IssueFilter::All => "all".to_string(),
         };
         let _ = tx.send(DataUpdate::Loading(true));
-        self.status_message = Some("Fetching Involved Issues...".into());
+        self.status_message = Some("Fetching Issues...".into());
+
+        let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
         tokio::spawn(async move {
-            let scopes = vec!["assigned_to_me", "created_by_me"];
-            let mut handles = Vec::new();
-
-            for scope in scopes {
-                let c_inner = c.clone();
-                let s_inner = state_str.clone();
-                let scope_val = scope.to_string();
-                
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(1), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
-                    match res {
-                        Ok(Ok(data)) => data,
-                        _ => Vec::new(),
-                    }
-                }));
+            if project_ids.is_empty() {
+                let _ = tx.send(DataUpdate::GlobalIssues { data: Vec::new(), page: 1, has_more: false });
+                let _ = tx.send(DataUpdate::Loading(false));
+                return;
             }
 
             let mut all_issues = Vec::new();
-            let mut has_more = false;
-            for h in handles {
-                if let Ok(data) = h.await {
-                    if data.len() >= 50 {
-                        has_more = true;
+            let mut handles = Vec::new();
+
+            for pid in project_ids {
+                let client = c.clone();
+                let state = state_str.clone();
+                let handle = tokio::spawn(async move {
+                    let ep = PagedIssues {
+                        project: pid,
+                        state: Some(state),
+                        page: 1,
+                        per_page: 50,
+                        order_by: Some("updated_at".into()),
+                        sort: Some("desc".into()),
+                        with_labels_details: Some(true),
+                    };
+                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
+                    match res {
+                        Ok(Ok(issues)) => issues,
+                        _ => Vec::new(),
                     }
-                    all_issues.extend(data);
-                }
+                });
+                handles.push(handle);
             }
 
-            // Deduplicate based on project_id and iid
-            let mut unique_issues = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for issue in all_issues {
-                let key = (issue.project_id, issue.iid);
-                if seen.insert(key) {
-                    unique_issues.push(issue);
+            for handle in handles {
+                if let Ok(issues) = handle.await {
+                    all_issues.extend(issues);
                 }
             }
 
             // Sort descending by created_at
-            unique_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            all_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let has_more = all_issues.len() >= 50;
+            all_issues.truncate(50);
 
-            let _ = tx.send(DataUpdate::GlobalIssues { data: unique_issues, page: 1, has_more });
+            let _ = tx.send(DataUpdate::GlobalIssues { data: all_issues, page: 1, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
 
     pub async fn fetch_next_global_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Pagination for multi-scope is complex. For now, we'll just fetch more of both.
         if !self.issues_has_more || self.is_loading { return Ok(()); }
         let c = self.gitlab.clone();
         let tx = self.tx.clone();
@@ -131,43 +132,52 @@ impl App {
             IssueFilter::All => "all".to_string(),
         };
         let _ = tx.send(DataUpdate::Loading(true));
+
+        let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
+
         tokio::spawn(async move {
-            let scopes = vec!["assigned_to_me", "created_by_me"];
+            if project_ids.is_empty() {
+                let _ = tx.send(DataUpdate::Loading(false));
+                return;
+            }
+
+            let mut all_issues = Vec::new();
             let mut handles = Vec::new();
-            for scope in scopes {
-                let c_inner = c.clone(); let s_inner = state_str.clone(); let scope_val = scope.to_string();
-                handles.push(tokio::spawn(async move {
-                    let ep = GlobalIssues { scope: Some(scope_val), state: Some(s_inner), membership: Some(true), search: None, author_id: None, assignee_id: None, page: Some(next_page), per_page: Some(50), order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
-                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c_inner)).await;
+
+            for pid in project_ids {
+                let client = c.clone();
+                let state = state_str.clone();
+                let handle = tokio::spawn(async move {
+                    let ep = PagedIssues {
+                        project: pid,
+                        state: Some(state),
+                        page: next_page,
+                        per_page: 50,
+                        order_by: Some("updated_at".into()),
+                        sort: Some("desc".into()),
+                        with_labels_details: Some(true),
+                    };
+                    let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
                     match res {
-                        Ok(Ok(data)) => data,
+                        Ok(Ok(issues)) => issues,
                         _ => Vec::new(),
                     }
-                }));
+                });
+                handles.push(handle);
             }
 
-            let mut all_new_issues = Vec::new();
-            let mut has_more = false;
-            for h in handles {
-                if let Ok(data) = h.await {
-                    if data.len() >= 50 {
-                        has_more = true;
-                    }
-                    all_new_issues.extend(data);
+            for handle in handles {
+                if let Ok(issues) = handle.await {
+                    all_issues.extend(issues);
                 }
             }
 
-            // Deduplicate the newly fetched ones
-            let mut unique_new_issues = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for issue in all_new_issues {
-                let key = (issue.project_id, issue.iid);
-                if seen.insert(key) {
-                    unique_new_issues.push(issue);
-                }
-            }
+            // Sort descending by created_at
+            all_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let has_more = all_issues.len() >= 50;
+            all_issues.truncate(50);
 
-            let _ = tx.send(DataUpdate::AppendGlobalIssues { data: unique_new_issues, has_more });
+            let _ = tx.send(DataUpdate::AppendGlobalIssues { data: all_issues, has_more });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

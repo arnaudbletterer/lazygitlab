@@ -596,6 +596,7 @@ pub enum HelpAction {
     Panel2,
     Panel3,
     ExpandCollapsedDiff,
+    ToggleInvolvedOnly,
     None,
 }
 
@@ -899,6 +900,7 @@ pub struct App {
     pub show_snooze_popup: bool,
     pub snooze_state: ListState,
     pub current_user: Option<Author>,
+    pub show_involved_only: bool,
 
     // Repository
     pub repository_tree: Vec<RepositoryTreeItem>,

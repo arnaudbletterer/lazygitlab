@@ -160,6 +160,7 @@ impl App {
             show_snooze_popup: false,
             snooze_state: ListState::default(),
             current_user: None,
+            show_involved_only: false,
             repository_tree: Vec::new(),
             repository_tree_state: tui_tree_widget::TreeState::default(),
             selected_file_content: None,
@@ -204,6 +205,21 @@ impl App {
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
                 self.membership_sync_attempted = true;
+                self.filter_lists();
+                if self.active_context == Context::Dashboard {
+                    let should_fetch = self.view_mode == ViewMode::List && self.active_panel != Panel::MainDetail;
+                    if should_fetch {
+                        match self.active_selection {
+                            MenuSelection::Issues => {
+                                let _ = self.fetch_global_issues().await;
+                            }
+                            MenuSelection::MergeRequests => {
+                                let _ = self.fetch_global_merge_requests().await;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
             DataUpdate::SearchResults { data, search_id } => {
                 if search_id == self.search_id {
@@ -1623,6 +1639,7 @@ impl App {
             items.push(HelpItem { shortcut: "S".into(), description: "Toggle Squash on merge".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
+        items.push(HelpItem { shortcut: "I".into(), description: "Toggle show involved-only items".into(), action: HelpAction::ToggleInvolvedOnly, category: "Filter".into() });
         items.push(HelpItem { shortcut: "f".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "1/2/3".into(), description: "Focus Sidebar/List/Detail".into(), action: HelpAction::None, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "h/l (Left/Right)".into(), description: "Move focus between columns".into(), action: HelpAction::None, category: "Navigation".into() });
@@ -1722,6 +1739,10 @@ impl App {
                     self.active_panel = Panel::Main;
                     let _ = self.refresh().await;
                 }
+            }
+            HelpAction::ToggleInvolvedOnly => {
+                self.show_involved_only = !self.show_involved_only;
+                self.filter_lists();
             }
             _ => {}
         }
@@ -2720,6 +2741,7 @@ impl App {
                 }
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
+            KeyCode::Char('I') => { self.execute_help_action(HelpAction::ToggleInvolvedOnly).await; }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
             KeyCode::Char('M') => { if self.selected_mr.is_some() { self.show_confirm_merge_popup = true; } }
             KeyCode::Char('C') => {
@@ -2884,6 +2906,54 @@ impl App {
 
     pub fn filter_lists(&mut self) {
         let filter = self.filter_input.to_lowercase();
+        let me_id = self.current_user.as_ref().map(|u| u.id);
+        let show_involved = self.show_involved_only;
+        let member_ids = &self.member_project_ids;
+
+        let is_mr_member = |mr: &MergeRequest| {
+            if self.active_context != Context::Dashboard {
+                return true;
+            }
+            if !self.membership_sync_attempted && member_ids.is_empty() {
+                true
+            } else {
+                member_ids.contains(&mr.project_id)
+            }
+        };
+
+        let is_issue_member = |issue: &Issue| {
+            if self.active_context != Context::Dashboard {
+                return true;
+            }
+            if !self.membership_sync_attempted && member_ids.is_empty() {
+                true
+            } else {
+                member_ids.contains(&issue.project_id)
+            }
+        };
+
+        let is_mr_involved = |mr: &MergeRequest| {
+            if !show_involved { return true; }
+            if let Some(uid) = me_id {
+                mr.author.id == uid 
+                    || mr.assignees.iter().any(|a| a.id == uid) 
+                    || mr.reviewers.iter().any(|r| r.id == uid)
+                    || mr.participants.iter().any(|p| p.id == uid)
+            } else {
+                false
+            }
+        };
+
+        let is_issue_involved = |issue: &Issue| {
+            if !show_involved { return true; }
+            if let Some(uid) = me_id {
+                issue.author.id == uid 
+                    || issue.assignees.iter().any(|a| a.id == uid)
+                    || issue.participants.iter().any(|p| p.id == uid)
+            } else {
+                false
+            }
+        };
         
         // 1. Group Todos
         let mut grouped_todos = Vec::new();
@@ -2904,8 +2974,17 @@ impl App {
         let mut grouped_mrs = Vec::new();
         if self.active_context == Context::Dashboard {
             let mut mrs_by_project: std::collections::BTreeMap<String, Vec<MergeRequest>> = std::collections::BTreeMap::new();
-            for mr in self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter)) {
-                let p_name = self.project_cache.get(&mr.project_id).and_then(|p| p.path_with_namespace.as_deref()).unwrap_or("Unknown Project").to_string();
+            for mr in self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter) && is_mr_involved(m) && is_mr_member(m)) {
+                let p_name = self.project_cache.get(&mr.project_id)
+                    .and_then(|p| p.path_with_namespace.as_deref())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        mr.references.as_ref().map(|r| {
+                            let parts: Vec<&str> = r.full.split('!').collect();
+                            parts[0].to_string()
+                        })
+                    })
+                    .unwrap_or_else(|| "Unknown Project".to_string());
                 mrs_by_project.entry(p_name).or_default().push(mr.clone());
             }
             for (p_name, items) in mrs_by_project {
@@ -2915,7 +2994,7 @@ impl App {
                 if !is_collapsed { for item in items { grouped_mrs.push(GroupedItem::Item(item)); } }
             }
         } else {
-            grouped_mrs = self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
+            grouped_mrs = self.merge_requests.iter().filter(|m| m.title.to_lowercase().contains(&filter) && is_mr_involved(m) && is_mr_member(m)).cloned().map(GroupedItem::Item).collect();
         }
         self.filtered_mrs = grouped_mrs;
 
@@ -2923,8 +3002,17 @@ impl App {
         let mut grouped_issues = Vec::new();
         if self.active_context == Context::Dashboard {
             let mut issues_by_project: std::collections::BTreeMap<String, Vec<Issue>> = std::collections::BTreeMap::new();
-            for i in self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)) {
-                let p_name = self.project_cache.get(&i.project_id).and_then(|p| p.path_with_namespace.as_deref()).unwrap_or("Unknown Project").to_string();
+            for i in self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter) && is_issue_involved(i) && is_issue_member(i)) {
+                let p_name = self.project_cache.get(&i.project_id)
+                    .and_then(|p| p.path_with_namespace.as_deref())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        i.references.as_ref().map(|r| {
+                            let parts: Vec<&str> = r.full.split('#').collect();
+                            parts[0].to_string()
+                        })
+                    })
+                    .unwrap_or_else(|| "Unknown Project".to_string());
                 issues_by_project.entry(p_name).or_default().push(i.clone());
             }
             for (p_name, items) in issues_by_project {
@@ -2934,7 +3022,7 @@ impl App {
                 if !is_collapsed { for item in items { grouped_issues.push(GroupedItem::Item(item)); } }
             }
         } else {
-            grouped_issues = self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter)).cloned().map(GroupedItem::Item).collect();
+            grouped_issues = self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter) && is_issue_involved(i) && is_issue_member(i)).cloned().map(GroupedItem::Item).collect();
         }
         self.filtered_issues = grouped_issues;
 
