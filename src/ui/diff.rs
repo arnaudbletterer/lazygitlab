@@ -128,10 +128,14 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                         
                         let (prefix, prefix_style, author_style, content_style) = if is_activity {
                             ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
-                        } else if is_resolved {
-                            ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                        } else if let Some(resolved) = disc.resolved {
+                            if resolved {
+                                ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                            } else {
+                                ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                            }
                         } else {
-                            ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                            ("", Style::default(), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
                         };
 
                         if is_collapsed {
@@ -159,10 +163,14 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
 
                                 let (note_prefix, note_prefix_style, note_author_style, note_content_style) = if note_is_activity {
                                     ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
-                                } else if note_is_resolved {
-                                    ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                                } else if let Some(resolved) = disc.resolved {
+                                    if resolved {
+                                        ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                                    } else {
+                                        ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                                    }
                                 } else {
-                                    ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                                    ("", Style::default(), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
                                 };
 
                                 text.push(Line::from(vec![

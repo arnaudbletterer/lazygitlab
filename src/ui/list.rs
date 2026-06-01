@@ -380,11 +380,15 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
             if is_activity {
                 spans.push(Span::styled("[ACTIVITY] ", highlight.fg(app.theme.dim)));
                 spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
-            } else if is_resolved {
-                spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.dim)));
-                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
+            } else if let Some(resolved) = d.resolved {
+                if resolved {
+                    spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.dim)));
+                    spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
+                } else {
+                    spans.push(Span::styled("[UNRESOLVED] ", highlight.fg(app.theme.pending)));
+                    spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)));
+                }
             } else {
-                spans.push(Span::styled("[UNRESOLVED] ", highlight.fg(app.theme.pending)));
                 spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)));
             }
 
