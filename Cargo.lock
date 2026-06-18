@@ -1594,7 +1594,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lazygitlab"
-version = "0.14.6"
+version = "0.14.7"
 dependencies = [
  "ansi-to-tui",
  "arboard",
