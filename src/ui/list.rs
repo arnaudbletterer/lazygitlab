@@ -187,14 +187,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     GroupedItem::Item(mr) => {
                         use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
                         let mut involved = false;
-                        if let Some(ref me) = app.current_user {
-                            if mr.author.id == me.id 
-                                || mr.assignees.iter().any(|a| a.id == me.id) 
+                        if let Some(ref me) = app.current_user
+                            && (mr.author.id == me.id
+                                || mr.assignees.iter().any(|a| a.id == me.id)
                                 || mr.reviewers.iter().any(|r| r.id == me.id)
-                                || mr.participants.iter().any(|p| p.id == me.id)
-                            {
-                                involved = true;
-                            }
+                                || mr.participants.iter().any(|p| p.id == me.id))
+                        {
+                            involved = true;
                         }
                         let mut spans = Vec::new();
                         if involved {
@@ -226,13 +225,12 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     GroupedItem::Item(i) => {
                         use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
                         let mut involved = false;
-                        if let Some(ref me) = app.current_user {
-                            if i.author.id == me.id 
+                        if let Some(ref me) = app.current_user
+                            && (i.author.id == me.id
                                 || i.assignees.iter().any(|a| a.id == me.id)
-                                || i.participants.iter().any(|p| p.id == me.id)
-                            {
-                                involved = true;
-                            }
+                                || i.participants.iter().any(|p| p.id == me.id))
+                        {
+                            involved = true;
                         }
                         let mut spans = Vec::new();
                         if involved {

@@ -135,12 +135,12 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             if let Some(idx) = app.discussion_state.selected() {
                 if let Some(disc) = app.discussions.get(idx) {
                     // Check if first note has context
-                    if let Some(first_note) = disc.notes.first() {
-                        if let Some(context) = &first_note.context {
-                            if !context.is_empty() && disc_chunks[1].height >= 6 {
-                                excerpt_data = Some((context.clone(), first_note.position.clone()));
-                            }
-                        }
+                    if let Some(first_note) = disc.notes.first()
+                        && let Some(context) = &first_note.context
+                        && !context.is_empty()
+                        && disc_chunks[1].height >= 6
+                    {
+                        excerpt_data = Some((context.clone(), first_note.position.clone()));
                     }
 
                     for note in &disc.notes {

@@ -922,11 +922,9 @@ async fn test_user_story_issue_metadata_editing() {
     for _ in 0..20 {
         tokio::time::sleep(Duration::from_millis(50)).await;
         app.process_updates(&mut _rx).await;
-        if let Some(iss) = &app.selected_issue {
-            if iss.labels.iter().any(|l| l.id == 10) {
-                labels_updated = true;
-                break;
-            }
+        if let Some(iss) = &app.selected_issue && iss.labels.iter().any(|l| l.id == 10) {
+            labels_updated = true;
+            break;
         }
     }
     assert!(labels_updated);
