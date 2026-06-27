@@ -297,6 +297,88 @@ impl App {
         }
     }
 
+    pub async fn create_branch_sync(&mut self, project_id: u64, branch: String, ref_name: String) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::AsyncQuery;
+        use crate::api::CreateBranch;
+        if branch.is_empty() {
+            self.status_message = Some("Branch name cannot be empty".into());
+            return Err("Branch name cannot be empty".into());
+        }
+        if ref_name.is_empty() {
+            self.status_message = Some("Reference cannot be empty".into());
+            return Err("Reference cannot be empty".into());
+        }
+        self.status_message = Some(format!("Creating branch {branch} from {ref_name}..."));
+        let _ = self.update_preview().await;
+        let endpoint = CreateBranch { project: project_id, branch: branch.clone(), ref_name: ref_name.clone() };
+        let res: Result<Result<crate::models::Branch, _>, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&endpoint, &self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(b)) => {
+                self.status_message = Some(format!("Branch {} created", b.name));
+                self.project_branches.push(b);
+                if self.branches_state.selected().is_none() && !self.project_branches.is_empty() {
+                    self.branches_state.select(Some(0));
+                }
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                self.status_message = Some(format!("Create failed: {}", e));
+                self.last_error = Some(format!("Create branch failed: {}", e));
+                Err(e.into())
+            }
+            Err(_) => {
+                self.status_message = Some("Create timed out".into());
+                self.last_error = Some("Create branch timed out".into());
+                Err("Create branch timed out".into())
+            }
+        }
+    }
+
+    pub async fn delete_branch_sync(&mut self, project_id: u64, branch: String) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::AsyncQuery;
+        use crate::api::DeleteBranch;
+        if branch.is_empty() {
+            self.status_message = Some("No branch selected".into());
+            return Err("No branch selected".into());
+        }
+        self.status_message = Some(format!("Deleting branch {branch}..."));
+        let _ = self.update_preview().await;
+        let endpoint = DeleteBranch { project: project_id, branch: branch.clone() };
+        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&endpoint, &self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(_)) => {
+                self.status_message = Some(format!("Branch {branch} deleted"));
+                self.project_branches.retain(|b| b.name != branch);
+                if let Some(idx) = self.branches_state.selected() {
+                    if idx >= self.project_branches.len() && !self.project_branches.is_empty() {
+                        self.branches_state.select(Some(self.project_branches.len() - 1));
+                    } else if self.project_branches.is_empty() {
+                        self.branches_state.select(None);
+                    }
+                }
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                self.status_message = Some(format!("Delete failed: {}", e));
+                self.last_error = Some(format!("Delete branch failed: {}", e));
+                Err(e.into())
+            }
+            Err(_) => {
+                self.status_message = Some("Delete timed out".into());
+                self.last_error = Some("Delete branch timed out".into());
+                Err("Delete branch timed out".into())
+            }
+        }
+    }
+
     pub async fn retry_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();

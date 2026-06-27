@@ -505,6 +505,8 @@ pub enum InputTarget {
     CreateMRDescription,
     CreateMRSourceBranch,
     CreateMRTargetBranch,
+    CreateBranchName,
+    CreateBranchRef,
     SnoozeUntil,
     Search,
     NewFileComment,
@@ -832,6 +834,12 @@ pub struct App {
 
     pub show_target_branch_popup: bool,
     pub target_branch_state: ListState,
+
+    pub show_create_branch_popup: bool,
+    pub create_branch_name: String,
+    pub create_branch_ref_input: String,
+    pub create_branch_state: ListState,
+    pub show_create_branch_ref_dropdown: bool,
 
     // Pagination
     pub mrs_page: u64,

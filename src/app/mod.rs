@@ -108,6 +108,11 @@ impl App {
             show_branches_dropdown: false,
             show_target_branch_popup: false,
             target_branch_state: ListState::default(),
+            show_create_branch_popup: false,
+            create_branch_name: String::new(),
+            create_branch_ref_input: String::new(),
+            create_branch_state: ListState::default(),
+            show_create_branch_ref_dropdown: false,
             mrs_page: 1, mrs_has_more: true,
             issues_page: 1, issues_has_more: true,
             pipelines_page: 1, pipelines_has_more: true,
@@ -1945,7 +1950,7 @@ impl App {
         // 1.5 Selection Popups (Simple List/Selection Popups)
         if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_target_branch_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_target_branch_popup = false; }
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_target_branch_popup = false; self.show_create_branch_popup = false; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.show_project_popup { self.move_down(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
@@ -2041,20 +2046,35 @@ impl App {
         }
 
         // 1.7 Creation Forms (Create Issue/MR)
-        if self.show_create_issue_popup || self.show_create_mr_popup {
+        if self.show_create_issue_popup || self.show_create_mr_popup || self.show_create_branch_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_create_issue_popup = false; self.show_create_mr_popup = false; }
+                KeyCode::Esc => { self.show_create_issue_popup = false; self.show_create_mr_popup = false; self.show_create_branch_popup = false; self.input_mode = false; }
                 KeyCode::Tab => {
                     if self.show_create_issue_popup {
                         if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateIssueDescription; self.textarea = ratatui_textarea::TextArea::from(self.create_issue_description.lines()); }
                         else { self.create_issue_description = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateIssueTitle; self.textarea = ratatui_textarea::TextArea::from(self.create_issue_title.lines()); }
-                    } else {
+                    } else if self.show_create_mr_popup {
                         match self.input_target {
                             InputTarget::CreateMRTitle => { self.create_mr_title = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRSourceBranch; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_source_branch.lines()); }
                             InputTarget::CreateMRSourceBranch => { self.create_mr_source_branch = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRTargetBranch; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_target_branch.lines()); }
                             InputTarget::CreateMRTargetBranch => { self.create_mr_target_branch = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRDescription; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_description.lines()); }
                             InputTarget::CreateMRDescription => { self.create_mr_description = self.textarea.lines().join("\n"); self.input_target = InputTarget::CreateMRTitle; self.textarea = ratatui_textarea::TextArea::from(self.create_mr_title.lines()); }
                             _ => {}
+                        }
+                    } else if self.show_create_branch_popup {
+                        if self.input_target == InputTarget::CreateBranchName {
+                            self.create_branch_name = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateBranchRef;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_branch_ref_input.lines());
+                            self.show_create_branch_ref_dropdown = !self.project_branches.is_empty();
+                            if self.show_create_branch_ref_dropdown {
+                                self.create_branch_state.select(Some(0));
+                            }
+                        } else {
+                            self.create_branch_ref_input = self.textarea.lines().join("\n");
+                            self.input_target = InputTarget::CreateBranchName;
+                            self.textarea = ratatui_textarea::TextArea::from(self.create_branch_name.lines());
+                            self.show_create_branch_ref_dropdown = false;
                         }
                     }
                     self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
@@ -2063,9 +2083,41 @@ impl App {
                     if self.show_create_issue_popup {
                         if self.input_target == InputTarget::CreateIssueTitle { self.create_issue_title = self.textarea.lines().join("\n"); } else { self.create_issue_description = self.textarea.lines().join("\n"); }
                         let _ = self.create_issue().await;
-                    } else {
+                    } else if self.show_create_mr_popup {
                         match self.input_target { InputTarget::CreateMRTitle => self.create_mr_title = self.textarea.lines().join("\n"), InputTarget::CreateMRSourceBranch => self.create_mr_source_branch = self.textarea.lines().join("\n"), InputTarget::CreateMRTargetBranch => self.create_mr_target_branch = self.textarea.lines().join("\n"), InputTarget::CreateMRDescription => self.create_mr_description = self.textarea.lines().join("\n"), _ => {} }
                         let _ = self.create_mr().await;
+                    } else if self.show_create_branch_popup {
+                        if self.input_target == InputTarget::CreateBranchName { self.create_branch_name = self.textarea.lines().join("\n"); }
+                        else if self.input_target == InputTarget::CreateBranchRef { self.create_branch_ref_input = self.textarea.lines().join("\n"); }
+                        if let (Some(p), name, ref_name) = (&self.selected_project, self.create_branch_name.trim().to_string(), self.create_branch_ref_input.trim().to_string()) {
+                            if name.is_empty() {
+                                self.status_message = Some("Branch name cannot be empty".into());
+                            } else if ref_name.is_empty() {
+                                self.status_message = Some("Reference cannot be empty".into());
+                            } else {
+                                let pid = p.id;
+                                self.show_create_branch_popup = false;
+                                self.input_mode = false;
+                                let _ = self.create_branch_sync(pid, name, ref_name).await;
+                                return;
+                            }
+                        } else {
+                            self.status_message = Some("No project selected".into());
+                        }
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') if self.show_create_branch_popup && self.input_target == InputTarget::CreateBranchRef && self.show_create_branch_ref_dropdown && !self.project_branches.is_empty() => {
+                    let i = (self.create_branch_state.selected().unwrap_or(0) + 1) % self.project_branches.len();
+                    self.create_branch_state.select(Some(i));
+                    if let Some(b) = self.project_branches.get(i) {
+                        self.create_branch_ref_input = b.name.clone();
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') if self.show_create_branch_popup && self.input_target == InputTarget::CreateBranchRef && self.show_create_branch_ref_dropdown && !self.project_branches.is_empty() => {
+                    let i = if self.create_branch_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.create_branch_state.selected().unwrap() - 1 };
+                    self.create_branch_state.select(Some(i));
+                    if let Some(b) = self.project_branches.get(i) {
+                        self.create_branch_ref_input = b.name.clone();
                     }
                 }
                 _ => { self.textarea.input(processed_key); }
@@ -2788,7 +2840,19 @@ impl App {
                     let _ = self.unapprove_mr().await;
                 }
             }
-            KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
+            KeyCode::Char('D') => {
+                if self.active_selection == MenuSelection::Branches && !self.project_branches.is_empty() {
+                    if let (Some(p), Some(branch)) = (&self.selected_project, self.branches_state.selected().and_then(|i| self.project_branches.get(i))) {
+                        let name = branch.name.clone();
+                        let pid = p.id;
+                        let _ = self.delete_branch_sync(pid, name).await;
+                    } else {
+                        self.status_message = Some("No branch selected".into());
+                    }
+                } else if self.selected_mr.is_some() {
+                    let _ = self.toggle_mr_draft().await;
+                }
+            }
             KeyCode::Char('E') => { if self.selected_mr.is_some() { self.show_confirm_rebase_popup = true; } }
             KeyCode::Char('S') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_squash().await; } }
             KeyCode::Char('s') => {
@@ -2837,6 +2901,18 @@ impl App {
                                 let _ = self.fetch_project_variables(pid).await;
                             }
                         }
+                    }
+                    MenuSelection::Branches => {
+                        self.show_create_branch_popup = true;
+                        self.input_mode = true;
+                        self.input_target = InputTarget::CreateBranchName;
+                        self.create_branch_name.clear();
+                        self.create_branch_ref_input = self.selected_pipeline.as_ref()
+                            .map(|p| p.ref_name.clone())
+                            .or_else(|| self.selected_project.as_ref().and_then(|p| p.default_branch.clone()))
+                            .unwrap_or_else(|| "main".to_string());
+                        self.show_create_branch_ref_dropdown = false;
+                        self.textarea = ratatui_textarea::TextArea::from(self.create_branch_name.lines());
                     }
                     _ => {}
                 }

@@ -865,6 +865,14 @@ impl Endpoint for CreateBranch {
         params
     }
 }
+pub struct DeleteBranch {
+    pub project: u64,
+    pub branch: String,
+}
+impl Endpoint for DeleteBranch {
+    fn method(&self) -> Method { Method::DELETE }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/branches/{}", self.project, self.branch).into() }
+}
 #[derive(Debug, Clone)]
 pub struct CreateProject {
     pub name: String,
