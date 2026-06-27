@@ -99,6 +99,22 @@ def existing_branches(session: requests.Session, base: str, project_id: int) -> 
 def ensure_branches_and_deep_files(session: requests.Session, base: str, project_id: int, ref: str) -> list[str]:
     have = existing_branches(session, base, project_id)
     created: list[str] = []
+    main_deep_path = "/".join(f"dir-{j}" for j in range(DEEP_TREE_DEPTH)) + "/file-0.txt"
+    main_deep_encoded = requests.utils.quote(main_deep_path, safe="")
+    main_deep_check = session.get(
+        f"{base}/projects/{project_id}/repository/files/{main_deep_encoded}",
+        params={"ref": ref},
+        timeout=30,
+    )
+    if main_deep_check.status_code != 200:
+        r = session.post(
+            f"{base}/projects/{project_id}/repository/files/{main_deep_encoded}",
+            params={"branch": ref},
+            json={"branch": ref, "content": "Content for file 0 (main branch deep file)", "commit_message": "Add deep file on default branch"},
+            timeout=30,
+        )
+        if r.status_code >= 400:
+            print(f"  ! main deep file {main_deep_path}: {r.status_code} {r.text[:200]}")
     for i in range(BRANCH_COUNT):
         branch_name = f"feature-branch-{i:02d}"
         if branch_name not in have:

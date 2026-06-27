@@ -1,4 +1,4 @@
-use lazygitlab::models::{App, DataUpdate, Context, Panel, MenuSelection, MergeRequestFilter};
+use lazygitlab::models::{App, DataUpdate, Context, Panel, MenuSelection, MergeRequestFilter, IssueFilter};
 use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
 use std::env;
@@ -93,6 +93,7 @@ async fn live_full_exhaustive_test_ground() {
 
     println!("Fetching issues...");
     app.active_selection = MenuSelection::Issues;
+    app.issue_filter = IssueFilter::All;
     app.refresh().await;
     wait_for_loading_finish(&mut app, &mut rx).await;
     assert!(

@@ -6,7 +6,12 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- `tests/api_equivalence.rs`: 11 live tests asserting the TUI's data model deserializes correctly from the GitLab REST API for the major entity types (Project, MergeRequest, Issue, Label, Milestone, Member, Pipeline, Discussion, Note, Todo, ProjectVariables). All gated behind `#[ignore = "live_full"]`.
+
 ### Changed
+- `scripts/populate_test_ground.py`: also seeds the canonical deep-tree file (`dir-0/dir-1/.../file-0.txt`) on the project's default branch so the live TUI's default-branch repository-tree fetch can find it. (Previously only seeded on `feature-branch-00`.)
+- `tests/stress_test_exhaustive_e2e.rs`: now sets `app.issue_filter = IssueFilter::All` before fetching so the issues count assertion uses the full set rather than the default `Opened` filter.
 - Test infrastructure: consolidated to a single canonical test ground project (`abletterer/lazygitlab-test`, id resolved via `data/test_ground.json`). `scripts/populate_test_ground.py` replaces the old `populate_stress_test.py` and is now idempotent (GET-first, skip-if-exists). All live tests are gated behind `#[ignore = "live_smoke"]` or `#[ignore = "live_full"]`. Two-tier run via `make test-live-smoke` / `make test-live-full` (or the PowerShell `scripts/test.ps1` mirror).
 - CI: added `.gitlab-ci.yml` with `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on merge requests, `test:live-full` on nightly schedule + manual trigger, and `coverage:tarpaulin` (Linux-only, scheduled). Required CI variables: `GITLAB_TEST_TOKEN`, `GITLAB_TEST_URL` (masked).
 
