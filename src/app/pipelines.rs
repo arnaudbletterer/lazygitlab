@@ -67,9 +67,9 @@ impl App {
             let endpoint = ProjectPipelineJobs { project: project_id, pipeline: pipeline_id };
             let res: Result<Result<Vec<Job>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(endpoint, gitlab::api::Pagination::Limit(100)).query_async(&client)).await;
             match res {
-                Ok(Ok(mut data)) => { 
+                Ok(Ok(mut data)) => {
                     data.sort_by_key(|j| j.id);
-                    let _ = tx.send(DataUpdate::Jobs { project_id, pipeline_id, data }); 
+                    let _ = tx.send(DataUpdate::Jobs { project_id, pipeline_id, data });
                 }
                 Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("Jobs fetch failed: {}", e))); }
                 Err(_) => { let _ = tx.send(DataUpdate::Error("Jobs fetch timed out".into())); }
@@ -77,6 +77,38 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
+    }
+
+    pub async fn fetch_jobs_sync(&mut self, project_id: u64, pipeline_id: u64) -> Result<usize, Box<dyn std::error::Error>> {
+        use gitlab::api::{paged, AsyncQuery, Pagination};
+        use crate::api::ProjectPipelineJobs;
+        let endpoint = ProjectPipelineJobs { project: project_id, pipeline: pipeline_id };
+        let lp = paged(endpoint, Pagination::Limit(100));
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&lp, &self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(mut data)) => {
+                data.sort_by_key(|j: &Job| j.id);
+                self.jobs = data.clone();
+                self.jobs_state.select(if self.jobs.is_empty() { None } else { Some(0) });
+                self.is_loading = false;
+                let _ = self.update_preview().await;
+                Ok(self.jobs.len())
+            }
+            Ok(Err(e)) => {
+                self.last_error = Some(format!("Jobs fetch failed: {}", e));
+                self.is_loading = false;
+                Err(e.into())
+            }
+            Err(_) => {
+                self.last_error = Some("Jobs fetch timed out".into());
+                self.is_loading = false;
+                Err("Jobs fetch timed out".into())
+            }
+        }
     }
 
     pub async fn fetch_project_variables(&mut self, project_id: u64) -> Result<(), Box<dyn std::error::Error>> {
@@ -122,7 +154,7 @@ impl App {
                 Ok(Ok(data)) => {
                     match String::from_utf8(data) {
                         Ok(content) => { let _ = tx.send(DataUpdate::Log { project_id, job_id, data: content }); }
-                        Err(e) => { 
+                        Err(e) => {
                             let content = String::from_utf8_lossy(e.as_bytes()).to_string();
                             let _ = tx.send(DataUpdate::Log { project_id, job_id, data: content });
                         }
@@ -134,6 +166,40 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
+    }
+
+    pub async fn fetch_job_log_sync(&mut self, project_id: u64, job_id: u64) -> Result<usize, Box<dyn std::error::Error>> {
+        use gitlab::api::{raw, AsyncQuery};
+        use crate::api::JobLog;
+        let endpoint = JobLog { project: project_id, job: job_id };
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            raw(endpoint).query_async(&self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(data)) => {
+                let content = String::from_utf8_lossy(&data).to_string();
+                self.job_log = content;
+                self.parse_job_log();
+                self.job_log_cursor = 0;
+                self.job_log_selection_start = None;
+                self.follow_log = matches!(self.selected_job.as_ref().map(|j| j.status.as_str()), Some("running" | "pending"));
+                self.is_loading = false;
+                let _ = self.update_preview().await;
+                Ok(self.job_log_lines.len())
+            }
+            Ok(Err(e)) => {
+                self.last_error = Some(format!("Job log fetch failed: {}", e));
+                self.is_loading = false;
+                Err(e.into())
+            }
+            Err(_) => {
+                self.last_error = Some("Job log fetch timed out".into());
+                self.is_loading = false;
+                Err("Job log fetch timed out".into())
+            }
+        }
     }
 
     pub fn filter_branches(&mut self) {
@@ -293,53 +359,62 @@ impl App {
 
 pub fn parse_job_log(log: &str) -> Vec<LogLine> {
     let timestamp_re = regex::Regex::new(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+").unwrap();
-    let section_start_re = regex::Regex::new(r"section_start:(\d+):([^\r\n]+)\r").unwrap();
-    let section_end_re = regex::Regex::new(r"section_end:(\d+):([^\r\n]+)\r").unwrap();
-    let noise_re = regex::Regex::new(r"\x1b\[0K").unwrap(); // Clear line noise
+    let section_start_re = regex::Regex::new(r"section_start:(\d+):([^\r\n]+)").unwrap();
+    let section_end_re = regex::Regex::new(r"section_end:(\d+):([^\r\n]+)").unwrap();
+    let noise_re = regex::Regex::new(r"\x1b\[0K").unwrap();
 
-    log.lines().filter_map(|l| {
-        if l.is_empty() { return None; }
-        
+    let mut current_section: Option<String> = None;
+    let mut out = Vec::new();
+
+    for l in log.lines() {
+        if l.is_empty() { continue; }
+
         let mut timestamp = String::new();
         let mut content = l.to_string();
-        
-        // 1. Extract timestamp
+
         if let Some(caps) = timestamp_re.captures(&content) {
             timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             content = timestamp_re.replace(&content, "").to_string();
         }
 
-        // 2. Detect section markers
         let mut is_section_start = false;
         let mut is_section_end = false;
-        let mut section = None;
+        let mut line_section: Option<String> = None;
 
         if let Some(caps) = section_start_re.captures(&content) {
             is_section_start = true;
-            section = caps.get(2).map(|m| m.as_str().to_string());
+            let name = caps.get(2).map(|m| m.as_str().to_string());
+            current_section = name.clone();
+            line_section = name;
             content = section_start_re.replace(&content, "").to_string();
         } else if let Some(caps) = section_end_re.captures(&content) {
             is_section_end = true;
-            section = caps.get(2).map(|m| m.as_str().to_string());
+            let name = caps.get(2).map(|m| m.as_str().to_string());
+            line_section = name.clone();
             content = section_end_re.replace(&content, "").to_string();
+            current_section = None;
         }
 
-        // 3. Remove initial noise characters (like the '00O+' artifacts)
         content = content.trim_start_matches(|c: char| c.is_ascii_digit() || c == 'O' || c == '+').trim_start().to_string();
-        
-        // 4. Clean up [0K noise
         content = noise_re.replace_all(&content, "").to_string();
 
-        if content.is_empty() && !is_section_start && !is_section_end { return None; }
+        let effective_section = if is_section_start || is_section_end {
+            line_section
+        } else {
+            current_section.clone()
+        };
 
-        Some(LogLine {
+        if content.is_empty() && !is_section_start && !is_section_end { continue; }
+
+        out.push(LogLine {
             timestamp,
             content,
-            section,
+            section: effective_section,
             is_section_start,
             is_section_end,
-        })
-    }).collect()
+        });
+    }
+    out
 }
 
 pub fn strip_ansi(text: &str) -> String {
