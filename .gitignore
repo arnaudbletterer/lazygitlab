@@ -1,3 +1,10 @@
 /target
 .env
 lazygitlab.log
+scripts/__pycache__/
+*.pyc
+.clippy_out.txt
+.live_out.txt
+.live_full_out.txt
+.stress_out.txt
+target/coverage/

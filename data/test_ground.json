@@ -1,0 +1,34 @@
+{
+  "anchors": {
+    "first_branch": "feature-branch-00",
+    "first_issue_iid": 1,
+    "first_label": "label-00",
+    "first_mr_iid": 1
+  },
+  "counts": {
+    "branches": 30,
+    "issues": 50,
+    "labels": 37,
+    "merge_requests": 20
+  },
+  "extras": {
+    "board_id": 11401250,
+    "board_list_present": true,
+    "deep_tree_root": "dir-0",
+    "gitlab_ci_present": true,
+    "pipeline_id": 2633659745
+  },
+  "last_seeded_at": "2026-06-27T08:44:42.311790+00:00",
+  "massive_mr": {
+    "branch": "massive-mr-source",
+    "files_count": 0,
+    "iid": null
+  },
+  "project": {
+    "default_branch": "main",
+    "id": 81221057,
+    "path_with_namespace": "abletterer/lazygitlab-test",
+    "web_url": "https://gitlab.com/abletterer/lazygitlab-test"
+  },
+  "url": "https://gitlab.com/api/v4"
+}

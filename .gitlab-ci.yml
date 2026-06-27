@@ -1,0 +1,122 @@
+stages:
+  - lint
+  - test
+  - live
+  - coverage
+
+variables:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - target/debug
+    - target/release
+    - .cargo/registry
+
+# ----- Lint -----
+
+fmt:
+  stage: lint
+  image: rust:1.85
+  script:
+    - cargo fmt --all -- --check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: always
+
+clippy:
+  stage: lint
+  image: rust:1.85
+  script:
+    - cargo clippy --all-targets -- -D warnings
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: always
+
+# ----- Wiremock + unit (hermetic, default) -----
+
+test:wiremock:
+  stage: test
+  image: rust:1.85
+  script:
+    - cargo test --all
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: always
+
+# ----- Live smoke (push + merge_request + manual) -----
+
+test:live-smoke:
+  stage: live
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  variables:
+    GITLAB_TOKEN: $GITLAB_TEST_TOKEN
+    GITLAB_URL: $GITLAB_TEST_URL
+  script:
+    - cargo test -- --ignored live_smoke --test-threads=1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+  allow_failure: true
+
+# ----- Live full (nightly + manual trigger only) -----
+
+test:live-full:nightly:
+  stage: live
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  variables:
+    GITLAB_TOKEN: $GITLAB_TEST_TOKEN
+    GITLAB_URL: $GITLAB_TEST_URL
+  script:
+    - cargo test -- --ignored live_full --test-threads=1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+test:live-full:manual:
+  stage: live
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  variables:
+    GITLAB_TOKEN: $GITLAB_TEST_TOKEN
+    GITLAB_URL: $GITLAB_TEST_URL
+  script:
+    - cargo test -- --ignored live_full --test-threads=1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  allow_failure: true
+
+# ----- Coverage (Linux only) -----
+
+coverage:tarpaulin:
+  stage: coverage
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  before_script:
+    - apt-get update && apt-get install -y libssl-dev pkg-config
+    - cargo install cargo-tarpaulin
+  script:
+    - cargo tarpaulin --out Xml --output-dir target/coverage --timeout 300
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: target/coverage/cobertura.xml
+    paths:
+      - target/coverage/
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
