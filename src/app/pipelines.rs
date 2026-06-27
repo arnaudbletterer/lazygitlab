@@ -225,10 +225,10 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(true));
 
             tokio::spawn(async move {
-                let endpoint = CreatePipeline { 
-                    project: pid, 
-                    ref_name, 
-                    variables: Some(vars.into_iter().map(|v| crate::models::PipelineVariable { key: v.key, value: v.value }).collect()) 
+                let endpoint = CreatePipeline {
+                    project: pid,
+                    ref_name,
+                    variables: Some(vars.into_iter().map(|v| crate::models::PipelineVariable { key: v.key, value: v.value }).collect())
                 };
                 let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), endpoint.query_async(&client)).await;
                 match res {
@@ -242,6 +242,59 @@ impl App {
             self.input_mode = false;
         }
         Ok(())
+    }
+
+    pub async fn submit_pipeline_launch_sync(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let project = match &self.selected_project {
+            Some(p) => p.clone(),
+            None => {
+                self.status_message = Some("No project selected".into());
+                return Ok(());
+            }
+        };
+        let pid = project.id;
+        let ref_name = self.pipeline_ref_input.clone();
+        let vars = self.pipeline_variables.clone();
+
+        if ref_name.is_empty() {
+            self.status_message = Some("Ref name cannot be empty".into());
+            return Ok(());
+        }
+
+        self.status_message = Some(format!("Launching pipeline on {}...", ref_name));
+        let _ = self.update_preview().await;
+
+        use gitlab::api::AsyncQuery;
+        use crate::api::CreatePipeline;
+        let endpoint = CreatePipeline {
+            project: pid,
+            ref_name,
+            variables: Some(vars.into_iter().map(|v| crate::models::PipelineVariable { key: v.key, value: v.value }).collect()),
+        };
+        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&endpoint, &self.gitlab),
+        )
+        .await;
+        self.show_pipeline_popup = false;
+        self.input_mode = false;
+        match res {
+            Ok(Ok(p)) => {
+                self.status_message = Some(format!("Pipeline #{} launched", p.id));
+                let _ = self.refresh().await;
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                self.status_message = Some(format!("Launch failed: {}", e));
+                self.last_error = Some(format!("Launch failed: {}", e));
+                Err(e.into())
+            }
+            Err(_) => {
+                self.status_message = Some("Launch timed out".into());
+                self.last_error = Some("Launch timed out".into());
+                Err("Launch timed out".into())
+            }
+        }
     }
 
     pub async fn retry_pipeline(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
@@ -276,6 +329,66 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
+    }
+
+    pub async fn cancel_pipeline_sync(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::AsyncQuery;
+        use crate::api::CancelPipeline;
+        self.status_message = Some(format!("Cancelling pipeline #{}...", pipeline_id));
+        let _ = self.update_preview().await;
+        let endpoint = CancelPipeline { project: project_id, pipeline: pipeline_id };
+        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&endpoint, &self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(_)) => {
+                self.status_message = Some(format!("Pipeline #{} cancelled", pipeline_id));
+                let _ = self.refresh().await;
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                self.status_message = Some(format!("Cancel failed: {}", e));
+                self.last_error = Some(format!("Cancel failed: {}", e));
+                Err(e.into())
+            }
+            Err(_) => {
+                self.status_message = Some("Cancel timed out".into());
+                self.last_error = Some("Cancel timed out".into());
+                Err("Cancel timed out".into())
+            }
+        }
+    }
+
+    pub async fn retry_pipeline_sync(&mut self, project_id: u64, pipeline_id: u64) -> Result<(), Box<dyn std::error::Error>> {
+        use gitlab::api::AsyncQuery;
+        use crate::api::RetryPipeline;
+        self.status_message = Some(format!("Retrying pipeline #{}...", pipeline_id));
+        let _ = self.update_preview().await;
+        let endpoint = RetryPipeline { project: project_id, pipeline: pipeline_id };
+        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            AsyncQuery::query_async(&endpoint, &self.gitlab),
+        )
+        .await;
+        match res {
+            Ok(Ok(_)) => {
+                self.status_message = Some(format!("Pipeline #{} retry triggered", pipeline_id));
+                let _ = self.refresh().await;
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                self.status_message = Some(format!("Retry failed: {}", e));
+                self.last_error = Some(format!("Retry failed: {}", e));
+                Err(e.into())
+            }
+            Err(_) => {
+                self.status_message = Some("Retry timed out".into());
+                self.last_error = Some("Retry timed out".into());
+                Err("Retry timed out".into())
+            }
+        }
     }
 
     pub async fn retry_job(&mut self, project_id: u64, job_id: u64) -> Result<(), Box<dyn std::error::Error>> {

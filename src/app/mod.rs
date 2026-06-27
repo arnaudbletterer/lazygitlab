@@ -1640,6 +1640,8 @@ impl App {
         }
         if self.active_selection == MenuSelection::Pipelines && self.selected_pipeline.is_some() {
             items.push(HelpItem { shortcut: "n".into(), description: "Launch new pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
+            items.push(HelpItem { shortcut: "C".into(), description: "Cancel selected pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
+            items.push(HelpItem { shortcut: "R".into(), description: "Retry selected pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
         }
         if self.view_mode == ViewMode::JobLog {
             items.push(HelpItem { shortcut: "y".into(), description: "Copy line or selection".into(), action: HelpAction::None, category: "Job Log".into() });
@@ -2082,7 +2084,7 @@ impl App {
                         _ => self.input_target = InputTarget::PipelineRef,
                     }
                 }
-                KeyCode::Char('p') if !self.input_mode => { let _ = self.submit_pipeline_launch().await; }
+                KeyCode::Char('p') if !self.input_mode || self.show_pipeline_popup => { let _ = self.submit_pipeline_launch_sync().await; }
                 KeyCode::Enter => {
                     match self.input_target {
                         InputTarget::PipelineRef => {
@@ -2771,18 +2773,18 @@ impl App {
                     .then(|| self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)))
                     .flatten()
                 {
-                    let _ = self.cancel_pipeline(p.project_id, p.id).await;
+                    let _ = self.cancel_pipeline_sync(p.project_id, p.id).await;
                 }
             }
-            KeyCode::Char('R') => { 
+            KeyCode::Char('R') => {
                 if let Some(p) = (self.active_selection == MenuSelection::Pipelines)
                     .then(|| self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)))
                     .flatten()
                 {
-                    let _ = self.retry_pipeline(p.project_id, p.id).await;
-                } else if self.selected_mr.is_some() { 
-                    let _ = self.unapprove_mr().await; 
-                } 
+                    let _ = self.retry_pipeline_sync(p.project_id, p.id).await;
+                } else if self.selected_mr.is_some() {
+                    let _ = self.unapprove_mr().await;
+                }
             }
             KeyCode::Char('D') => { if self.selected_mr.is_some() { let _ = self.toggle_mr_draft().await; } }
             KeyCode::Char('E') => { if self.selected_mr.is_some() { self.show_confirm_rebase_popup = true; } }
