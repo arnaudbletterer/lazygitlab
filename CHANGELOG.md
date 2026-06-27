@@ -10,9 +10,13 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - `--headless` flag in the binary: drives the TUI from a text event script with `TestBackend`, no terminal required. Supports `--width`, `--height`, `--script <path>`, `--frames-dir <path>`.
 - `tests/headless_snapshots.rs`: 2 insta snapshot tests capturing the rendered TUI buffer for the initial dashboard and after a `g m` navigation.
 - `tests/headless_script.rs`: 8 unit tests for the headless event-script parser (keys, modifiers, function keys, mouse, comments, options).
+- `tests/job_log_copy.rs`: 5 tests covering the job-log copy interaction (`y` on current line / selection, Shift+jk extends selection, OSC 52 escape sent) and verifying that the help popup lists the copy/extend/toggle/retry shortcuts when in JobLog or Pipelines context.
 - `tests/api_equivalence.rs`: 11 live tests asserting the TUI's data model deserializes correctly from the GitLab REST API for the major entity types (Project, MergeRequest, Issue, Label, Milestone, Member, Pipeline, Discussion, Note, Todo, ProjectVariables). All gated behind `#[ignore = "live_full"]`.
 - `tests/data_update_round_trip.rs`: 4 live tests that fetch an entity via API, push it through `DataUpdate::*`, and assert the resulting state matches the source. Catches post-fetch mutations in the dispatcher.
 - `insta` dev-dep (justified: snapshot diffing for the rendered TUI buffer per view × per entity state).
+
+### Fixed
+- Help popup now lists Pipeline and Job Log shortcuts that were previously undocumented: `n` to launch a new pipeline, `y` to copy a job-log line or selection, `Shift + j/k` to extend the selection, `Tab / l` to toggle a job-log section, `r / R` to retry a failed job, `p / P` to play a manual / skipped job, and `c / C` to cancel a running job. Without these entries, the user had no discoverable way to learn the interactions.
 
 ### Changed
 - `scripts/populate_test_ground.py`: also seeds the canonical deep-tree file (`dir-0/dir-1/.../file-0.txt`) on the project's default branch so the live TUI's default-branch repository-tree fetch can find it. (Previously only seeded on `feature-branch-00`.)

@@ -1625,6 +1625,25 @@ impl App {
             items.push(HelpItem { shortcut: "S".into(), description: "Toggle Squash on merge".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
+        if self.active_selection == MenuSelection::Pipelines && self.selected_pipeline.is_some() {
+            items.push(HelpItem { shortcut: "n".into(), description: "Launch new pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
+        }
+        if self.view_mode == ViewMode::JobLog {
+            items.push(HelpItem { shortcut: "y".into(), description: "Copy line or selection".into(), action: HelpAction::None, category: "Job Log".into() });
+            items.push(HelpItem { shortcut: "Shift + j/k".into(), description: "Extend selection".into(), action: HelpAction::None, category: "Job Log".into() });
+            items.push(HelpItem { shortcut: "Tab / l".into(), description: "Toggle section collapse".into(), action: HelpAction::None, category: "Job Log".into() });
+            if let Some(job) = &self.selected_job {
+                if matches!(job.status.as_str(), "failed" | "canceled") {
+                    items.push(HelpItem { shortcut: "r / R".into(), description: "Retry job".into(), action: HelpAction::None, category: "Job Log".into() });
+                }
+                if matches!(job.status.as_str(), "failed" | "manual" | "pending" | "created" | "skipped") {
+                    items.push(HelpItem { shortcut: "p / P".into(), description: "Play job".into(), action: HelpAction::None, category: "Job Log".into() });
+                }
+                if matches!(job.status.as_str(), "running" | "pending" | "manual" | "created") {
+                    items.push(HelpItem { shortcut: "c / C".into(), description: "Cancel job".into(), action: HelpAction::None, category: "Job Log".into() });
+                }
+            }
+        }
         items.push(HelpItem { shortcut: "I".into(), description: "Toggle show involved-only items".into(), action: HelpAction::ToggleInvolvedOnly, category: "Filter".into() });
         items.push(HelpItem { shortcut: "f".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "1/2/3".into(), description: "Focus Sidebar/List/Detail".into(), action: HelpAction::None, category: "Navigation".into() });

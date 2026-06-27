@@ -94,6 +94,18 @@ Press `?` in the app for the full keybinding list. The most common starting poin
 | `o` | Open current item in browser |
 | `q` | Quit |
 
+Pipelines & job log:
+
+| Key | Action |
+| --- | --- |
+| `n` | Launch new pipeline |
+| `Shift + j/k` | Extend job-log selection |
+| `y` | Copy current job-log line or selection |
+| `Tab` / `l` | Toggle job-log section collapse |
+| `r` / `R` | Retry a failed job |
+| `c` / `C` | Cancel a running job |
+| `p` / `P` | Play a manual / skipped job |
+
 ## Architecture
 
 ```
