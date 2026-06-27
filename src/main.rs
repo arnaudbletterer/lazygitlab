@@ -1,6 +1,6 @@
 use std::{io, time::Duration};
 use crossterm::{
-    event::{self, Event, KeyEventKind},
+    event::{self, Event},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
 };
@@ -8,7 +8,12 @@ use ratatui::prelude::*;
 use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
 use lazygitlab::*;
-use lazygitlab::ui::ui;
+use lazygitlab::headless::{self, HeadlessOptions};
+
+#[cfg(not(tarpaulin_include))]
+fn is_headless_requested() -> bool {
+    std::env::args().any(|a| a == "--headless" || a.starts_with("--headless="))
+}
 
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
@@ -23,9 +28,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = builder.build_async().await?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx);
-    
-    // Start TUI first
-    run_with_terminal(&mut app, &mut rx).await
+
+    if is_headless_requested() {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let opts = headless::parse_options(&args).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        run_headless(&mut app, &mut rx, opts).await
+    } else {
+        run_with_terminal(&mut app, &mut rx).await
+    }
+}
+
+#[cfg(not(tarpaulin_include))]
+pub async fn run_headless(
+    app: &mut App,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
+    opts: HeadlessOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use ratatui::backend::TestBackend;
+    use lazygitlab::headless::{headless_terminal, FrameCapture, ScriptedEventSource, load_script};
+
+    let mut terminal: ratatui::Terminal<TestBackend> = headless_terminal(opts.width, opts.height);
+    let capture = match &opts.frames_dir {
+        Some(dir) => FrameCapture::new(dir)?,
+        None => FrameCapture::disabled(),
+    };
+
+    let event_source: ScriptedEventSource = match &opts.script_path {
+        Some(path) => ScriptedEventSource::from_text(&load_script(path)?)?,
+        None => ScriptedEventSource::empty(),
+    };
+
+    let mut capture_opt: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = if capture.is_enabled() {
+        let mut cap = capture;
+        Some(Box::new(move |t: &ratatui::Terminal<TestBackend>| {
+            let _ = cap.record(t);
+        }))
+    } else {
+        None
+    };
+
+    run_app(&mut terminal, app, &event_source, rx, &mut capture_opt).await?;
+
+    Ok(())
 }
 
 struct Config { url: String, token: String, insecure: bool }
@@ -52,10 +96,7 @@ impl Config {
     }
 }
 
-#[async_trait::async_trait]
-pub trait EventSource {
-    async fn next_event(&self, timeout: Duration) -> io::Result<Option<Event>>;
-}
+pub use lazygitlab::EventSource;
 
 pub struct RealEventSource;
 
@@ -80,8 +121,7 @@ pub async fn run_with_terminal(app: &mut App, rx: &mut tokio::sync::mpsc::Unboun
     let mut terminal = Terminal::new(backend)?;
 
     let event_source = RealEventSource;
-
-    let res = run_app(&mut terminal, app, &event_source, rx).await;
+    let res = run_app(&mut terminal, app, &event_source, rx, &mut None).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, event::DisableMouseCapture, event::DisableFocusChange)?;
@@ -90,77 +130,20 @@ pub async fn run_with_terminal(app: &mut App, rx: &mut tokio::sync::mpsc::Unboun
     Ok(())
 }
 
-async fn run_app<B: Backend, E: EventSource>(
+#[allow(clippy::type_complexity)]
+async fn run_app<B, E>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     event_source: &E,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
+    frame_capture: &mut Option<Box<dyn for<'a> FnMut(&'a Terminal<B>)>>,
 ) -> Result<(), Box<dyn std::error::Error>> 
 where 
-    <B as Backend>::Error: 'static 
+    B: Backend,
+    B::Error: 'static,
+    E: EventSource,
 {
-    // Initial data load
-    let _ = app.initial_setup().await;
-    let _ = app.refresh().await;
-
-    while !app.should_quit {
-        // Process updates from background tasks
-        let mut got_update = false;
-        while let Ok(update) = rx.try_recv() {
-            got_update = true;
-            if let DataUpdate::TerminalEscape(esc) = update {
-                use std::io::Write;
-                let mut stdout = std::io::stdout();
-                let _ = stdout.write_all(esc.as_bytes());
-                let _ = stdout.flush();
-            } else {
-                app.process_update_single(update).await;
-            }
-        }
-        if got_update {
-            app.update_preview().await;
-        }
-        
-        terminal.draw(|f| ui(f, app))?;
-
-        let is_live_view = (app.view_mode == ViewMode::List 
-                && app.active_selection == MenuSelection::Pipelines 
-                && app.pipelines.iter().any(|p| !p.is_finished())) 
-            || (app.view_mode == ViewMode::JobLog 
-                && app.selected_job.as_ref().is_some_and(|j| !j.is_finished()))
-            || (app.view_mode == ViewMode::Detail 
-                && app.selected_pipeline.as_ref().is_some_and(|p| !p.is_finished()));
-
-        let idle_threshold = Duration::from_secs(60);
-        let is_idle = app.last_input.elapsed() >= idle_threshold;
-
-        let refresh_interval = if is_idle {
-            Duration::from_secs(30) // Back off when idle
-        } else if is_live_view {
-            Duration::from_secs(2) 
-        } else {
-            Duration::from_secs(5)
-        };
-
-        if app.last_refresh.elapsed() >= refresh_interval {
-            app.refresh_background().await;
-        }
-
-        if let Some(event) = event_source.next_event(Duration::from_millis(100)).await? {
-            match event {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        app.handle_key(key).await;
-                    }
-                }
-                Event::Mouse(mouse) => {
-                    app.handle_mouse(mouse).await;
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(())
+    lazygitlab::run_app(terminal, app, event_source, rx, frame_capture).await
 }
 
 #[cfg(test)]
@@ -204,7 +187,8 @@ mod tests {
             ]),
         };
 
-        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
+        let mut noop: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = None;
+        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut noop).await.is_ok());
     }
 
     #[tokio::test]
@@ -232,7 +216,7 @@ mod tests {
             ]),
         };
 
-        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx).await.is_ok());
+        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut None).await.is_ok());
     }
 
     static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());

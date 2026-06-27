@@ -7,11 +7,17 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- `--headless` flag in the binary: drives the TUI from a text event script with `TestBackend`, no terminal required. Supports `--width`, `--height`, `--script <path>`, `--frames-dir <path>`.
+- `tests/headless_snapshots.rs`: 2 insta snapshot tests capturing the rendered TUI buffer for the initial dashboard and after a `g m` navigation.
+- `tests/headless_script.rs`: 8 unit tests for the headless event-script parser (keys, modifiers, function keys, mouse, comments, options).
 - `tests/api_equivalence.rs`: 11 live tests asserting the TUI's data model deserializes correctly from the GitLab REST API for the major entity types (Project, MergeRequest, Issue, Label, Milestone, Member, Pipeline, Discussion, Note, Todo, ProjectVariables). All gated behind `#[ignore = "live_full"]`.
+- `tests/data_update_round_trip.rs`: 4 live tests that fetch an entity via API, push it through `DataUpdate::*`, and assert the resulting state matches the source. Catches post-fetch mutations in the dispatcher.
+- `insta` dev-dep (justified: snapshot diffing for the rendered TUI buffer per view × per entity state).
 
 ### Changed
 - `scripts/populate_test_ground.py`: also seeds the canonical deep-tree file (`dir-0/dir-1/.../file-0.txt`) on the project's default branch so the live TUI's default-branch repository-tree fetch can find it. (Previously only seeded on `feature-branch-00`.)
 - `tests/stress_test_exhaustive_e2e.rs`: now sets `app.issue_filter = IssueFilter::All` before fetching so the issues count assertion uses the full set rather than the default `Opened` filter.
+- `run_app` extracted to `src/runner.rs` in the lib (was in `src/main.rs`) so integration tests can drive the full event loop. Added an optional `FrameCaptureFn<B>` parameter for per-frame capture; the binary's `run_with_terminal` passes `&mut None`.
 - Test infrastructure: consolidated to a single canonical test ground project (`abletterer/lazygitlab-test`, id resolved via `data/test_ground.json`). `scripts/populate_test_ground.py` replaces the old `populate_stress_test.py` and is now idempotent (GET-first, skip-if-exists). All live tests are gated behind `#[ignore = "live_smoke"]` or `#[ignore = "live_full"]`. Two-tier run via `make test-live-smoke` / `make test-live-full` (or the PowerShell `scripts/test.ps1` mirror).
 - CI: added `.gitlab-ci.yml` with `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on merge requests, `test:live-full` on nightly schedule + manual trigger, and `coverage:tarpaulin` (Linux-only, scheduled). Required CI variables: `GITLAB_TEST_TOKEN`, `GITLAB_TEST_URL` (masked).
 

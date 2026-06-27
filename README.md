@@ -157,7 +157,24 @@ make coverage          # cargo tarpaulin (Linux only)
 
 `tests/common/mod.rs` reads `data/test_ground.json` and exposes a single `test_ground()` accessor; every live test must use it (no hardcoded project ids or slugs).
 
-The test suite has ~70 integration tests across `tests/` covering:
+### Headless mode
+
+For snapshot testing and headless CI, the binary supports a `--headless` flag that drives the TUI from a text event script and writes each rendered frame to a directory:
+
+```bash
+lazygitlab --headless --width 120 --height 40 --script events.txt --frames-dir out/
+```
+
+`events.txt` is a newline-delimited script:
+- `q`, `j`, `k`, `<Enter>`, `<Esc>`, `<F1>`, `up`, `down`, ... (named keys)
+- `<S-q>`, `<C-r>`, `<A-x>`, ... (modifiers: Shift, Ctrl, Alt)
+- `mouse:down:10:5`, `mouse:scroll_down:0:0` (mouse events)
+- `#` starts a comment; blank lines are ignored
+- `quit` is a shortcut for `q`
+
+Snapshot tests in `tests/headless_snapshots.rs` use [`insta`](https://insta.rs/) to diff the rendered TUI buffer against `tests/snapshots/*.snap`. To accept a new snapshot, run with `INSTA_UPDATE=always cargo test --test headless_snapshots` (or `cargo insta review`).
+
+The test suite has ~80 integration tests across `tests/` covering:
 
 - API mocking with `wiremock` (e.g. `tests/global_search.rs`, `tests/phase3_boards.rs`)
 - UI rendering with `ratatui::backend::TestBackend` (e.g. `tests/integration_ui.rs`, `tests/ui_exhaustive.rs`)
@@ -165,6 +182,9 @@ The test suite has ~70 integration tests across `tests/` covering:
 - User stories (`tests/user_stories.rs`)
 - Stress / massive-MR (`tests/test_massive_mr_diffs.rs`, `tests/stress_test_exhaustive_e2e.rs`)
 - Membership / metadata caching (`tests/test_project_selection_and_lazy_metadata.rs`)
+- API equivalence oracle (`tests/api_equivalence.rs`, `tests/data_update_round_trip.rs`)
+- Headless script parser (`tests/headless_script.rs`)
+- Headless snapshots via `insta` (`tests/headless_snapshots.rs`)
 
 CI is defined in `.gitlab-ci.yml`: `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on merge requests and the default branch, `test:live-full` on a nightly schedule and manual trigger, and `coverage:tarpaulin` on a schedule (Linux only).
 

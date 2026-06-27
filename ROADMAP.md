@@ -67,17 +67,17 @@ Grouped by area. File pointers are the canonical location for the implementation
 
 Prioritized. Effort is rough and assumes a single contributor. **Do not start work without a corresponding `AGENTS.md` update.**
 
-### P0 — Test autonomy (Iteration 1 of 4)
+### P0 — Test autonomy (Iterations 1–3 of 4)
 - [x] Consolidate to a single canonical test ground project (`abletterer/lazygitlab-test`, id resolved via `data/test_ground.json`)
 - [x] Idempotent `scripts/populate_test_ground.py` (GET-first, skip-if-exists) replacing `scripts/populate_stress_test.py`
 - [x] `tests/common/mod.rs` reading `data/test_ground.json`; every live test uses it
 - [x] `#[ignore = "live_smoke" | "live_full"]` gating on every live test
 - [x] `Makefile` + `scripts/test.ps1` mirroring it
 - [x] `.gitlab-ci.yml` with `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on MRs, `test:live-full` on nightly + manual, `coverage:tarpaulin` on schedule
-- [ ] API-equivalence oracle (`tests/api_equivalence.rs`) — for every entity the TUI exposes, assert `App` state == REST response
-- [ ] `--headless` mode in the binary (TestBackend-driven event loop with synthesized events, optional `--frames-dir` capture)
-- [ ] Snapshot tests with `insta` for the rendered buffer per view × per entity state
-- [ ] Three-tier CI: wiremock (default) / live-smoke (push) / live-full (nightly)
+- [x] API-equivalence oracle (`tests/api_equivalence.rs`, `tests/data_update_round_trip.rs`) — 15 live tests, 11 entity families
+- [x] `--headless` mode in the binary (TestBackend-driven event loop with synthesized events, optional `--frames-dir` capture)
+- [x] Snapshot tests with `insta` for the rendered buffer (`tests/headless_snapshots.rs`)
+- [ ] Three-tier CI: wiremock (default) / live-smoke (push) / live-full (nightly) — current CI is wiremock on push + live-smoke on MR + live-full on nightly; only missing a separate push-only live-smoke job
 
 ### P1 — Roadmap residue
 - [x] Add `LICENSE` (MIT)
