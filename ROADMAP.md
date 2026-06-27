@@ -1,70 +1,104 @@
-# lazygitlab Enhancement Roadmap
+# lazygitlab Roadmap
 
-## Objective
-To expand `lazygitlab` from a triage and monitoring tool into a comprehensive TUI replacement for the GitLab web interface, providing deep collaboration, repository management, and project tracking capabilities.
+This document tracks the current state of `lazygitlab` and what is left to do. The original four-phase plan that previously lived here is **complete** and has been merged into the **Current State** section below; new work is tracked in **What's Next**.
 
-## Design Philosophy (TUI Best Practices)
-To ensure the application remains "easy to use and coherent with the spirit of the best TUIs," all new features must adhere to the following principles:
-*   **Vim-inspired Navigation:** Consistent use of `h/j/k/l` for movement, `/` for search, and modal interactions where appropriate.
-*   **Keyboard-Centric:** Every action must be accessible without a mouse. Complex actions should use mnemonic key chords or a command palette (e.g., `?` for help, `:` for commands).
-*   **Speed and Responsiveness:** The UI must never block the main thread. Data fetching and processing must remain asynchronous.
-*   **Information Density:** Maximize the use of terminal real estate without clutter. Use collapsible sections and focused views (like Zen mode) for deep work.
-*   **Contextual Help:** Always display relevant keybindings at the bottom of the screen based on the active view.
+## Current State (v0.14.7)
 
----
+`lazygitlab` is a mature, daily-driver TUI for GitLab. The original phased plan (multi-line editor, inline code review, repository tree, Kanban boards, global search, real-time refresh) is fully implemented. Recent releases (0.13.x–0.14.x) focused on stabilization: 3-column tabbed detail view, membership-scoped listings, lazy metadata/diff loading, optimistic updates, and massive-MR handling.
 
-## Phased Implementation Plan
+### What's Built
 
-### Phase 1: Core Developer Workflows (High ROI)
-Focus on the most frequent tasks developers perform after pushing code.
+Grouped by area. File pointers are the canonical location for the implementation; refer to `git log --oneline` for the introduction commit.
 
-*   **Multi-line Text Editor:**
-    *   *Implementation:* Integrate a multi-line editing component (e.g., `tui-textarea` or similar) to replace the single-line input.
-    *   *UX:* Support basic editor commands (arrows, backspace, enter) and an easy way to save (`Ctrl+s` or `Esc` to exit insert mode then `w`).
-*   **Advanced MR Actions:**
-    *   *Implementation:* Add API calls and UI bindings for "Approve," "Revoke Approval," and toggling "Draft/Ready."
-    *   *UX:* Add to the MR Detail view shortcuts (e.g., `A` to approve, `D` to toggle draft).
-*   **Inline Code Review:**
-    *   *Implementation:* Map discussion threads to specific lines in the `MRDiff` model.
-    *   *UX:* In the diff view, allow users to select a line and press `c` to open the multi-line editor to leave a targeted comment.
+#### Dashboard & Navigation
+- **Personal dashboard tabs**: Todos, MRs, Issues, Projects, Groups (`src/app/mod.rs`)
+- **Membership-scoped project listing** (`src/app/global.rs:266`, `src/app/mod.rs:204`) — 0.14.4
+- **Jump shortcuts** `g t` / `g m` / `g i` / `g p` / `g r` (`src/app/mod.rs:1678-1729`)
+- **3-column tabbed layout** (sidebar / list / detail) with focus toggling — 0.14.0 (`src/ui/mod.rs`, `src/ui/list.rs`)
+- **Global filter** per list (`src/app/mod.rs:873`, shortcut `/`)
+- **Group multi-project elements** in dashboard views — 0.10.9
+- **Involvement-only toggle** (`I`) — 0.10.7
 
-### Phase 2: Repository Exploration
-Provide visibility into the code itself without leaving the terminal.
+#### Search
+- **Hybrid global search**: Elasticsearch-backed `GlobalSearch` + scoped `PagedProjects` / `GlobalIssues` / `GlobalMergeRequests` with dedup (`src/app/search.rs:6`, shortcut `f`) — 0.8.0
 
-*   **File Tree Browser:**
-    *   *Implementation:* Fetch the repository tree via GitLab API. Build a tree-view widget.
-    *   *UX:* Left panel for the directory tree, right panel for file content rendering (with syntax highlighting via `syntect` if possible).
-*   **History & Branches:**
-    *   *Implementation:* Fetch commit logs and branch lists.
-    *   *UX:* Dedicated `Branches` and `Commits` menu items under the Project context. Support for creating/deleting branches via popup prompts.
+#### Merge Requests
+- **Inline code review on diffs**: line/range-scoped comments with `base/start/head_sha` (`src/app/mrs.rs:316`, shortcut `c`) — 0.10.18
+- **Approve / Unapprove** (`A` / `R`) (`src/app/mrs.rs:439`, `src/app/mrs.rs:463`)
+- **Merge / Rebase** with confirmation popups and pre-flight status (`M` / `E`) — 0.12.0
+- **Squash toggle** (`S`) — 0.11.0
+- **Draft toggle** with `draft → wip → title-prefix` fallback chain (`D`) — 0.14.1
+- **Open / Close** (`c`)
+- **Edit metadata**: title, description, labels, assignees, reviewers, milestone, target branch (`src/app/mrs.rs:614-816`)
+- **Discussion resolution** (`src/app/mrs.rs:871`)
+- **Throttled concurrent diff fetching** + **local diff fallback** for GitLab-collapsed diffs — 0.10.14 / 0.10.15
+- **Reaction / participant metadata** (`src/app/mrs.rs:209`)
 
-### Phase 3: Project Management & Visibility
-Elevate the tool for leads and maintainers.
+#### Issues
+- **Create / edit / state toggle** (`src/app/issues.rs:449`, `src/app/issues.rs:392`)
+- **Edit labels / assignees / milestone / due & start date / weight / confidential** (`src/app/issues.rs:221-446`)
+- **Issue discussions** with notes and resolution (`src/app/issues.rs:471`)
 
-*   **Kanban Boards (TUI Style):**
-    *   *Implementation:* Fetch board configurations and issue lists per board list.
-    *   *UX:* Render horizontal lists. Use `h/l` to move between columns, `j/k` to select issues. Use `<Shift+h/l>` to move issues between columns (change labels).
-*   **Extended Entity Support:**
-    *   *Implementation:* Fetch and display Epics, Related Issues, and Linked MRs in the Detail view metadata section.
+#### CI/CD
+- **Pipelines list** with pagination, retry, cancel, status tracking (`src/app/pipelines.rs`)
+- **Job log viewer**: ANSI rendering, section collapsing, follow-mode, multi-line copy (`src/ui/mod.rs:150`)
+- **Launch pipeline** with ref + custom variables (`src/app/pipelines.rs:152`)
+- **Job actions**: play, retry, cancel (`src/app/pipelines.rs:215-269`)
 
-### Phase 4: Architecture & UX Polish
-Refine the foundation for scale.
+#### Project view
+- **Repository tree** (`src/app/global.rs:168`, `src/ui/mod.rs:315`)
+- **Commits history** with pagination (`src/app/global.rs:210`)
+- **Branches** list (`src/app/global.rs:250`)
+- **Project variables** (`src/app/pipelines.rs:82`)
+- **Kanban boards**: horizontal scroll, multi-column filter, drag issues between columns with `H` / `L` (`src/app/mod.rs:3456`, `src/ui/boards.rs`) — Phase 3
+- **Epics** per group (`src/app/boards.rs:107`, `src/ui/boards.rs:173`)
+- **Project metadata cache** (labels, milestones, members) with deduplication and lazy fetch (`src/app/mod.rs:826`)
 
-*   **Global Search:**
-    *   *Implementation:* Implement the GitLab global search API.
-    *   *UX:* A persistent shortcut (e.g., `/` from the dashboard) to open a global search palette, displaying mixed results (MRs, Issues, Projects).
-*   **Performance & Real-time Data:**
-    *   *Implementation:* Investigate transitioning from polling to GraphQL subscriptions or Server-Sent Events (SSE) if supported by the GitLab instance, or optimize polling to back off when idle.
-*   **Richer Markdown Rendering:**
-    *   *Implementation:* Improve the `markdown.rs` parser to handle GFM tables, checklists, and blockquotes more gracefully within terminal constraints.
+#### Quality of life
+- **Adaptive refresh**: 2s live / 5s active / 30s idle back-off (`src/main.rs:126`)
+- **Clipboard**: local `arboard` + OSC 52 sequence for remote/tmux (`src/app/mod.rs:3527`) — 0.9.0
+- **Mouse support** with scroll-aware list navigation — 0.10.2
+- **Themable** via `theme.toml`
+- **Persistent tracing logs** to `lazygitlab.log` (`src/logger.rs`)
+- **Searchable help popup** (`src/app/mod.rs:1607-1646`)
+- **Optimistic metadata updates** (update local state, then API call) — 0.14.3
 
----
+## What's Next
 
-## Technical Considerations
-*   **Rate Limiting:** As we add more features (like file trees and inline comments), API calls will increase. We must implement robust caching and respect rate limits.
-*   **Crate Dependencies:** Evaluate new dependencies carefully (e.g., for multi-line editing or tree views) to avoid bloating the binary or complicating cross-platform builds.
+Prioritized. Effort is rough and assumes a single contributor. **Do not start work without a corresponding `AGENTS.md` update.**
 
-## Project Standards
-*   **Versioning:** Always use `python scripts/bump_version.py` for releases to maintain consistency between tags and `Cargo.toml`. See [RELEASING.md](./RELEASING.md) for details.
-*   **Verification:** Each phase must include unit tests for new models/API calls.
-*   UI testing via `ratatui::backend::TestBackend` must be updated to cover new interactive components (especially the multi-line editor and board views).
+### P0 — Documentation (this PR)
+- [x] Add `LICENSE` (MIT)
+- [x] Add `README.md` (onboarding)
+- [x] Add `CHANGELOG.md` (Keep-a-Changelog format, hand-curated)
+- [x] Add `AGENTS.md` (maintenance instructions)
+- [x] Rewrite `ROADMAP.md` (this file)
+
+### P1 — Roadmap residue
+Original-plan items that were deferred. Each is a self-contained feature.
+
+- [ ] **File viewer polish** — `src/ui/mod.rs:315` currently renders raw base64-decoded text. `syntect` is already a dep and `App.syntax_set` / `App.theme_set` are loaded but unused here. Add syntax highlighting, branch selection, proper scroll/keyboard handling (it currently reuses `app.job_log_scroll`).
+- [ ] **Related Issues / Linked MRs** in MR / Issue detail metadata. No code exists; would call `/related_issues` and parse `references` cross-links.
+- [ ] **Create / delete branch UI**. `CreateBranch` API exists at `src/api.rs:853`; `target_branch_popup` only *selects* existing branches. Add a popup + handler.
+- [ ] **Resolve issue discussion** binding. `resolve_discussion` in `src/app/mrs.rs:871` is MR-only; add a `resolve_issue_discussion` path in `src/app/issues.rs`.
+
+### P2 — UX polish
+- [ ] **GFM markdown**: tables, checklists, blockquotes in `src/ui/markdown.rs`. `pulldown-cmark` is loaded; needs render tweaks.
+- [ ] **Optimistic insert** for newly created Issue / MR into local lists. `create_issue` and `create_mr` currently only send `TriggerRefresh`.
+- [ ] **Unused API endpoints**: `CreateGroup` (`src/api.rs:787`), `CreateMilestone` (`src/api.rs:801`), `CreateLabel` (`src/api.rs:816`), `CreateFile` (`src/api.rs:833`), `CreateProject` (`src/api.rs:869`) are defined but have no UI. Either wire them or remove the dead code.
+
+### P3 — Maintainability
+Pure refactor. Gated by the existing 72 tests; no behavior change intended.
+
+- [ ] **Split `src/app/mod.rs`** (3,720 LOC) into focused modules. Candidates: `app/keymap.rs`, `app/state_init.rs`, `app/menus.rs`, `app/popups.rs`. The `handle_key` function alone is ~960 lines.
+- [ ] **Split `src/app/mrs.rs`** (1,067 LOC) — separate diff-fetching from metadata editing from review actions.
+- [ ] **Split `src/ui/popup.rs`** (803 LOC) — one file per popup type.
+
+### P4 — Real-time (optional, low ROI)
+- [ ] Investigate GitLab streaming endpoints or webhooks for live updates; current adaptive polling back-off is sufficient for most use cases.
+
+## Process
+
+- Before merging anything that changes user-visible behavior: update `CHANGELOG.md`, and if it adds a new feature, also update `README.md` (Features) and move the item from **What's Next** to **Current State** in this file.
+- See [AGENTS.md](./AGENTS.md) for the full contributor / agent guide.
+- See [RELEASING.md](./RELEASING.md) for the release workflow.
