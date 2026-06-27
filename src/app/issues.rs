@@ -481,6 +481,50 @@ impl App {
         Ok(())
     }
 
+    pub async fn resolve_issue_discussion(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(issue) = &self.selected_issue
+            && let Some(idx) = self.discussion_state.selected()
+            && let Some(disc) = self.discussions.get(idx).cloned()
+        {
+            let pid = issue.project_id;
+            let iid = issue.iid;
+            let disc_id = disc.id.clone();
+            let current_resolved = disc.resolved.unwrap_or(false);
+            let client = self.gitlab.clone();
+            let tx = self.tx.clone();
+            let _ = tx.send(DataUpdate::Loading(true));
+            self.status_message = Some(format!("{} issue discussion {}...", if current_resolved { "Reopening" } else { "Resolving" }, disc_id));
+            let _ = self.update_preview().await;
+            tokio::spawn(async move {
+                use gitlab::api::AsyncQuery;
+                use crate::api::ResolveIssueDiscussion;
+                let endpoint = ResolveIssueDiscussion { project: pid, issue: iid, discussion: disc_id.clone(), resolved: !current_resolved };
+                let res: Result<serde_json::Value, _> = endpoint.query_async(&client).await;
+                if res.is_ok() {
+                    use crate::api::SingleIssue;
+                    let issue_ep = SingleIssue { project: pid, issue: iid };
+                    if let Ok(Ok(val)) = tokio::time::timeout(std::time::Duration::from_secs(30), issue_ep.query_async(&client)).await
+                        && let Ok(updated_issue) = serde_json::from_value::<Issue>(val)
+                    {
+                        let _ = tx.send(DataUpdate::IssueDetail(updated_issue));
+                    }
+                    // refresh discussions list
+                    let disc_ep = IssueDiscussions { project: pid, issue: iid };
+                    let pager = gitlab::api::paged(disc_ep, gitlab::api::Pagination::All);
+                    if let Ok(Ok(discs)) = tokio::time::timeout(std::time::Duration::from_secs(30), pager.query_async(&client)).await {
+                        let _ = tx.send(DataUpdate::IssueDiscussions { project_id: pid, iid, data: discs });
+                    }
+                } else {
+                    let _ = tx.send(DataUpdate::Error("Issue discussion resolve failed".to_string()));
+                }
+                let _ = tx.send(DataUpdate::Loading(false));
+            });
+        } else {
+            self.status_message = Some("No issue discussion selected".into());
+        }
+        Ok(())
+    }
+
     pub async fn fetch_issue_detail(&mut self, project_id: u64, iid: u64) -> Result<(), Box<dyn std::error::Error>> {
         let c = self.gitlab.clone();
         let tx = self.tx.clone();

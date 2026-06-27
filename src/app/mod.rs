@@ -1645,6 +1645,13 @@ impl App {
             items.push(HelpItem { shortcut: "S".into(), description: "Toggle Squash on merge".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "c".into(), description: "Toggle Open/Closed state".into(), action: HelpAction::None, category: "Merge Request".into() });
         }
+        if (self.selected_mr.is_some() || self.selected_issue.is_some())
+            && self.active_panel == Panel::MainDetail
+            && self.detail_section == DetailSection::Discussions
+            && !self.discussions.is_empty()
+        {
+            items.push(HelpItem { shortcut: "s / S".into(), description: "Resolve / unresolve discussion".into(), action: HelpAction::None, category: "Discussion".into() });
+        }
         if self.active_selection == MenuSelection::Pipelines && self.selected_pipeline.is_some() {
             items.push(HelpItem { shortcut: "n".into(), description: "Launch new pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
             items.push(HelpItem { shortcut: "C".into(), description: "Cancel selected pipeline".into(), action: HelpAction::None, category: "Pipeline".into() });
@@ -2859,11 +2866,16 @@ impl App {
                 if self.active_selection == MenuSelection::Todos {
                     self.show_snooze_popup = true; self.snooze_state.select(Some(0));
                 } else {
-                    if self.selected_mr.is_some() || self.selected_issue.is_some() { 
+                    if self.selected_mr.is_some() { 
                         if let Some(disc) = self.discussion_state.selected().and_then(|idx| self.discussions.get_mut(idx)) {
                             disc.collapsed = true;
                         }
                         let _ = self.resolve_discussion().await; 
+                    } else if self.selected_issue.is_some() {
+                        if let Some(disc) = self.discussion_state.selected().and_then(|idx| self.discussions.get_mut(idx)) {
+                            disc.collapsed = true;
+                        }
+                        let _ = self.resolve_issue_discussion().await;
                     }
                 }
             }
