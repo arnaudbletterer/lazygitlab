@@ -769,6 +769,8 @@ pub struct App {
     pub job_log_selection_start: Option<usize>,
     pub job_log_viewport_height: u16,
     pub follow_log: bool,
+    pub file_scroll: u16,
+    pub file_viewport_height: u16,
     pub discussions: Vec<Discussion>,
     pub discussion_state: ListState,
     pub input_mode: bool,

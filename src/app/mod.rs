@@ -164,6 +164,8 @@ impl App {
             repository_tree: Vec::new(),
             repository_tree_state: tui_tree_widget::TreeState::default(),
             selected_file_content: None,
+            file_scroll: 0,
+            file_viewport_height: 0,
             commits: Vec::new(),
             commits_state: ListState::default(),
             commits_page: 1,
@@ -1533,7 +1535,7 @@ impl App {
                         }) {
                             if item.r#type == "blob" {
                                 self.view_mode = ViewMode::Tree;
-                                self.job_log_scroll = 0;
+                                self.file_scroll = 0;
                                 let _ = self.fetch_repository_file(selected_path.clone()).await;
                             } else {
                                 self.repository_tree_state.toggle_selected();
@@ -2243,15 +2245,15 @@ impl App {
                                 } else { 0 }
                             } else { 0 }
                         } else { 0 };
-                        let max_scroll = line_count.saturating_sub(self.job_log_viewport_height as usize) as u16;
-                        if self.job_log_scroll < max_scroll {
-                            self.job_log_scroll = self.job_log_scroll.saturating_add(1);
+                        let max_scroll = line_count.saturating_sub(self.file_viewport_height as usize) as u16;
+                        if self.file_scroll < max_scroll {
+                            self.file_scroll = self.file_scroll.saturating_add(1);
                         }
                         let _ = self.update_preview().await;
                         return;
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        self.job_log_scroll = self.job_log_scroll.saturating_sub(1);
+                        self.file_scroll = self.file_scroll.saturating_sub(1);
                         let _ = self.update_preview().await;
                         return;
                     }

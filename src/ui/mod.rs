@@ -313,25 +313,19 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
-    app.job_log_viewport_height = area.height.saturating_sub(2);
+    app.file_viewport_height = area.height.saturating_sub(2);
     let block = Block::default()
         .title(format!(" File Content: {} ", app.selected_file_content.as_ref().map(|f| f.file_path.as_str()).unwrap_or("")))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.theme.border));
-        
+
     if let Some(file) = &app.selected_file_content {
         use base64::{Engine as _, engine::general_purpose};
         let clean_content = file.content.replace("\n", "").replace("\r", "");
         if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
             if let Ok(text) = String::from_utf8(decoded) {
-                let mut lines = Vec::new();
-                for (i, line) in text.lines().enumerate() {
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{:4} ", i + 1), Style::default().fg(app.theme.dim)),
-                        Span::raw(line),
-                    ]));
-                }
-                let p = Paragraph::new(lines).block(block).scroll((app.job_log_scroll, 0));
+                let lines = highlight_and_render(&app.syntax_set, &app.theme_set, file.file_path.as_str(), &text, app.theme.dim);
+                let p = Paragraph::new(lines).block(block).scroll((app.file_scroll, 0));
                 f.render_widget(p, area);
             } else {
                 let p = Paragraph::new("Binary or non-UTF8 content").block(block);
@@ -345,6 +339,53 @@ fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
         let p = Paragraph::new("Loading...").block(block);
         f.render_widget(p, area);
     }
+}
+
+fn highlight_and_render(
+    syntax_set: &syntect::parsing::SyntaxSet,
+    theme_set: &syntect::highlighting::ThemeSet,
+    file_path: &str,
+    text: &str,
+    line_number_color: ratatui::style::Color,
+) -> Vec<Line<'static>> {
+    let extension = std::path::Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let syntax = syntax_set
+        .find_syntax_by_extension(extension)
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+        .clone();
+    let theme = theme_set.themes.values().next().cloned().unwrap();
+    let mut highlighter = syntect::easy::HighlightLines::new(&syntax, &theme);
+    let mut out = Vec::new();
+    let mut line_number = 1;
+    for line in syntect::util::LinesWithEndings::from(text) {
+        let ranges = highlighter.highlight_line(line, syntax_set).unwrap_or_default();
+        let mut spans = vec![Span::styled(format!("{:4} ", line_number), Style::default().fg(line_number_color))];
+        for (style, content) in ranges {
+            let fg = syntect_color_to_ratatui(style.foreground);
+            spans.push(Span::styled(content.to_string(), Style::default().fg(fg)));
+        }
+        if spans.len() == 1 {
+            spans.push(Span::raw(line.trim_end_matches(['\n', '\r']).to_string()));
+        }
+        out.push(Line::from(spans));
+        line_number += 1;
+    }
+    if out.is_empty() {
+        for (i, line) in text.lines().enumerate() {
+            out.push(Line::from(vec![
+                Span::styled(format!("{:4} ", i + 1), Style::default().fg(line_number_color)),
+                Span::raw(line.to_string()),
+            ]));
+        }
+    }
+    out
+}
+
+fn syntect_color_to_ratatui(c: syntect::highlighting::Color) -> ratatui::style::Color {
+    ratatui::style::Color::Rgb(c.r, c.g, c.b)
 }
 
 #[cfg(test)]

@@ -512,8 +512,9 @@ async fn test_user_story_tree_scroll_and_clamp() {
     app.repository_tree = vec![item];
     app.repository_tree_state.select(vec!["file.txt".into()]);
 
-    // Set scroll to non-zero before entering tree view
+    // Set scroll to non-zero before entering tree view (should NOT leak into file)
     app.job_log_scroll = 50;
+    let pre_open_job_scroll = app.job_log_scroll;
 
     Mock::given(method("GET"))
         .and(path("/api/v4/projects/1/repository/files/file.txt"))
@@ -542,29 +543,32 @@ async fn test_user_story_tree_scroll_and_clamp() {
         }
     }
 
-    // Verify view mode is Tree, and scroll is reset to 0
+    // Verify view mode is Tree, file_scroll is reset to 0, and the job log scroll
+    // is preserved (not contaminated).
     assert_eq!(app.view_mode, ViewMode::Tree);
-    assert_eq!(app.job_log_scroll, 0);
+    assert_eq!(app.file_scroll, 0, "file_scroll should reset to 0 on open");
+    assert_eq!(app.job_log_scroll, pre_open_job_scroll, "opening a file should not touch the job log scroll");
 
     // Set viewport height to 2. Total lines is 5.
-    app.job_log_viewport_height = 2;
+    app.file_viewport_height = 2;
 
     // Press Down (j). Scroll should increment.
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
-    assert_eq!(app.job_log_scroll, 1);
+    assert_eq!(app.file_scroll, 1);
 
     // Scroll more. Max scroll should be saturating_sub(5, 2) = 3.
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
-    assert_eq!(app.job_log_scroll, 3);
+    assert_eq!(app.file_scroll, 3);
 
     // Extra scroll. Scroll should still be clamped at 3.
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
-    assert_eq!(app.job_log_scroll, 3);
+    assert_eq!(app.file_scroll, 3);
 
     // Scroll up (k).
     app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
-    assert_eq!(app.job_log_scroll, 2);
+    assert_eq!(app.file_scroll, 2);
+    assert_eq!(app.job_log_scroll, pre_open_job_scroll, "scrolling the file must not touch the job log scroll");
 }
 
 #[tokio::test]
