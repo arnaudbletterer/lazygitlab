@@ -2,11 +2,11 @@
 source: tests/headless_snapshots.rs
 expression: last_frame
 ---
-┌ Status ──────────────┐┌ To-Do List ──────────────────────────────────────────────────────────────────────────────────┐
-│ No Project Selected  ││ Pending  │  Snoozed  │  Done                                                                 │
+┌ Status ──────────────┐┌ Merge Requests ──────────────────────────────────────────────────────────────────────────────┐
+│ No Project Selected  ││ Opened  │  Merged  │  Closed  │  All                                                         │
 └──────────────────────┘│                                                                                              │
 ┌ Dashboard ───────────┐│                                                                                              │
-│>   Todos             ││                                                                                              │
+│    Todos             ││                                                                                              │
 │    Merge Requests    ││                                                                                              │
 │    Issues            ││                                                                                              │
 └──────────────────────┘│                                                                                              │
@@ -41,4 +41,4 @@ expression: last_frame
                         │                                                                                              │
                         │                                                                                              │
                         └──────────────────────────────────────────────────────────────────────────────────────────────┘
-? help  q quit    Fetching Todos...                                                                    v0.14.8 (f899880)
+? help  q quit    Fetching Merge Requests...                                                     v0.14.8 (eecd9c2-DIRTY)

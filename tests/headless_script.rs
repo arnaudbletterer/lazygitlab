@@ -1,4 +1,4 @@
-use lazygitlab::headless::{parse_script, parse_options};
+use lazygitlab::headless::{parse_options, parse_script};
 
 #[test]
 fn test_parse_script_basic_keys() {
@@ -104,4 +104,24 @@ fn test_parse_options_with_flags() {
 fn test_parse_options_unknown() {
     let args = vec!["--unknown".to_string()];
     assert!(parse_options(&args).is_err());
+}
+
+#[tokio::test]
+async fn test_scripted_event_source_fifo_order() {
+    use crossterm::event::KeyCode;
+    use lazygitlab::headless::ScriptedEventSource;
+    use lazygitlab::EventSource;
+    let src = ScriptedEventSource::from_text("a\nb\nc").unwrap();
+    let mut got = Vec::new();
+    for _ in 0..3 {
+        if let Some(crossterm::event::Event::Key(k)) = src
+            .next_event(std::time::Duration::from_millis(10))
+            .await
+            .unwrap()
+            && let KeyCode::Char(ch) = k.code
+        {
+            got.push(ch);
+        }
+    }
+    assert_eq!(got, vec!['a', 'b', 'c'], "ScriptedEventSource must deliver events in script order (FIFO), not LIFO");
 }

@@ -16,9 +16,9 @@
     "board_list_present": true,
     "deep_tree_root": "dir-0",
     "gitlab_ci_present": true,
-    "pipeline_id": 2633678507
+    "pipeline_id": 2633720568
   },
-  "last_seeded_at": "2026-06-27T09:06:42.533994+00:00",
+  "last_seeded_at": "2026-06-27T10:08:25.022703+00:00",
   "massive_mr": {
     "branch": "massive-mr-source",
     "files_count": 0,

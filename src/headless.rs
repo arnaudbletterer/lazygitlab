@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -10,17 +10,17 @@ use ratatui::Terminal;
 use crate::events::EventSource;
 
 pub struct ScriptedEventSource {
-    events: std::sync::Mutex<Vec<Event>>,
+    events: std::sync::Mutex<VecDeque<Event>>,
 }
 
 impl ScriptedEventSource {
     pub fn from_text(text: &str) -> Result<Self, String> {
-        let events = parse_script(text)?;
+        let events: VecDeque<Event> = parse_script(text)?.into();
         Ok(Self { events: std::sync::Mutex::new(events) })
     }
 
     pub fn empty() -> Self {
-        Self { events: std::sync::Mutex::new(Vec::new()) }
+        Self { events: std::sync::Mutex::new(VecDeque::new()) }
     }
 }
 
@@ -28,7 +28,7 @@ impl ScriptedEventSource {
 impl EventSource for ScriptedEventSource {
     async fn next_event(&self, _timeout: Duration) -> std::io::Result<Option<Event>> {
         let mut events = self.events.lock().unwrap();
-        Ok(events.pop())
+        Ok(events.pop_front())
     }
 }
 
