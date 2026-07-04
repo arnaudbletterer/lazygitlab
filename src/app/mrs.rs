@@ -907,16 +907,58 @@ impl App {
             let source_branch = self.create_mr_source_branch.clone();
             let target_branch = self.create_mr_target_branch.clone();
             let description = if self.create_mr_description.is_empty() { None } else { Some(self.create_mr_description.clone()) };
+
+            // Optimistic insert: build a placeholder MR with a high fake iid.
+            let pending_iid = self.merge_requests.iter().map(|m| m.iid).max().unwrap_or(0) + 1_000_000;
+            let author = self.current_user.clone().unwrap_or_else(|| Author::new(0, "you".into()));
+            let pending_mr = MergeRequest {
+                iid: pending_iid,
+                project_id: pid,
+                title: title.clone(),
+                description: description.clone(),
+                author: author.clone(),
+                web_url: String::new(),
+                state: "opened".into(),
+                references: None,
+                upvotes: Some(0),
+                downvotes: Some(0),
+                labels: vec![],
+                milestone: None,
+                assignees: vec![],
+                reviewers: vec![],
+                squash: Some(false),
+                created_at: Some(chrono::Utc::now().to_rfc3339()),
+                draft: Some(false),
+                reactions: vec![],
+                diff_refs: None,
+                merge_status: None,
+                detailed_merge_status: None,
+                has_conflicts: None,
+                head_pipeline: None,
+                source_branch: source_branch.clone(),
+                target_branch: target_branch.clone(),
+                participants: vec![],
+            };
+            self.merge_requests.insert(0, pending_mr.clone());
+            self.filter_lists();
+            self.status_message = Some(format!("Creating MR '{}'...", title));
+            let _ = self.update_preview().await;
+
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
-            let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = CreateMergeRequest { project: pid, source_branch, target_branch, title, description };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(_)) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
-                    Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(format!("MR creation failed: {}", e))); }
-                    Err(_) => { let _ = tx.send(DataUpdate::Error("MR creation timed out".into())); }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(DataUpdate::Error(format!("MR creation failed: {}", e)));
+                        let _ = tx.send(DataUpdate::RemovePendingMR { iid: pending_iid });
+                    }
+                    Err(_) => {
+                        let _ = tx.send(DataUpdate::Error("MR creation timed out".into()));
+                        let _ = tx.send(DataUpdate::RemovePendingMR { iid: pending_iid });
+                    }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });

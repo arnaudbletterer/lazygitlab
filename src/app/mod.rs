@@ -554,6 +554,14 @@ impl App {
                 }
             }
             DataUpdate::TriggerRefresh => { self.refresh().await; }
+            DataUpdate::RemovePendingIssue { iid } => {
+                self.issues.retain(|i| i.iid != iid);
+                self.filter_lists();
+            }
+            DataUpdate::RemovePendingMR { iid } => {
+                self.merge_requests.retain(|m| m.iid != iid);
+                self.filter_lists();
+            }
             DataUpdate::CheckPagination => { let _ = self.check_pagination().await; }
             DataUpdate::CurrentUser(user) => { self.current_user = Some(user); }
             DataUpdate::RepositoryTree { project_id, data } => {

@@ -728,6 +728,8 @@ pub enum DataUpdate {
     Loading(bool),
     Error(String),
     TriggerRefresh,
+    RemovePendingIssue { iid: u64 },
+    RemovePendingMR { iid: u64 },
     CheckPagination,
 }
 

@@ -451,14 +451,52 @@ impl App {
             let pid = project.id;
             let title = self.create_issue_title.clone();
             let description = self.create_issue_description.clone();
+
+            // Optimistic insert: build a placeholder Issue with a high fake iid
+            // so the user sees it immediately. If the API call fails, the
+            // TriggerRefresh (or our fallback below) will remove it.
+            let pending_iid = self.issues.iter().map(|i| i.iid).max().unwrap_or(0) + 1_000_000;
+            let author = self.current_user.clone().unwrap_or_else(|| Author::new(0, "you".into()));
+            let pending_issue = Issue {
+                iid: pending_iid,
+                project_id: pid,
+                title: title.clone(),
+                description: Some(description.clone()),
+                author: author.clone(),
+                assignees: vec![],
+                state: "opened".into(),
+                web_url: String::new(),
+                references: None,
+                issue_type: None,
+                labels: vec![],
+                milestone: None,
+                due_date: None,
+                start_date: None,
+                weight: None,
+                task_completion_status: None,
+                confidential: false,
+                created_at: Some(chrono::Utc::now().to_rfc3339()),
+                upvotes: Some(0),
+                downvotes: Some(0),
+                reactions: vec![],
+                participants: vec![],
+            };
+            self.issues.insert(0, pending_issue.clone());
+            self.filter_lists();
+            self.status_message = Some(format!("Creating issue '{}'...", title));
+            let _ = self.update_preview().await;
+
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
-            let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let ep = CreateIssue { project: pid, title, description: Some(description), assignee_ids: vec![], label_names: vec![] };
                 let res: Result<Issue, _> = ep.query_async(&c).await;
-                if res.is_ok() {
-                    let _ = tx.send(DataUpdate::TriggerRefresh);
+                match res {
+                    Ok(_) => { let _ = tx.send(DataUpdate::TriggerRefresh); }
+                    Err(e) => {
+                        let _ = tx.send(DataUpdate::Error(format!("Issue creation failed: {}", e)));
+                        let _ = tx.send(DataUpdate::RemovePendingIssue { iid: pending_iid });
+                    }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
             });

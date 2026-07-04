@@ -784,72 +784,6 @@ impl Endpoint for PlayJob {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateGroup { pub name: String, pub path: String, pub parent_id: Option<u64> }
-impl Endpoint for CreateGroup {
-    fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { "groups".into() }
-    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
-        let mut params = gitlab::api::FormParams::default();
-        params.push("name", &self.name);
-        params.push("path", &self.path);
-        if let Some(id) = self.parent_id { params.push("parent_id", id); }
-        params.into_body()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateMilestone {
-    pub project: u64,
-    pub title: String,
-}
-impl Endpoint for CreateMilestone {
-    fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/milestones", self.project).into() }
-    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
-        let mut params = gitlab::api::FormParams::default();
-        params.push("title", &self.title);
-        params.into_body()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateLabel {
-    pub project: u64,
-    pub name: String,
-    pub color: String,
-}
-impl Endpoint for CreateLabel {
-    fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/labels", self.project).into() }
-    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
-        let mut params = gitlab::api::FormParams::default();
-        params.push("name", &self.name);
-        params.push("color", &self.color);
-        params.into_body()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateFile {
-    pub project: u64,
-    pub file_path: String,
-    pub branch: String,
-    pub content: String,
-    pub commit_message: String,
-}
-impl Endpoint for CreateFile {
-    fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/files/{}", self.project, self.file_path.replace("/", "%2F")).into() }
-    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
-        let mut params = gitlab::api::FormParams::default();
-        params.push("branch", &self.branch);
-        params.push("content", &self.content);
-        params.push("commit_message", &self.commit_message);
-        params.into_body()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct CreateBranch {
     pub project: u64,
     pub branch: String,
@@ -872,23 +806,6 @@ pub struct DeleteBranch {
 impl Endpoint for DeleteBranch {
     fn method(&self) -> Method { Method::DELETE }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/repository/branches/{}", self.project, self.branch).into() }
-}
-#[derive(Debug, Clone)]
-pub struct CreateProject {
-    pub name: String,
-    pub path: String,
-    pub namespace_id: Option<u64>,
-}
-impl Endpoint for CreateProject {
-    fn method(&self) -> Method { Method::POST }
-    fn endpoint(&self) -> Cow<'static, str> { "projects".into() }
-    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
-        let mut params = gitlab::api::FormParams::default();
-        params.push("name", &self.name);
-        params.push("path", &self.path);
-        if let Some(id) = self.namespace_id { params.push("namespace_id", id); }
-        params.into_body()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1185,24 +1102,9 @@ mod tests {
         assert_eq!(snooze.method(), Method::POST);
         assert!(snooze.body().is_ok());
 
-        let create_group = CreateGroup { name: "n".into(), path: "p".into(), parent_id: Some(1) };
-        assert!(create_group.body().is_ok());
-
-        let create_ms = CreateMilestone { project: 1, title: "t".into() };
-        assert!(create_ms.body().is_ok());
-
-        let create_lbl = CreateLabel { project: 1, name: "n".into(), color: "c".into() };
-        assert!(create_lbl.body().is_ok());
-
-        let create_file = CreateFile { project: 1, file_path: "f".into(), branch: "b".into(), content: "c".into(), commit_message: "m".into() };
-        assert!(create_file.body().is_ok());
-
         let create_br = CreateBranch { project: 1, branch: "b".into(), ref_name: "r".into() };
         assert_eq!(create_br.method(), Method::POST);
         let _ = create_br.parameters();
-
-        let create_proj = CreateProject { name: "n".into(), path: "p".into(), namespace_id: Some(1) };
-        assert!(create_proj.body().is_ok());
 
         let create_pipe = CreatePipeline { project: 1, ref_name: "b".into(), variables: Some(vec![crate::models::PipelineVariable{key:"k".into(), value:"v".into()}]) };
         assert_eq!(create_pipe.method(), Method::POST);
