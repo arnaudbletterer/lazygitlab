@@ -6,6 +6,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-06
+
 ### Added
 - `--headless` flag in the binary: drives the TUI from a text event script with `TestBackend`, no terminal required. Supports `--width`, `--height`, `--script <path>`, `--frames-dir <path>`.
 - `tests/headless_snapshots.rs`: 2 insta snapshot tests capturing the rendered TUI buffer for the initial dashboard and after a `g m` navigation.
@@ -193,7 +195,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ### Fixed
 - Restore MR navigation state after tab switches; improve theme coherence across views.
 
-[Unreleased]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.8...HEAD
+[Unreleased]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.15.0...HEAD
+[0.15.0]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.8...v0.15.0
 [0.14.8]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.7...v0.14.8
 [0.14.7]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.6...v0.14.7
 [0.14.6]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.5...v0.14.6
