@@ -36,6 +36,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - **Headless event source delivered events in LIFO order.** `ScriptedEventSource::next_event` used `Vec::pop()`, so any script whose last line was `q` terminated the loop before any other event was seen. Switched to `VecDeque::pop_front()`.
 
 ### Changed
+- Modularized `src/app/mod.rs` (3.7k LOC) by extracting keymaps to `src/app/keymap.rs` and menus/navigation to `src/app/menus.rs`.
+- Modularized TUI popup rendering in `src/ui/popup.rs` (803 LOC) by splitting it into individual popup module files under a new `src/ui/popup/` directory.
 - `scripts/populate_test_ground.py`: also seeds the canonical deep-tree file (`dir-0/dir-1/.../file-0.txt`) on the project's default branch so the live TUI's default-branch repository-tree fetch can find it. (Previously only seeded on `feature-branch-00`.)
 - `tests/stress_test_exhaustive_e2e.rs`: now sets `app.issue_filter = IssueFilter::All` before fetching so the issues count assertion uses the full set rather than the default `Opened` filter.
 - `run_app` extracted to `src/runner.rs` in the lib (was in `src/main.rs`) so integration tests can drive the full event loop. Added an optional `FrameCaptureFn<B>` parameter for per-frame capture; the binary's `run_with_terminal` passes `&mut None`.

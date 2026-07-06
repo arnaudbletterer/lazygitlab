@@ -102,9 +102,9 @@ Original-plan items that were deferred. Each is a self-contained feature.
 ### P3 — Maintainability
 Pure refactor. Gated by the existing 72 tests; no behavior change intended.
 
-- [ ] **Split `src/app/mod.rs`** (3,720 LOC) into focused modules. Candidates: `app/keymap.rs`, `app/state_init.rs`, `app/menus.rs`, `app/popups.rs`. The `handle_key` function alone is ~960 lines.
+- [x] **Split `src/app/mod.rs`** (3,720 LOC) into focused modules. Candidates: `app/keymap.rs`, `app/state_init.rs`, `app/menus.rs`, `app/popups.rs`. The `handle_key` function alone is ~960 lines.
 - [ ] **Split `src/app/mrs.rs`** (1,067 LOC) — separate diff-fetching from metadata editing from review actions.
-- [ ] **Split `src/ui/popup.rs`** (803 LOC) — one file per popup type.
+- [x] **Split `src/ui/popup.rs`** (803 LOC) — one file per popup type.
 
 ### P4 — Real-time (optional, low ROI)
 - [ ] Investigate GitLab streaming endpoints or webhooks for live updates; current adaptive polling back-off is sufficient for most use cases.
