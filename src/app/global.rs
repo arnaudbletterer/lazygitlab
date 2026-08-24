@@ -168,9 +168,10 @@ impl App {
     pub async fn fetch_repository_tree(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             let c = self.gitlab.clone(); let tx = self.tx.clone(); let pid = project.id;
+            let ref_name = self.repository_ref.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let ep = RepositoryTree { project: pid, path: None, ref_name: None, recursive: Some(true) };
+                let ep = RepositoryTree { project: pid, path: None, ref_name, recursive: Some(true) };
                 let res: Result<Result<Vec<RepositoryTreeItem>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), gitlab::api::paged(ep, gitlab::api::Pagination::All).query_async(&c)).await;
                 match res {
                     Ok(Ok(data)) => { let _ = tx.send(DataUpdate::RepositoryTree { project_id: pid, data }); }
@@ -183,10 +184,23 @@ impl App {
         Ok(())
     }
 
+    pub async fn select_repository_ref(&mut self, name: String) -> Result<(), Box<dyn std::error::Error>> {
+        self.repository_ref = Some(name.clone());
+        self.repository_tree.clear();
+        self.selected_file_content = None;
+        self.file_scroll = 0;
+        self.repository_tree_state = tui_tree_widget::TreeState::default();
+        self.status_message = Some(format!("Browsing tree at '{}'", name));
+        self.fetch_repository_tree().await
+    }
+
     pub async fn fetch_repository_file(&mut self, file_path: String) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             let c = self.gitlab.clone(); let tx = self.tx.clone(); let pid = project.id;
-            let ref_name = project.default_branch.clone().unwrap_or_else(|| "main".to_string());
+            let ref_name = match &self.repository_ref {
+                Some(r) => r.clone(),
+                None => project.default_branch.clone().unwrap_or_else(|| "main".to_string()),
+            };
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
                 let endpoint = gitlab::api::projects::repository::files::File::builder()
