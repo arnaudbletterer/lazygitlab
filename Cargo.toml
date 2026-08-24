@@ -37,3 +37,7 @@ mockito = "1.4.0"
 tokio-test = "0.4.3"
 wiremock = "0.6.2"
 insta = "1.39"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

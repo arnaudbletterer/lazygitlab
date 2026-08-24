@@ -552,11 +552,16 @@ impl App {
     }
 }
 
+static TIMESTAMP_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+").unwrap());
+static SECTION_START_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"section_start:(\d+):([^\r\n]+)").unwrap());
+static SECTION_END_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"section_end:(\d+):([^\r\n]+)").unwrap());
+static LOG_NOISE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\x1b\[0K").unwrap());
+
 pub fn parse_job_log(log: &str) -> Vec<LogLine> {
-    let timestamp_re = regex::Regex::new(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+").unwrap();
-    let section_start_re = regex::Regex::new(r"section_start:(\d+):([^\r\n]+)").unwrap();
-    let section_end_re = regex::Regex::new(r"section_end:(\d+):([^\r\n]+)").unwrap();
-    let noise_re = regex::Regex::new(r"\x1b\[0K").unwrap();
+    let timestamp_re = &*TIMESTAMP_RE;
+    let section_start_re = &*SECTION_START_RE;
+    let section_end_re = &*SECTION_END_RE;
+    let noise_re = &*LOG_NOISE_RE;
 
     let mut current_section: Option<String> = None;
     let mut out = Vec::new();
@@ -612,9 +617,10 @@ pub fn parse_job_log(log: &str) -> Vec<LogLine> {
     out
 }
 
+static ANSI_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\x1b\[[0-9;]*[mK]").unwrap());
+
 pub fn strip_ansi(text: &str) -> String {
-    let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[mK]").unwrap();
-    ansi_re.replace_all(text, "").to_string()
+    ANSI_RE.replace_all(text, "").to_string()
 }
 
 #[cfg(test)]
