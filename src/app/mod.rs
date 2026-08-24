@@ -63,6 +63,7 @@ impl App {
             job_log_cursor: 0,
             job_log_selection_start: None,
             job_log_viewport_height: 0,
+            job_log_search: String::new(),
             follow_log: true,
             discussions: Vec::new(),
             discussion_state: ListState::default(),
@@ -157,6 +158,7 @@ impl App {
             todo_filter: TodoFilter::Pending,
             issue_filter: IssueFilter::Opened,
             mr_filter: MergeRequestFilter::Opened,
+            pipeline_filter: PipelineFilter::All,
             last_error: None,
             status_message: None,
             last_status_text: None,
@@ -1104,6 +1106,30 @@ impl App {
         self.issue_closing_mrs.clear();
     }
 
+    pub fn ensure_job_log_cursor_visible(&mut self) {
+        let viewport = (self.job_log_viewport_height as usize).max(1);
+        if self.job_log_cursor < self.job_log_scroll as usize {
+            self.job_log_scroll = self.job_log_cursor as u16;
+        } else if self.job_log_cursor >= self.job_log_scroll as usize + viewport {
+            self.job_log_scroll = (self.job_log_cursor + 1).saturating_sub(viewport) as u16;
+        }
+    }
+
+    pub fn job_log_search_next(&mut self) {
+        if self.job_log_lines.is_empty() || self.job_log_search.is_empty() { return; }
+        let needle = self.job_log_search.to_lowercase();
+        let len = self.job_log_lines.len();
+        for offset in 1..=len {
+            let idx = (self.job_log_cursor + offset) % len;
+            if self.job_log_lines[idx].content.to_lowercase().contains(&needle) {
+                self.job_log_cursor = idx;
+                self.ensure_job_log_cursor_visible();
+                return;
+            }
+        }
+        self.status_message = Some(format!("No match for '{}'", self.job_log_search));
+    }
+
     const STATUS_TTL: std::time::Duration = std::time::Duration::from_secs(6);
     const ERROR_TTL: std::time::Duration = std::time::Duration::from_secs(15);
 
@@ -1521,7 +1547,15 @@ impl App {
         self.filtered_issues = grouped_issues;
 
         self.filtered_projects = self.projects.iter().filter(|p| p.name.to_lowercase().contains(&filter)).cloned().collect();
-        self.filtered_pipelines = self.pipelines.iter().filter(|p| p.ref_name.to_lowercase().contains(&filter)).cloned().collect();
+        self.filtered_pipelines = self.pipelines.iter()
+            .filter(|p| p.ref_name.to_lowercase().contains(&filter))
+            .filter(|p| match self.pipeline_filter {
+                PipelineFilter::All => true,
+                PipelineFilter::Running => matches!(p.status.as_str(), "running" | "pending" | "waiting_for_resource" | "preparing"),
+                PipelineFilter::Failed => p.status == "failed",
+                PipelineFilter::Passed => p.status == "success",
+            })
+            .cloned().collect();
         self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
         
         // Filter Board Issues

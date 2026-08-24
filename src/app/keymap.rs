@@ -1,6 +1,6 @@
 use crate::models::{
     App, HelpItem, HelpAction, Context, MenuSelection, Panel, ViewMode,
-    DetailSection, InputTarget, TodoFilter, MergeRequestFilter, IssueFilter,
+    DetailSection, InputTarget, TodoFilter, MergeRequestFilter, IssueFilter, PipelineFilter,
     DiffDisplayLine
 };
 use super::is_selectable_diff_line;
@@ -46,6 +46,9 @@ impl App {
             items.push(HelpItem { shortcut: "y".into(), description: "Copy line or selection".into(), action: HelpAction::None, category: "Job Log".into() });
             items.push(HelpItem { shortcut: "Shift + j/k".into(), description: "Extend selection".into(), action: HelpAction::None, category: "Job Log".into() });
             items.push(HelpItem { shortcut: "Tab / l".into(), description: "Toggle section collapse".into(), action: HelpAction::None, category: "Job Log".into() });
+            items.push(HelpItem { shortcut: "/".into(), description: "Search in log (Enter jumps to next match)".into(), action: HelpAction::Filter, category: "Job Log".into() });
+            items.push(HelpItem { shortcut: "G / Home".into(), description: "Jump to end / start of log".into(), action: HelpAction::None, category: "Job Log".into() });
+            items.push(HelpItem { shortcut: "PgUp / PgDn".into(), description: "Page through log".into(), action: HelpAction::None, category: "Job Log".into() });
             if let Some(job) = &self.selected_job {
                 if matches!(job.status.as_str(), "failed" | "canceled") {
                     items.push(HelpItem { shortcut: "r / R".into(), description: "Retry job".into(), action: HelpAction::None, category: "Job Log".into() });
@@ -276,6 +279,42 @@ impl App {
                         return;
                     }
                     KeyCode::Char('y') => { let text = if let Some(start) = self.job_log_selection_start { let (s, e) = if start <= self.job_log_cursor { (start, self.job_log_cursor) } else { (self.job_log_cursor, start) }; self.job_log_lines[s..=e].iter().map(|l| l.content.clone()).collect::<Vec<String>>().join("\n") } else if !self.job_log_lines.is_empty() { self.job_log_lines[self.job_log_cursor].content.clone() } else { String::new() }; self.copy_to_clipboard(text); self.job_log_selection_start = None; return; }
+                    KeyCode::Char('G') | KeyCode::End => {
+                        if !self.job_log_lines.is_empty() {
+                            self.job_log_cursor = self.job_log_lines.len() - 1;
+                            self.job_log_scroll = self.job_log_cursor.saturating_sub(self.job_log_viewport_height as usize / 2) as u16;
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::Home => {
+                        self.job_log_cursor = 0;
+                        self.job_log_scroll = 0;
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::PageDown => {
+                        if !self.job_log_lines.is_empty() {
+                            let page = (self.job_log_viewport_height as usize).max(1);
+                            self.job_log_cursor = (self.job_log_cursor + page).min(self.job_log_lines.len() - 1);
+                            self.ensure_job_log_cursor_visible();
+                        }
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::PageUp => {
+                        let page = (self.job_log_viewport_height as usize).max(1);
+                        self.job_log_cursor = self.job_log_cursor.saturating_sub(page);
+                        self.ensure_job_log_cursor_visible();
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::Char('/') => {
+                        self.input_mode = true;
+                        self.input_target = InputTarget::JobLogSearch;
+                        self.job_log_search.clear();
+                        return;
+                    }
                     KeyCode::Char('r') | KeyCode::Char('R') => {
                         if let Some((j, p)) = self.selected_job.as_ref().zip(self.selected_project.as_ref()) {
                             let _ = self.retry_job(p.id, j.id).await;
@@ -647,6 +686,24 @@ impl App {
         // --- 5. INPUT MODES ---
 
         if self.input_mode {
+            if self.input_target == InputTarget::JobLogSearch {
+                match processed_key.code {
+                    KeyCode::Esc => { self.input_mode = false; self.job_log_search.clear(); }
+                    KeyCode::Enter => {
+                        self.input_mode = false;
+                        let query = self.job_log_search.clone();
+                        self.job_log_search_next();
+                        if !query.is_empty() && self.status_message.is_none() {
+                            self.status_message = Some(format!("Found '{}'", query));
+                        }
+                    }
+                    KeyCode::Char(c) => { self.job_log_search.push(c); }
+                    KeyCode::Backspace => { self.job_log_search.pop(); }
+                    _ => {}
+                }
+                return;
+            }
+
             if self.input_target == InputTarget::Filter {
                 match processed_key.code {
                     KeyCode::Esc => {
@@ -832,9 +889,12 @@ impl App {
                         MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },
                         MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::All, MergeRequestFilter::Merged => MergeRequestFilter::Opened, MergeRequestFilter::Closed => MergeRequestFilter::Merged, MergeRequestFilter::All => MergeRequestFilter::Closed },
                         MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::All, IssueFilter::Closed => IssueFilter::Opened, IssueFilter::All => IssueFilter::Closed },
+                        MenuSelection::Pipelines => { self.pipeline_filter = match self.pipeline_filter { PipelineFilter::All => PipelineFilter::Passed, PipelineFilter::Passed => PipelineFilter::Failed, PipelineFilter::Failed => PipelineFilter::Running, PipelineFilter::Running => PipelineFilter::All }; self.filter_lists(); }
                         _ => {}
                     }
-                    self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
+                    if self.active_selection != MenuSelection::Pipelines {
+                        self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
+                    }
                 }
             }
             KeyCode::Char(']') => {
@@ -846,9 +906,12 @@ impl App {
                         MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Snoozed, TodoFilter::Snoozed => TodoFilter::Done, TodoFilter::Done => TodoFilter::Pending },
                         MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Opened },
                         MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::Closed, IssueFilter::Closed => IssueFilter::All, IssueFilter::All => IssueFilter::Opened },
+                        MenuSelection::Pipelines => { self.pipeline_filter = match self.pipeline_filter { PipelineFilter::All => PipelineFilter::Running, PipelineFilter::Running => PipelineFilter::Failed, PipelineFilter::Failed => PipelineFilter::Passed, PipelineFilter::Passed => PipelineFilter::All }; self.filter_lists(); }
                         _ => {}
                     }
-                    self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
+                    if self.active_selection != MenuSelection::Pipelines {
+                        self.merge_requests.clear(); self.issues.clear(); self.todos.clear(); let _ = self.refresh().await;
+                    }
                 }
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }

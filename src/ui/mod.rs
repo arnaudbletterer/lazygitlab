@@ -19,7 +19,8 @@ use ansi_to_tui::IntoText;
 use crate::ui::widgets::{format_relative_time, format_time_only};
 
 pub fn ui(f: &mut Frame, app: &mut App) {
-    let has_filter = app.show_filter_input || !app.filter_input.is_empty();
+    let job_log_searching = app.input_mode && app.input_target == crate::models::InputTarget::JobLogSearch;
+    let has_filter = app.show_filter_input || !app.filter_input.is_empty() || job_log_searching;
     let footer_height = if has_filter { 2 } else { 1 };
 
     let main_chunks = Layout::default()
@@ -48,11 +49,18 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     };
 
     if let Some(rect) = filter_rect {
-        let mut filter_spans = vec![
-            Span::styled(" Filter: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
-            Span::raw(&app.filter_input),
-        ];
-        if app.show_filter_input {
+        let mut filter_spans = if job_log_searching {
+            vec![
+                Span::styled(" Search log: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+                Span::raw(&app.job_log_search),
+            ]
+        } else {
+            vec![
+                Span::styled(" Filter: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+                Span::raw(&app.filter_input),
+            ]
+        };
+        if job_log_searching || app.show_filter_input {
             filter_spans.push(Span::styled("█", Style::default().fg(app.theme.pending)));
         } else {
             filter_spans.push(Span::styled(" (Esc to clear)", Style::default().fg(app.theme.dim)));
@@ -136,7 +144,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_confirm_merge_popup ||
                                    app.show_confirm_rebase_popup;
 
-    if app.input_mode && !is_complex_popup_visible && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search) {
+    if app.input_mode && !is_complex_popup_visible && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search | crate::models::InputTarget::JobLogSearch) {
         let title = match app.input_target {
             crate::models::InputTarget::Reply => " Reply (Ctrl+Enter to send, Esc to cancel) ",
             crate::models::InputTarget::NewComment => " New Comment (Ctrl+Enter to send, Esc to cancel) ",

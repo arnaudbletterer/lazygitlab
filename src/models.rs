@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 use ratatui::widgets::ListState;
 use crate::ui::Theme;
 use gitlab::AsyncGitlab;
@@ -23,6 +23,14 @@ pub enum MergeRequestFilter {
     Merged,
     Closed,
     All,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+pub enum PipelineFilter {
+    All,
+    Running,
+    Failed,
+    Passed,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -512,6 +520,7 @@ pub enum InputTarget {
     NewFileComment,
     EditIssueStartDate,
     EditIssueDueDate,
+    JobLogSearch,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -776,6 +785,7 @@ pub struct App {
     pub job_log_cursor: usize,
     pub job_log_selection_start: Option<usize>,
     pub job_log_viewport_height: u16,
+    pub job_log_search: String,
     pub follow_log: bool,
     pub file_scroll: u16,
     pub file_viewport_height: u16,
@@ -901,6 +911,7 @@ pub struct App {
     pub todo_filter: TodoFilter,
     pub issue_filter: IssueFilter,
     pub mr_filter: MergeRequestFilter,
+    pub pipeline_filter: PipelineFilter,
 
     pub last_error: Option<String>,
     pub status_message: Option<String>,
