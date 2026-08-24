@@ -14,7 +14,12 @@ use lazygitlab::run_app;
 
 fn sanitize(frame: String) -> String {
     let re = regex::Regex::new(r"v\d+\.\d+\.\d+ \([0-9a-f]+(-DIRTY)?\)").unwrap();
-    re.replace_all(&frame, "vX.Y.Z (hash)").to_string()
+    let mut out = frame;
+    let ranges: Vec<(usize, usize)> = re.find_iter(&out).map(|m| (m.start(), m.end())).collect();
+    for (start, end) in ranges {
+        out.replace_range(start..end, &"x".repeat(end - start));
+    }
+    out
 }
 
 async fn wait_for_loading_finish(app: &mut App, rx: &mut mpsc::UnboundedReceiver<DataUpdate>) {
