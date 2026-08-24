@@ -16,6 +16,8 @@ use crate::ui::Theme;
 use chrono::Local;
 use regex::Regex;
 
+static TODO_TARGET_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"/(?:issues|merge_requests)/(\d+)").unwrap());
+
 impl App {
     pub fn new(gitlab: AsyncGitlab, tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
         let mut dashboard_menu_state = ListState::default(); dashboard_menu_state.select(Some(0));
@@ -157,6 +159,9 @@ impl App {
             mr_filter: MergeRequestFilter::Opened,
             last_error: None,
             status_message: None,
+            last_status_text: None,
+            status_since: std::time::Instant::now(),
+            last_error_since: None,
             loading_tasks: 0,
             diff_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(10)),
             last_fetch_todos: None,
@@ -172,6 +177,13 @@ impl App {
             repository_tree: Vec::new(),
             repository_tree_state: tui_tree_widget::TreeState::default(),
             selected_file_content: None,
+            repository_ref: None,
+            show_tree_branch_popup: false,
+            tree_branch_state: ListState::default(),
+            related_mrs: Vec::new(),
+            mr_closing_issues: Vec::new(),
+            linked_issues: Vec::new(),
+            issue_closing_mrs: Vec::new(),
             file_scroll: 0,
             file_viewport_height: 0,
             commits: Vec::new(),
@@ -546,7 +558,8 @@ impl App {
                 if e.contains("Diffs") {
                     self.is_fetching_diffs = false;
                 }
-                self.last_error = Some(e); 
+                self.last_error = Some(e);
+                self.last_error_since = Some(std::time::Instant::now());
                 self.loading_tasks = self.loading_tasks.saturating_sub(1); 
                 self.is_loading = self.loading_tasks > 0;
                 if !self.is_loading
@@ -578,6 +591,26 @@ impl App {
                     && self.repository_tree_state.selected().last().is_some_and(|selected_path| selected_path == &file_path)
                 {
                     self.selected_file_content = Some(data);
+                }
+            }
+            DataUpdate::RelatedMRs { project_id, iid, data } => {
+                if self.selected_mr.as_ref().is_some_and(|m| m.project_id == project_id && m.iid == iid) && self.related_mrs != data {
+                    self.related_mrs = data;
+                }
+            }
+            DataUpdate::MRClosesIssues { project_id, iid, data } => {
+                if self.selected_mr.as_ref().is_some_and(|m| m.project_id == project_id && m.iid == iid) && self.mr_closing_issues != data {
+                    self.mr_closing_issues = data;
+                }
+            }
+            DataUpdate::IssueLinks { project_id, iid, data } => {
+                if self.selected_issue.as_ref().is_some_and(|i| i.project_id == project_id && i.iid == iid) && self.linked_issues != data {
+                    self.linked_issues = data;
+                }
+            }
+            DataUpdate::IssueClosedBy { project_id, iid, data } => {
+                if self.selected_issue.as_ref().is_some_and(|i| i.project_id == project_id && i.iid == iid) && self.issue_closing_mrs != data {
+                    self.issue_closing_mrs = data;
                 }
             }
             DataUpdate::Branches { project_id, data, .. } => {
@@ -1017,18 +1050,24 @@ impl App {
             }
         }
 
-        if let Some(mr) = self.selected_mr.clone() { 
+        if let Some(mr) = self.selected_mr.clone() {
             if force_detail || self.discussions.is_empty() {
-                let _ = self.fetch_discussions(mr.project_id, mr.iid).await; 
+                let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
+            }
+            if self.active_panel == Panel::MainDetail && self.related_mrs.is_empty() && self.mr_closing_issues.is_empty() {
+                let _ = self.fetch_related_items().await;
             }
             let has_metadata = self.project_label_cache.contains_key(&mr.project_id);
             if self.active_panel == Panel::MainDetail && !has_metadata {
                 self.trigger_project_metadata_fetch(mr.project_id);
             }
         }
-        else if let Some(issue) = self.selected_issue.clone() { 
+        else if let Some(issue) = self.selected_issue.clone() {
             if force_detail || self.discussions.is_empty() {
-                let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await; 
+                let _ = self.fetch_issue_discussions(issue.project_id, issue.iid).await;
+            }
+            if self.active_panel == Panel::MainDetail && self.linked_issues.is_empty() && self.issue_closing_mrs.is_empty() {
+                let _ = self.fetch_related_items().await;
             }
             let has_metadata = self.project_label_cache.contains_key(&issue.project_id);
             if self.active_panel == Panel::MainDetail && !has_metadata {
@@ -1057,6 +1096,39 @@ impl App {
     }
 
     pub fn toggle_help(&mut self) { self.show_help_popup = !self.show_help_popup; }
+
+    pub fn clear_related_items(&mut self) {
+        self.related_mrs.clear();
+        self.mr_closing_issues.clear();
+        self.linked_issues.clear();
+        self.issue_closing_mrs.clear();
+    }
+
+    const STATUS_TTL: std::time::Duration = std::time::Duration::from_secs(6);
+    const ERROR_TTL: std::time::Duration = std::time::Duration::from_secs(15);
+
+    pub fn tick_status(&mut self) {
+        if self.last_status_text.as_deref() != self.status_message.as_deref() {
+            self.last_status_text = self.status_message.clone();
+            self.status_since = std::time::Instant::now();
+        } else if let Some(msg) = &self.status_message {
+            let is_progress = msg.starts_with("Fetching")
+                || msg.starts_with("Loading")
+                || msg.starts_with("Updating")
+                || msg.starts_with("Searching");
+            if !is_progress && self.status_since.elapsed() >= Self::STATUS_TTL {
+                self.status_message = None;
+                self.last_status_text = None;
+                self.status_since = std::time::Instant::now();
+            }
+        }
+        if self.last_error.is_some()
+            && self.last_error_since.map(|t| t.elapsed()).unwrap_or_default() >= Self::ERROR_TTL
+        {
+            self.last_error = None;
+            self.last_error_since = None;
+        }
+    }
 
     pub async fn update_preview(&mut self) {
         let prev_selection = self.active_selection;
@@ -1099,6 +1171,8 @@ impl App {
             self.merge_requests.clear();
             self.issues.clear();
             self.pipelines.clear();
+            self.repository_ref = None;
+            self.clear_related_items();
             self.filter_lists();
             self.refresh().await;
         }
@@ -1107,7 +1181,7 @@ impl App {
             match self.active_selection {
                 MenuSelection::Todos => {
                     if let Some(GroupedItem::Item(todo)) = self.todos_state.selected().and_then(|i| self.filtered_todos.get(i)) {
-                        let re = Regex::new(r"/(?:issues|merge_requests)/(\d+)").unwrap();
+                        let re = &*TODO_TARGET_RE;
                         let iid = re.captures(&todo.target_url).and_then(|cap| cap.get(1)).and_then(|m| m.as_str().parse().ok());
 
                         if let (Some(iid), Some(p)) = (iid, todo.project.as_ref()) {
@@ -1148,6 +1222,7 @@ impl App {
                             let pid = mr.project_id;
                             let iid = mr.iid;
                             self.selected_mr = Some(mr_clone); self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
+                            self.clear_related_items();
                             let _ = self.fetch_discussions(pid, iid).await;
                             if self.active_panel == Panel::MainDetail {
                                 self.trigger_project_metadata_fetch(pid);
@@ -1168,6 +1243,7 @@ impl App {
                             let pid = issue.project_id;
                             let iid = issue.iid;
                             self.selected_issue = Some(issue_clone); self.selected_mr = None; self.discussions.clear();
+                            self.clear_related_items();
                             let _ = self.fetch_issue_discussions(pid, iid).await;
                             if self.active_panel == Panel::MainDetail {
                                 self.trigger_project_metadata_fetch(pid);

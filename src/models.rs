@@ -712,6 +712,10 @@ pub enum DataUpdate {
     MemberProjectIds(std::collections::HashSet<u64>),
     MRDetail(MergeRequest),
     IssueDetail(Issue),
+    RelatedMRs { project_id: u64, iid: u64, data: Vec<MergeRequest> },
+    MRClosesIssues { project_id: u64, iid: u64, data: Vec<Issue> },
+    IssueLinks { project_id: u64, iid: u64, data: Vec<Issue> },
+    IssueClosedBy { project_id: u64, iid: u64, data: Vec<MergeRequest> },
     CurrentUser(Author),
     RepositoryTree { project_id: u64, data: Vec<RepositoryTreeItem> },
     RepositoryFile { project_id: u64, file_path: String, data: RepositoryFile },
@@ -900,6 +904,9 @@ pub struct App {
 
     pub last_error: Option<String>,
     pub status_message: Option<String>,
+    pub last_status_text: Option<String>,
+    pub status_since: std::time::Instant,
+    pub last_error_since: Option<std::time::Instant>,
     pub loading_tasks: usize,
     pub diff_fetch_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
 
@@ -919,6 +926,13 @@ pub struct App {
     pub repository_tree: Vec<RepositoryTreeItem>,
     pub repository_tree_state: tui_tree_widget::TreeState<String>,
     pub selected_file_content: Option<RepositoryFile>,
+    pub repository_ref: Option<String>,
+    pub show_tree_branch_popup: bool,
+    pub tree_branch_state: ListState,
+    pub related_mrs: Vec<MergeRequest>,
+    pub mr_closing_issues: Vec<Issue>,
+    pub linked_issues: Vec<Issue>,
+    pub issue_closing_mrs: Vec<MergeRequest>,
 
     // History
     pub commits: Vec<Commit>,
