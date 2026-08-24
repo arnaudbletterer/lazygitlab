@@ -65,10 +65,24 @@ test:live-smoke:
     - cargo test -- --ignored live_smoke --test-threads=1
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+  allow_failure: true
+
+# Push-only tier: every branch push gets a live smoke run (deduped against MR pipelines).
+
+test:live-smoke:push:
+  stage: live
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  variables:
+    GITLAB_TOKEN: $GITLAB_TEST_TOKEN
+    GITLAB_URL: $GITLAB_TEST_URL
+  script:
+    - cargo test -- --ignored live_smoke --test-threads=1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
   allow_failure: true
 
 # ----- Live full (nightly + manual trigger only) -----
