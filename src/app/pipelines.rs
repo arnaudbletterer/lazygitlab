@@ -23,6 +23,42 @@ impl App {
         Ok(())
     }
 
+    pub async fn fetch_cross_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let project_ids: Vec<u64> = self.member_project_ids.iter().copied().collect();
+        if project_ids.is_empty() { return Ok(()); }
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        self.status_message = Some("Fetching pipelines across projects...".into());
+        tokio::spawn(async move {
+            let mut handles = Vec::new();
+            for pid in project_ids {
+                let c = client.clone();
+                let handle = tokio::spawn(async move {
+                    let ep = ProjectPipelines { project: pid, page: Some(1), per_page: Some(20) };
+                    let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+                    match res {
+                        Ok(Ok(pipes)) => pipes,
+                        _ => Vec::new(),
+                    }
+                });
+                handles.push(handle);
+            }
+            let mut all = Vec::new();
+            for handle in handles {
+                if let Ok(pipes) = handle.await {
+                    all.extend(pipes);
+                }
+            }
+            all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            all.truncate(50);
+            let has_more = false;
+            let _ = tx.send(DataUpdate::GlobalPipelines { data: all, page: 1, has_more });
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
+
     pub async fn fetch_next_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.pipelines_has_more || self.is_loading { return Ok(()); }
 

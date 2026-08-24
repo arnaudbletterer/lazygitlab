@@ -50,7 +50,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
 
     // 2. Navigation Panels (Filling space)
     app.set_rect("nav_dashboard", side_chunks[1]);
-    render_nav_panel(f, app.active_panel == Panel::Dashboard, &app.theme, side_chunks[1], " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues"]);
+    render_nav_panel(f, app.active_panel == Panel::Dashboard, &app.theme, side_chunks[1], " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues", "  Pipelines"]);
     
     app.set_rect("nav_explore", side_chunks[2]);
     render_nav_panel(f, app.active_panel == Panel::Explore, &app.theme, side_chunks[2], " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
@@ -278,10 +278,18 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         }
         MenuSelection::Pipelines => {
             let items: Vec<ListItem> = app.filtered_pipelines.iter().map(|p| {
-                ListItem::new(Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!(" {} ", p.status), crate::ui::widgets::get_status_style(&p.status, &app.theme)),
-                    Span::raw(format!(" {} - {}", p.ref_name, p.source)),
-                ]))
+                ];
+                if app.active_context != Context::Project {
+                    let project_label = app.project_cache.get(&p.project_id)
+                        .and_then(|proj| proj.path_with_namespace.clone())
+                        .unwrap_or_else(|| format!("#{}", p.project_id));
+                    spans.push(Span::styled(format!(" {} ", crate::ui::widgets::truncate_str(&project_label, 24)), Style::default().fg(app.theme.project)));
+                }
+                spans.push(Span::styled(format!(" {} ", p.ref_name), Style::default().fg(app.theme.author)));
+                spans.push(Span::raw(format!(" {} ", p.source)));
+                ListItem::new(Line::from(spans))
             }).collect();
             if items.is_empty() { f.render_widget(Paragraph::new("No pipelines match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.pipelines_state); }

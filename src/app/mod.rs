@@ -41,6 +41,9 @@ impl App {
             issues: Vec::new(),
             issues_state: ListState::default(),
             pipelines: Vec::new(),
+            cross_pipelines: Vec::new(),
+            cross_pipelines_page: 1,
+            cross_pipelines_has_more: false,
             pipelines_state: ListState::default(),
             jobs: Vec::new(),
             jobs_state: ListState::default(),
@@ -399,6 +402,11 @@ impl App {
             DataUpdate::ProjectPipelines { project_id, data, page, has_more } => {
                 if self.active_context == Context::Project && self.selected_project.as_ref().is_some_and(|p| p.id == project_id) && (self.pipelines != data || self.pipelines_page != page || self.pipelines_has_more != has_more) {
                     self.pipelines = data; self.pipelines_page = page; self.pipelines_has_more = has_more; self.filter_lists();
+                }
+            }
+            DataUpdate::GlobalPipelines { data, page, has_more } => {
+                if self.active_context != Context::Project && (self.cross_pipelines != data || self.cross_pipelines_page != page || self.cross_pipelines_has_more != has_more) {
+                    self.cross_pipelines = data; self.cross_pipelines_page = page; self.cross_pipelines_has_more = has_more; self.filter_lists();
                 }
             }
             DataUpdate::AppendProjectPipelines { project_id, mut data } => {
@@ -1032,6 +1040,7 @@ impl App {
                     MenuSelection::Todos => { if should_fetch_lists { let _ = self.fetch_todos().await; } }
                     MenuSelection::MergeRequests => { if should_fetch_lists { let _ = self.fetch_global_merge_requests().await; } }
                     MenuSelection::Issues => { if should_fetch_lists { let _ = self.fetch_global_issues().await; } }
+                    MenuSelection::Pipelines => { if should_fetch_lists { let _ = self.fetch_cross_pipelines().await; } }
                     MenuSelection::Projects => { if should_fetch_lists { let _ = self.fetch_projects().await; } }
                     MenuSelection::Groups => { if should_fetch_lists { let _ = self.fetch_groups().await; } }
                     _ => {}
@@ -1207,7 +1216,7 @@ impl App {
             Panel::Dashboard => {
                 self.active_context = Context::Dashboard;
                 let idx = self.dashboard_menu_state.selected().unwrap_or(0);
-                self.active_selection = match idx { 0 => MenuSelection::Todos, 1 => MenuSelection::MergeRequests, _ => MenuSelection::Issues };
+                self.active_selection = match idx { 0 => MenuSelection::Todos, 1 => MenuSelection::MergeRequests, 2 => MenuSelection::Issues, _ => MenuSelection::Pipelines };
             }
             Panel::Explore => {
                 self.active_context = Context::Explore;
@@ -1599,6 +1608,17 @@ impl App {
                 PipelineFilter::Passed => p.status == "success",
             })
             .cloned().collect();
+        if self.active_context == Context::Dashboard {
+            self.filtered_pipelines = self.cross_pipelines.iter()
+                .filter(|p| p.ref_name.to_lowercase().contains(&filter))
+                .filter(|p| match self.pipeline_filter {
+                    PipelineFilter::All => true,
+                    PipelineFilter::Running => matches!(p.status.as_str(), "running" | "pending" | "waiting_for_resource" | "preparing"),
+                    PipelineFilter::Failed => p.status == "failed",
+                    PipelineFilter::Passed => p.status == "success",
+                })
+                .cloned().collect();
+        }
         self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
         
         // Filter Board Issues
