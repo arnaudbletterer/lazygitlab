@@ -124,7 +124,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         MenuSelection::Pipelines => " Pipelines ".to_string(),
         MenuSelection::Projects => " Projects ".to_string(),
         MenuSelection::Groups => " Groups ".to_string(),
-        MenuSelection::Repository => " Repository ".to_string(),
+        MenuSelection::Repository => match &app.repository_ref {
+            Some(r) => format!(" Repository [{}] ", r),
+            None => " Repository ".to_string(),
+        },
         MenuSelection::Branches => " Branches ".to_string(),
         MenuSelection::Commits => " Commits ".to_string(),
         MenuSelection::Boards => " Boards ".to_string(),
@@ -179,7 +182,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     },
                 }
             }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.todos_state);
+            if items.is_empty() { f.render_widget(Paragraph::new("No todos match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.todos_state); }
         }
         MenuSelection::MergeRequests => {
             let items: Vec<ListItem> = app.filtered_mrs.iter().map(|item| {
@@ -217,7 +221,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     },
                 }
             }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.mrs_state);
+            if items.is_empty() { f.render_widget(Paragraph::new("No merge requests match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.mrs_state); }
         }
         MenuSelection::Issues => {
             let items: Vec<ListItem> = app.filtered_issues.iter().map(|item| {
@@ -254,7 +259,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     },
                 }
             }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.issues_state);
+            if items.is_empty() { f.render_widget(Paragraph::new("No issues match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.issues_state); }
         }
         MenuSelection::Pipelines => {
             let items: Vec<ListItem> = app.filtered_pipelines.iter().map(|p| {
@@ -263,7 +269,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::raw(format!(" {} - {}", p.ref_name, p.source)),
                 ]))
             }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.pipelines_state);
+            if items.is_empty() { f.render_widget(Paragraph::new("No pipelines match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
+            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.pipelines_state); }
         }
         MenuSelection::Projects => {
             let items: Vec<ListItem> = app.filtered_projects.iter().map(|p| {
@@ -537,6 +544,30 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         lines.push(Line::from(participant_spans));
+
+        let mut related_mr_spans = vec![Span::raw(" Rel. MRs: ")];
+        if app.related_mrs.is_empty() {
+            related_mr_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, r) in app.related_mrs.iter().enumerate() {
+                if i > 0 { related_mr_spans.push(Span::raw(", ")); }
+                related_mr_spans.push(Span::styled(format!("!{} {}", r.iid, r.title), Style::default().fg(app.theme.author)));
+                related_mr_spans.push(Span::styled(format!(" [{}]", r.state), crate::ui::widgets::get_status_style(&r.state, &app.theme)));
+            }
+        }
+        lines.push(Line::from(related_mr_spans));
+
+        let mut closes_spans = vec![Span::raw(" Closes: ")];
+        if app.mr_closing_issues.is_empty() {
+            closes_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, iss) in app.mr_closing_issues.iter().enumerate() {
+                if i > 0 { closes_spans.push(Span::raw(", ")); }
+                closes_spans.push(Span::styled(format!("#{} {}", iss.iid, iss.title), Style::default().fg(app.theme.author)));
+                closes_spans.push(Span::styled(format!(" [{}]", iss.state), crate::ui::widgets::get_status_style(&iss.state, &app.theme)));
+            }
+        }
+        lines.push(Line::from(closes_spans));
     } else if let Some(issue) = &app.selected_issue {
         use crate::ui::widgets::get_status_style;
         lines.push(Line::from(vec![
@@ -576,7 +607,17 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         lines.push(Line::from(vec![Span::raw(" Start Date: "), Span::styled(start_date_str, field_style(MetadataField::StartDate))]));
 
         let due_date_str = issue.due_date.as_deref().unwrap_or("None");
-        lines.push(Line::from(vec![Span::raw(" Due Date: "), Span::styled(due_date_str, field_style(MetadataField::DueDate))]));
+        let is_overdue = issue.due_date.as_deref()
+            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .map(|d| d < chrono::Local::now().date_naive())
+            .unwrap_or(false);
+        let due_style = if is_overdue {
+            Style::default().fg(app.theme.failed).add_modifier(Modifier::BOLD)
+        } else {
+            field_style(MetadataField::DueDate)
+        };
+        let due_label = if is_overdue { " (overdue)" } else { "" };
+        lines.push(Line::from(vec![Span::raw(" Due Date: "), Span::styled(format!("{}{}", due_date_str, due_label), due_style)]));
 
         lines.push(Line::from(vec![Span::raw(" Confidential: "), Span::styled(if issue.confidential { "Yes" } else { "No" }, field_style(MetadataField::Confidential))]));
 
@@ -590,6 +631,30 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         lines.push(Line::from(participant_spans));
+
+        let mut links_spans = vec![Span::raw(" Links: ")];
+        if app.linked_issues.is_empty() {
+            links_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, l) in app.linked_issues.iter().enumerate() {
+                if i > 0 { links_spans.push(Span::raw(", ")); }
+                links_spans.push(Span::styled(format!("#{} {}", l.iid, l.title), Style::default().fg(app.theme.author)));
+                links_spans.push(Span::styled(format!(" [{}]", l.state), crate::ui::widgets::get_status_style(&l.state, &app.theme)));
+            }
+        }
+        lines.push(Line::from(links_spans));
+
+        let mut closed_by_spans = vec![Span::raw(" Closed By: ")];
+        if app.issue_closing_mrs.is_empty() {
+            closed_by_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
+        } else {
+            for (i, m) in app.issue_closing_mrs.iter().enumerate() {
+                if i > 0 { closed_by_spans.push(Span::raw(", ")); }
+                closed_by_spans.push(Span::styled(format!("!{} {}", m.iid, m.title), Style::default().fg(app.theme.author)));
+                closed_by_spans.push(Span::styled(format!(" [{}]", m.state), crate::ui::widgets::get_status_style(&m.state, &app.theme)));
+            }
+        }
+        lines.push(Line::from(closed_by_spans));
     } else if let Some(pipeline) = &app.selected_pipeline {
         lines.push(Line::from(vec![Span::raw(" Pipeline: "), Span::styled(format!("#{}", pipeline.id), field_style(MetadataField::Title))]));
         lines.push(Line::from(vec![Span::raw(" Status: "), Span::styled(&pipeline.status, crate::ui::widgets::get_status_style(&pipeline.status, &app.theme))]));

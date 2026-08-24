@@ -79,8 +79,16 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
     if app.is_loading || app.status_message.is_some() {
         let msg = app.status_message.as_deref().unwrap_or("Loading");
+        let lower = msg.to_lowercase();
+        let style = if lower.contains("failed") || lower.contains("timed out") {
+            Style::default().fg(app.theme.failed)
+        } else if lower.starts_with("copied") || lower.contains("cancelled") || lower.contains("canceled") || lower.contains("created") || lower.contains("merged") || lower.contains("launched") || lower.contains("approved") || lower.contains("resolved") {
+            Style::default().fg(app.theme.success)
+        } else {
+            Style::default().fg(app.theme.pending)
+        };
         footer_spans.push(Span::raw("   "));
-        footer_spans.push(Span::styled(format!(" {} ", msg), Style::default().fg(app.theme.pending).add_modifier(Modifier::BOLD)));
+        footer_spans.push(Span::styled(format!(" {} ", msg), style.add_modifier(Modifier::BOLD)));
     }
 
     f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_chunks[0]);
@@ -98,9 +106,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_calendar_popup { render_calendar_popup(f, app); }
     if app.show_weight_popup { render_weight_popup(f, app); }
     if app.show_target_branch_popup { render_target_branch_popup(f, app); }
+    if app.show_tree_branch_popup { render_tree_branch_popup(f, app); }
     if app.show_pipeline_popup { render_pipeline_popup(f, app); }
     if app.show_create_issue_popup { render_create_issue_popup(f, app); }
     if app.show_create_mr_popup { render_create_mr_popup(f, app); }
+    if app.show_create_branch_popup { render_create_branch_popup(f, app); }
     if app.show_snooze_popup { render_snooze_popup(f, app); }
     if app.show_search { render_search_popup(f, app); }
     if app.show_help_popup { render_help_popup(f, app); }
@@ -108,8 +118,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_confirm_rebase_popup { render_confirm_rebase_popup(f, app); }
 
     let is_complex_popup_visible = app.show_pipeline_popup || 
-                                   app.show_create_issue_popup || 
-                                   app.show_create_mr_popup || 
+                                   app.show_create_issue_popup ||
+                                   app.show_create_mr_popup ||
+                                   app.show_create_branch_popup ||
                                    app.show_search || 
                                    app.show_snooze_popup || 
                                    app.show_calendar_popup ||
@@ -121,6 +132,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_milestone_popup ||
                                    app.show_weight_popup ||
                                    app.show_target_branch_popup ||
+                                   app.show_tree_branch_popup ||
                                    app.show_confirm_merge_popup ||
                                    app.show_confirm_rebase_popup;
 

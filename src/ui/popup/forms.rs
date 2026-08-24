@@ -85,3 +85,52 @@ pub fn render_create_mr_popup(f: &mut Frame, app: &mut App) {
     render_shortcuts(f, chunks[4], vec![("tab", "next field"), ("ctrl+enter", "save"), ("esc", "cancel")], &app.theme);
 }
 
+
+pub fn render_create_branch_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(50, 40, f.area());
+    app.set_rect("popup_create_branch", area);
+    f.render_widget(Clear, area);
+    let block = Block::default().borders(Borders::ALL).title(" Create Branch ").border_style(Style::default().fg(app.theme.border));
+    f.render_widget(block, area);
+
+    let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
+    let dropdown_h = if app.show_create_branch_ref_dropdown && app.input_target == InputTarget::CreateBranchRef { 8 } else { 0 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),             // Name
+            Constraint::Length(3),             // Ref
+            Constraint::Length(dropdown_h),    // Existing branches dropdown
+            Constraint::Length(1),             // Help
+        ])
+        .split(inner);
+
+    let name_style = if app.input_target == InputTarget::CreateBranchName { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
+    let name_block = Block::default().borders(Borders::ALL).title(" Branch Name (Tab to switch) ").border_style(name_style);
+    if app.input_target == InputTarget::CreateBranchName {
+        app.textarea.set_block(name_block);
+        f.render_widget(&app.textarea, chunks[0]);
+    } else {
+        f.render_widget(Paragraph::new(app.create_branch_name.as_str()).block(name_block), chunks[0]);
+    }
+
+    let ref_style = if app.input_target == InputTarget::CreateBranchRef { Style::default().fg(app.theme.highlight_bg) } else { Style::default() };
+    let ref_title = if !app.project_branches.is_empty() { " Ref (Tab to switch, j/k to pick existing) " } else { " Ref (Tab to switch) " };
+    let ref_block = Block::default().borders(Borders::ALL).title(ref_title).border_style(ref_style);
+    if app.input_target == InputTarget::CreateBranchRef {
+        app.textarea.set_block(ref_block);
+        f.render_widget(&app.textarea, chunks[1]);
+    } else {
+        f.render_widget(Paragraph::new(app.create_branch_ref_input.as_str()).block(ref_block), chunks[1]);
+    }
+
+    if dropdown_h > 0 {
+        let items: Vec<ListItem> = app.project_branches.iter().map(|b| ListItem::new(b.name.clone())).collect();
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(" Existing Branches "))
+            .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD));
+        f.render_stateful_widget(list, chunks[2], &mut app.create_branch_state);
+    }
+
+    render_shortcuts(f, chunks[3], vec![("tab", "next field"), ("ctrl+enter", "create"), ("esc", "cancel")], &app.theme);
+}

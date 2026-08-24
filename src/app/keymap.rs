@@ -17,7 +17,11 @@ impl App {
         if self.view_mode == ViewMode::Diff {
             items.push(HelpItem { shortcut: "e / E".into(), description: "Expand collapsed diff file".into(), action: HelpAction::ExpandCollapsedDiff, category: "Diff".into() });
         }
+        if self.view_mode == ViewMode::Tree {
+            items.push(HelpItem { shortcut: "b".into(), description: "Browse another branch".into(), action: HelpAction::None, category: "Repository".into() });
+        }
         if self.selected_mr.is_some() {
+            items.push(HelpItem { shortcut: "Y".into(), description: "Copy source branch name".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "A".into(), description: "Approve Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "R".into(), description: "Unapprove Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "M".into(), description: "Merge Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
@@ -216,10 +220,7 @@ impl App {
             match processed_key.code {
                 KeyCode::Char('t') => { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Todos; self.active_panel = Panel::Main; self.dashboard_menu_state.select(Some(0)); let _ = self.refresh().await; }
                 KeyCode::Char('m') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::MergeRequests; self.project_menu_state.select(Some(0)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::MergeRequests; self.dashboard_menu_state.select(Some(1)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
-                KeyCode::Char('i') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::MergeRequests; // Wait, was it issues?
-                    // Let's make sure it matches original line 1847:
-                    // KeyCode::Char('i') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::Issues; self.project_menu_state.select(Some(1)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Issues; self.dashboard_menu_state.select(Some(2)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
-                    self.active_selection = MenuSelection::Issues; self.project_menu_state.select(Some(1)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Issues; self.dashboard_menu_state.select(Some(2)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
+                KeyCode::Char('i') => { if self.active_context == Context::Project { self.active_selection = MenuSelection::Issues; self.project_menu_state.select(Some(1)); } else { self.active_context = Context::Dashboard; self.active_selection = MenuSelection::Issues; self.dashboard_menu_state.select(Some(2)); } self.active_panel = Panel::Main; let _ = self.refresh().await; }
                 KeyCode::Char('p') => { if self.selected_project.is_some() { self.active_context = Context::Project; self.active_selection = MenuSelection::Pipelines; self.project_menu_state.select(Some(2)); self.active_panel = Panel::Main; let _ = self.refresh().await; } }
                 KeyCode::Char('r') => { if self.selected_project.is_some() { self.active_context = Context::Project; self.active_selection = MenuSelection::Repository; self.project_menu_state.select(Some(3)); self.active_panel = Panel::Main; let _ = self.refresh().await; } }
                 _ => {}
@@ -335,6 +336,18 @@ impl App {
                                 self.copy_to_clipboard(text);
                             }
                         }
+                        return;
+                    }
+                    KeyCode::Char('b') => {
+                        if self.project_branches.is_empty()
+                            && let Some(p) = &self.selected_project
+                        {
+                            let _ = self.fetch_branches(p.id).await;
+                        }
+                        let current = self.repository_ref.clone();
+                        let idx = current.and_then(|r| self.project_branches.iter().position(|b| b.name == r)).unwrap_or(0);
+                        self.tree_branch_state.select(Some(idx));
+                        self.show_tree_branch_popup = true;
                         return;
                     }
                     _ => {}
@@ -642,8 +655,8 @@ impl App {
                         self.filter_input.clear();
                         self.filter_lists();
                     }
-                    KeyCode::Down | KeyCode::Char('j') => { self.move_down(); }
-                    KeyCode::Up | KeyCode::Char('k') => { self.move_up(); }
+                    KeyCode::Down => { self.move_down(); }
+                    KeyCode::Up => { self.move_up(); }
                     KeyCode::Enter => {
                         self.input_mode = false;
                         self.show_filter_input = false;
@@ -757,6 +770,15 @@ impl App {
                 }
             }
             KeyCode::Char('y') => { self.copy_url(); }
+            KeyCode::Char('Y') => {
+                if let Some(mr) = &self.selected_mr {
+                    let branch = mr.source_branch.clone();
+                    self.copy_to_clipboard(branch);
+                } else if let Some(issue) = &self.selected_issue {
+                    let url = issue.web_url.clone();
+                    self.copy_to_clipboard(url);
+                }
+            }
             KeyCode::Char('o') => { self.open_in_browser(); }
             KeyCode::Char('v') => {
                 if self.selected_mr.is_some() {

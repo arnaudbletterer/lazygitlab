@@ -23,7 +23,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from(vec![
                 Span::raw(" Author: "), Span::styled(format!("@{}", mr.author.username), Style::default().fg(app.theme.author)),
                 Span::raw("  State: "), Span::styled(&mr.state, crate::ui::widgets::get_status_style(&mr.state, &app.theme)),
-                Span::raw("  Approvals: "), Span::styled(format!("+{}", mr.upvotes.unwrap_or(0)), Style::default().fg(app.theme.success)),
+                Span::raw("  Reactions: "), Span::styled(format!("+{}", mr.upvotes.unwrap_or(0)), Style::default().fg(app.theme.success)),
                 Span::raw("  Comments: "), Span::styled(format!("{}", app.discussions.len()), Style::default().fg(app.theme.pending)),
             ]),
         ];

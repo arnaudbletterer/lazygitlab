@@ -24,10 +24,14 @@ where
     B::Error: 'static,
     E: EventSource,
 {
-    let _ = app.initial_setup().await;
-    let _ = app.refresh().await;
+    if let Err(e) = app.initial_setup().await {
+        app.last_error = Some(format!("Startup failed: {}", e));
+        app.last_error_since = Some(std::time::Instant::now());
+    }
+    app.refresh().await;
 
     while !app.should_quit {
+        app.tick_status();
         let mut got_update = false;
         while let Ok(update) = rx.try_recv() {
             got_update = true;

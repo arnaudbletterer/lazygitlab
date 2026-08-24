@@ -154,9 +154,9 @@ impl App {
         }
 
         // 1.5 Selection Popups (Simple List/Selection Popups)
-        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_target_branch_popup {
+        if self.show_project_popup || self.show_label_popup || self.show_assignee_popup || self.show_reviewer_popup || self.show_milestone_popup || self.show_target_branch_popup || self.show_tree_branch_popup {
             match processed_key.code {
-                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_target_branch_popup = false; self.show_create_branch_popup = false; }
+                KeyCode::Esc => { self.show_project_popup = false; self.show_label_popup = false; self.show_assignee_popup = false; self.show_reviewer_popup = false; self.show_milestone_popup = false; self.show_target_branch_popup = false; self.show_create_branch_popup = false; self.show_tree_branch_popup = false; }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if self.show_project_popup { self.move_down(); }
                     else if self.show_label_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let labels = self.project_label_cache.get(&pid).unwrap_or(&self.project_labels); if !labels.is_empty() { let i = (self.label_state.selected().unwrap_or(0) + 1) % labels.len(); self.label_state.select(Some(i)); } }
@@ -164,6 +164,7 @@ impl App {
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = (self.reviewer_state.selected().unwrap_or(0) + 1) % members.len(); self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = (self.milestone_state.selected().unwrap_or(0) + 1) % (milestones.len() + 1); self.milestone_state.select(Some(i)); }
                     else if self.show_target_branch_popup && !self.project_branches.is_empty() { let i = (self.target_branch_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.target_branch_state.select(Some(i)); }
+                    else if self.show_tree_branch_popup && !self.project_branches.is_empty() { let i = (self.tree_branch_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.tree_branch_state.select(Some(i)); }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
                     if self.show_project_popup { self.move_up(); }
@@ -172,6 +173,7 @@ impl App {
                     else if self.show_reviewer_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let members = self.project_member_cache.get(&pid).unwrap_or(&self.project_members); if !members.is_empty() { let i = if self.reviewer_state.selected().unwrap_or(0) == 0 { members.len() - 1 } else { self.reviewer_state.selected().unwrap() - 1 }; self.reviewer_state.select(Some(i)); } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let i = if self.milestone_state.selected().unwrap_or(0) == 0 { milestones.len() } else { self.milestone_state.selected().unwrap() - 1 }; self.milestone_state.select(Some(i)); }
                     else if self.show_target_branch_popup && !self.project_branches.is_empty() { let i = if self.target_branch_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.target_branch_state.selected().unwrap() - 1 }; self.target_branch_state.select(Some(i)); }
+                    else if self.show_tree_branch_popup && !self.project_branches.is_empty() { let i = if self.tree_branch_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.tree_branch_state.selected().unwrap() - 1 }; self.tree_branch_state.select(Some(i)); }
                 }
                 KeyCode::Char(' ') => {
                     if self.show_label_popup {
@@ -221,6 +223,15 @@ impl App {
                     else if self.show_reviewer_popup { if self.selected_mr.is_some() { let _ = self.update_mr_reviewers().await; } }
                     else if self.show_milestone_popup { let pid = self.selected_mr.as_ref().map(|m| m.project_id).or_else(|| self.selected_issue.as_ref().map(|i| i.project_id)).unwrap_or(0); let milestones = self.project_milestone_cache.get(&pid).unwrap_or(&self.project_milestones); let selected = self.milestone_state.selected().unwrap_or(0); self.selected_milestone_id = if selected == 0 { None } else { milestones.get(selected - 1).map(|m| m.id) }; if self.selected_issue.is_some() { let _ = self.update_issue_milestone().await; } else if self.selected_mr.is_some() { let _ = self.update_mr_milestone().await; } }
                     else if self.show_target_branch_popup { let _ = self.update_mr_target_branch().await; }
+                    else if self.show_tree_branch_popup {
+                        if let Some(branch) = self.tree_branch_state.selected().and_then(|i| self.project_branches.get(i)) {
+                            let name = branch.name.clone();
+                            self.show_tree_branch_popup = false;
+                            let _ = self.select_repository_ref(name).await;
+                        } else {
+                            self.show_tree_branch_popup = false;
+                        }
+                    }
                 }
                 _ => {}
             }
