@@ -29,6 +29,7 @@ fn pipe(id: u64, status: &str) -> Pipeline {
 #[tokio::test]
 async fn test_pipeline_status_segments() {
     let mut app = setup_app().await;
+    app.active_context = Context::Project;
     app.pipelines = vec![pipe(1, "success"), pipe(2, "failed"), pipe(3, "running"), pipe(4, "failed")];
 
     app.pipeline_filter = PipelineFilter::Failed;
