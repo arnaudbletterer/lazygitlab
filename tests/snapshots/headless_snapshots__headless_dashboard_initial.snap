@@ -4,7 +4,7 @@ expression: frame
 ---
 ┌ Status ──────────────┐┌ To-Do List ──────────────────────────────────────────────────────────────────────────────────┐
 │ No Project Selected  ││ Pending  │  Snoozed  │  Done                                                                 │
-└──────────────────────┘│                                                                                              │
+└──────────────────────┘│No todos match this view or filter.                                                           │
 ┌ Dashboard ───────────┐│                                                                                              │
 │>   Todos             ││                                                                                              │
 │    Merge Requests    ││                                                                                              │
@@ -41,4 +41,4 @@ expression: frame
                         │                                                                                              │
                         │                                                                                              │
                         └──────────────────────────────────────────────────────────────────────────────────────────────┘
-? help  q quit    Fetching Todos...                                                                    v0.14.8 (0c962c7)
+? help  q quit    Fetching Todos...                                                              vX.Y.Z (hash)

@@ -12,6 +12,11 @@ use lazygitlab::headless::{render_to_string, ScriptedEventSource};
 use lazygitlab::models::{App, DataUpdate};
 use lazygitlab::run_app;
 
+fn sanitize(frame: String) -> String {
+    let re = regex::Regex::new(r"v\d+\.\d+\.\d+ \([0-9a-f]+(-DIRTY)?\)").unwrap();
+    re.replace_all(&frame, "vX.Y.Z (hash)").to_string()
+}
+
 async fn wait_for_loading_finish(app: &mut App, rx: &mut mpsc::UnboundedReceiver<DataUpdate>) {
     let start = std::time::Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
@@ -46,7 +51,7 @@ async fn test_headless_dashboard_initial() {
     let frames: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let frames_for_capture = Arc::clone(&frames);
     let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = Some(Box::new(move |t| {
-        frames_for_capture.lock().unwrap().push(render_to_string(t));
+        frames_for_capture.lock().unwrap().push(sanitize(render_to_string(t)));
     }));
 
     let _ = run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut capture).await;
@@ -81,7 +86,7 @@ async fn test_headless_dashboard_after_navigation() {
     let frames: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let frames_for_capture = Arc::clone(&frames);
     let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = Some(Box::new(move |t| {
-        frames_for_capture.lock().unwrap().push(render_to_string(t));
+        frames_for_capture.lock().unwrap().push(sanitize(render_to_string(t)));
     }));
 
     let _ = run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut capture).await;
