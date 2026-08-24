@@ -69,12 +69,13 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
             let is_desc_focused = is_detail_focused && app.detail_section == DetailSection::Description;
             
-            // Split content vertically: Metadata (Length(11)) and Description Preview (Min(0))
+            // Split content vertically: Metadata (rows + borders) and Description Preview (Min(0))
+            let meta_rows: u16 = if app.selected_mr.is_some() { 12 } else if app.selected_issue.is_some() { 11 } else { 3 };
             let desc_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(11), // Metadata block
-                    Constraint::Min(0),     // Description text
+                    Constraint::Length(meta_rows + 2), // Metadata block
+                    Constraint::Min(0),                // Description text
                 ])
                 .split(content_area);
 

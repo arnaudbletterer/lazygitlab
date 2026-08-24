@@ -946,6 +946,38 @@ impl Endpoint for IssueParticipants {
 impl Pageable for IssueParticipants {}
 
 #[derive(Debug, Clone)]
+pub struct RelatedMergeRequests { pub project: u64, pub merge_request: u64 }
+impl Endpoint for RelatedMergeRequests {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/related_merge_requests", self.project, self.merge_request).into() }
+}
+impl Pageable for RelatedMergeRequests {}
+
+#[derive(Debug, Clone)]
+pub struct MRClosesIssues { pub project: u64, pub merge_request: u64 }
+impl Endpoint for MRClosesIssues {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests/{}/closes_issues", self.project, self.merge_request).into() }
+}
+impl Pageable for MRClosesIssues {}
+
+#[derive(Debug, Clone)]
+pub struct IssueLinks { pub project: u64, pub issue: u64 }
+impl Endpoint for IssueLinks {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}/links", self.project, self.issue).into() }
+}
+impl Pageable for IssueLinks {}
+
+#[derive(Debug, Clone)]
+pub struct IssueClosedBy { pub project: u64, pub issue: u64 }
+impl Endpoint for IssueClosedBy {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/issues/{}/closed_by", self.project, self.issue).into() }
+}
+impl Pageable for IssueClosedBy {}
+
+#[derive(Debug, Clone)]
 pub struct MergeRequestParticipants { pub project: u64, pub mr: u64 }
 impl Endpoint for MergeRequestParticipants {
     fn method(&self) -> Method { Method::GET }
