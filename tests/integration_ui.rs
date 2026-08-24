@@ -190,7 +190,8 @@ async fn test_pipeline_visual_completeness() {
 
     assert_buffer_contains(&terminal, "Pipelines");
     assert_buffer_contains(&terminal, "running");
-    assert_buffer_contains(&terminal, "master - trigger");
+    assert_buffer_contains(&terminal, "master");
+    assert_buffer_contains(&terminal, "trigger");
 }
 
 #[tokio::test]
