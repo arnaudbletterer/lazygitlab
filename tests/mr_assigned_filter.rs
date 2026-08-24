@@ -1,17 +1,24 @@
-use lazygitlab::models::*;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{path, query_param};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use gitlab::GitlabBuilder;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+use lazygitlab::models::*;
+use wiremock::matchers::{path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+    KeyEvent {
+        code,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    }
 }
 
 async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
         .mount(&server)
         .await;
     let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
@@ -61,7 +68,14 @@ async fn test_assigned_filter_sends_assignee_id() {
         .mount(&server)
         .await;
     app.active_context = Context::Project;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), web_url: Some("u".into()), path_with_namespace: Some("p".into()), default_branch: Some("main".into()), namespace: None });
+    app.selected_project = Some(Project {
+        id: 1,
+        name: "p".into(),
+        web_url: Some("u".into()),
+        path_with_namespace: Some("p".into()),
+        default_branch: Some("main".into()),
+        namespace: None,
+    });
     app.current_user = Some(Author::new(42, "me".into()));
 
     app.mr_filter = MergeRequestFilter::Assigned;
@@ -73,10 +87,21 @@ async fn test_assigned_filter_sends_assignee_id() {
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     let requests = server.received_requests().await.unwrap();
-    let urls: Vec<String> = requests.iter()
+    let urls: Vec<String> = requests
+        .iter()
         .filter(|r| r.url.path().contains("merge_requests"))
         .map(|r| format!("{}?{}", r.url.path(), r.url.query().unwrap_or("")))
         .collect();
-    assert!(urls.iter().any(|u| u.contains("assignee_id=42") && u.contains("state=opened")), "assigned segment queries by assignee_id, got: {:?}", urls);
-    assert!(urls.iter().any(|u| u.contains("reviewer_id=42") && u.contains("state=opened")), "review segment queries by reviewer_id, got: {:?}", urls);
+    assert!(
+        urls.iter()
+            .any(|u| u.contains("assignee_id=42") && u.contains("state=opened")),
+        "assigned segment queries by assignee_id, got: {:?}",
+        urls
+    );
+    assert!(
+        urls.iter()
+            .any(|u| u.contains("reviewer_id=42") && u.contains("state=opened")),
+        "review segment queries by reviewer_id, got: {:?}",
+        urls
+    );
 }

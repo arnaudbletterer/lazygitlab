@@ -4,10 +4,10 @@ use tokio::sync::mpsc;
 
 use gitlab::api::AsyncQuery;
 
-use lazygitlab::models::{App, DataUpdate};
 use lazygitlab::api::{
     PagedIssues, PagedMergeRequests, ProjectLabels, ProjectMembersAll, ProjectMilestones, Todos,
 };
+use lazygitlab::models::{App, DataUpdate};
 
 mod common;
 
@@ -45,7 +45,9 @@ async fn fetch_json<E>(client: &gitlab::AsyncGitlab, endpoint: E) -> Value
 where
     E: gitlab::api::AsyncQuery<Value, gitlab::AsyncGitlab>,
 {
-    AsyncQuery::query_async(&endpoint, client).await.expect("API query failed")
+    AsyncQuery::query_async(&endpoint, client)
+        .await
+        .expect("API query failed")
 }
 
 async fn build_app(client: gitlab::AsyncGitlab) -> (App, mpsc::UnboundedReceiver<DataUpdate>) {
@@ -59,7 +61,9 @@ async fn live_full_data_update_round_trip_project_issues() {
     if common::skip_if_live_unavailable("live_full_data_update_round_trip_project_issues") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
     let endpoint = PagedIssues {
         project: ground.project.id,
@@ -72,7 +76,10 @@ async fn live_full_data_update_round_trip_project_issues() {
     };
     let raw = fetch_json(&client, endpoint).await;
     let arr = raw.as_array().expect("issues response must be array");
-    assert!(!arr.is_empty(), "expected at least one issue in test ground");
+    assert!(
+        !arr.is_empty(),
+        "expected at least one issue in test ground"
+    );
 
     let (mut app, mut rx) = build_app(client).await;
     app.selected_project = Some(lazygitlab::models::Project {
@@ -91,8 +98,11 @@ async fn live_full_data_update_round_trip_project_issues() {
             serde_json::from_value(issue_json.clone()).expect("deserialize issue");
         let original_iid = issue.iid;
         let original_title = issue.title.clone();
-        let original_labels: Vec<(u64, String)> =
-            issue.labels.iter().map(|l| (l.id(), l.name().to_string())).collect();
+        let original_labels: Vec<(u64, String)> = issue
+            .labels
+            .iter()
+            .map(|l| (l.id(), l.name().to_string()))
+            .collect();
         let _ = app.tx.send(DataUpdate::ProjectIssues {
             project_id: ground.project.id,
             data: vec![issue],
@@ -106,10 +116,16 @@ async fn live_full_data_update_round_trip_project_issues() {
             .iter()
             .find(|i| i.iid == original_iid)
             .unwrap_or_else(|| panic!("issue !{original_iid} not present in app after DataUpdate"));
-        assert_eq!(stored.title, original_title, "issue !{original_iid} title drift after DataUpdate");
+        assert_eq!(
+            stored.title, original_title,
+            "issue !{original_iid} title drift after DataUpdate"
+        );
         for (id, name) in &original_labels {
             assert!(
-                stored.labels.iter().any(|l| l.id() == *id && l.name() == name),
+                stored
+                    .labels
+                    .iter()
+                    .any(|l| l.id() == *id && l.name() == name),
                 "issue !{original_iid} lost label id={id} name={name} after DataUpdate"
             );
         }
@@ -122,7 +138,9 @@ async fn live_full_data_update_round_trip_project_mrs() {
     if common::skip_if_live_unavailable("live_full_data_update_round_trip_project_mrs") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
     let endpoint = PagedMergeRequests {
         project: ground.project.id,
@@ -172,10 +190,22 @@ async fn live_full_data_update_round_trip_project_mrs() {
             .iter()
             .find(|m| m.iid == original_iid)
             .unwrap_or_else(|| panic!("MR !{original_iid} not present in app after DataUpdate"));
-        assert_eq!(stored.title, original_title, "MR !{original_iid} title drift");
-        assert_eq!(stored.state, original_state, "MR !{original_iid} state drift");
-        assert_eq!(stored.source_branch, original_source, "MR !{original_iid} source_branch drift");
-        assert_eq!(stored.target_branch, original_target, "MR !{original_iid} target_branch drift");
+        assert_eq!(
+            stored.title, original_title,
+            "MR !{original_iid} title drift"
+        );
+        assert_eq!(
+            stored.state, original_state,
+            "MR !{original_iid} state drift"
+        );
+        assert_eq!(
+            stored.source_branch, original_source,
+            "MR !{original_iid} source_branch drift"
+        );
+        assert_eq!(
+            stored.target_branch, original_target,
+            "MR !{original_iid} target_branch drift"
+        );
     }
 }
 
@@ -185,11 +215,15 @@ async fn live_full_data_update_metadata_round_trip() {
     if common::skip_if_live_unavailable("live_full_data_update_metadata_round_trip") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let label_value: Value = AsyncQuery::query_async(
-        &ProjectLabels { project: ground.project.id },
+        &ProjectLabels {
+            project: ground.project.id,
+        },
         &client,
     )
     .await
@@ -210,7 +244,9 @@ async fn live_full_data_update_metadata_round_trip() {
         .to_string();
 
     let member_value: Value = AsyncQuery::query_async(
-        &ProjectMembersAll { project: ground.project.id },
+        &ProjectMembersAll {
+            project: ground.project.id,
+        },
         &client,
     )
     .await
@@ -231,7 +267,9 @@ async fn live_full_data_update_metadata_round_trip() {
         .to_string();
 
     let milestone_value: Value = AsyncQuery::query_async(
-        &ProjectMilestones { project: ground.project.id },
+        &ProjectMilestones {
+            project: ground.project.id,
+        },
         &client,
     )
     .await
@@ -291,7 +329,9 @@ async fn live_full_data_update_metadata_round_trip() {
         .cloned()
         .unwrap_or_default();
     assert!(
-        labels_in_cache.iter().any(|l| l.id() == label_id && l.name() == label_name),
+        labels_in_cache
+            .iter()
+            .any(|l| l.id() == label_id && l.name() == label_name),
         "label id={label_id} name={label_name} not in cache after DataUpdate::Metadata"
     );
 
@@ -301,7 +341,9 @@ async fn live_full_data_update_metadata_round_trip() {
         .cloned()
         .unwrap_or_default();
     assert!(
-        members_in_cache.iter().any(|m| m.id == member_id && m.username == member_username),
+        members_in_cache
+            .iter()
+            .any(|m| m.id == member_id && m.username == member_username),
         "member id={member_id} username={member_username} not in cache after DataUpdate::Metadata"
     );
 
@@ -312,7 +354,9 @@ async fn live_full_data_update_metadata_round_trip() {
             .cloned()
             .unwrap_or_default();
         assert!(
-            milestones_in_cache.iter().any(|m| m.id == milestone_id && m.title == milestone_title),
+            milestones_in_cache
+                .iter()
+                .any(|m| m.id == milestone_id && m.title == milestone_title),
             "milestone id={milestone_id} title={milestone_title} not in cache after DataUpdate::Metadata"
         );
     }
@@ -324,7 +368,9 @@ async fn live_full_data_update_todos_round_trip() {
     if common::skip_if_live_unavailable("live_full_data_update_todos_round_trip") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let endpoint = Todos {
         page: Some(1),
         per_page: Some(5),
@@ -354,6 +400,10 @@ async fn live_full_data_update_todos_round_trip() {
             .iter()
             .find(|t| t.id == original_id)
             .unwrap_or_else(|| panic!("todo {} not present in app after DataUpdate", original_id));
-        assert_eq!(stored.body, original_body, "todo {} body drift", original_id);
+        assert_eq!(
+            stored.body, original_body,
+            "todo {} body drift",
+            original_id
+        );
     }
 }

@@ -2,11 +2,11 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use gitlab::GitlabBuilder;
-use lazygitlab::headless::{render_to_string, ScriptedEventSource};
-use lazygitlab::models::{App, DataUpdate, MenuSelection, Panel, Context};
+use lazygitlab::headless::{ScriptedEventSource, render_to_string};
+use lazygitlab::models::{App, Context, DataUpdate, MenuSelection, Panel};
 use lazygitlab::run_app;
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 mod common;
 
@@ -54,7 +54,9 @@ async fn drive(script: &str) -> (App, Vec<String>) {
     let project = app
         .projects
         .iter()
-        .find(|p| p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str()))
+        .find(|p| {
+            p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str())
+        })
         .cloned()
         .expect("test ground project not found");
     app.selected_project = Some(project.clone());
@@ -64,15 +66,20 @@ async fn drive(script: &str) -> (App, Vec<String>) {
     app.project_menu_state.select(Some(2));
     app.refresh().await;
     wait_for_loading_finish(&mut app, &mut rx).await;
-    assert!(!app.pipelines.is_empty(), "expected at least one pipeline in test ground");
+    assert!(
+        !app.pipelines.is_empty(),
+        "expected at least one pipeline in test ground"
+    );
 
     let backend = TestBackend::new(180, 60);
     let mut terminal = Terminal::new(backend).unwrap();
-    let frames: std::sync::Arc<std::sync::Mutex<Vec<String>>> = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let frames: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let fc = std::sync::Arc::clone(&frames);
-    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = Some(Box::new(move |t| {
-        fc.lock().unwrap().push(render_to_string(t));
-    }));
+    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> =
+        Some(Box::new(move |t| {
+            fc.lock().unwrap().push(render_to_string(t));
+        }));
     let src = ScriptedEventSource::from_text(script).unwrap();
     let _ = run_app(&mut terminal, &mut app, &src, &mut rx, &mut capture).await;
     let frames = frames.lock().unwrap().clone();
@@ -90,8 +97,15 @@ async fn live_full_pipeline_retry_finished_pipeline_succeeds() {
     let (app, _frames) = drive("R\nq").await;
     let msg = app.status_message.as_deref().unwrap_or("");
     assert!(
-        !app.last_error.as_deref().unwrap_or("").is_empty() || msg.contains("retry") || msg.contains("cancelled") || msg.contains("Retry") || msg.contains("failed") || msg.is_empty(),
-        "expected a status update after R, got status={:?} error={:?}", app.status_message, app.last_error
+        !app.last_error.as_deref().unwrap_or("").is_empty()
+            || msg.contains("retry")
+            || msg.contains("cancelled")
+            || msg.contains("Retry")
+            || msg.contains("failed")
+            || msg.is_empty(),
+        "expected a status update after R, got status={:?} error={:?}",
+        app.status_message,
+        app.last_error
     );
 }
 
@@ -107,11 +121,17 @@ async fn live_full_pipeline_launch_new_sync() {
     let (app, _frames) = drive("n\n<Enter>\np\n<Esc>\nq").await;
     let msg = app.status_message.as_deref().unwrap_or("");
     assert!(
-        msg.contains("Pipeline #") || msg.contains("Launch") || msg.contains("Launch failed") || msg.contains("timed out"),
+        msg.contains("Pipeline #")
+            || msg.contains("Launch")
+            || msg.contains("Launch failed")
+            || msg.contains("timed out"),
         "expected a launch status update, got {:?}",
         msg
     );
-    assert!(!app.show_pipeline_popup, "popup should have closed on submit");
+    assert!(
+        !app.show_pipeline_popup,
+        "popup should have closed on submit"
+    );
     assert!(!app.input_mode, "input_mode should have cleared on submit");
 }
 
@@ -126,7 +146,10 @@ async fn live_full_pipeline_launch_popup_dismisses_with_esc() {
     assert!(!app.show_pipeline_popup, "popup should close on Esc");
     assert!(!app.input_mode, "input_mode should clear on Esc");
     let msg = app.status_message.as_deref().unwrap_or("");
-    assert!(!msg.to_lowercase().contains("launching"), "Esc should not trigger launch: got status {msg:?}");
+    assert!(
+        !msg.to_lowercase().contains("launching"),
+        "Esc should not trigger launch: got status {msg:?}"
+    );
 }
 
 #[tokio::test]
@@ -137,8 +160,16 @@ async fn live_full_pipeline_help_lists_cancel_and_retry() {
     }
     let (app, _frames) = drive("q").await;
     let items = app.get_available_actions();
-    let has_cancel = items.iter().any(|i| i.category == "Pipeline" && i.shortcut == "C" && i.description.to_lowercase().contains("cancel"));
-    let has_retry = items.iter().any(|i| i.category == "Pipeline" && i.shortcut == "R" && i.description.to_lowercase().contains("retry"));
+    let has_cancel = items.iter().any(|i| {
+        i.category == "Pipeline"
+            && i.shortcut == "C"
+            && i.description.to_lowercase().contains("cancel")
+    });
+    let has_retry = items.iter().any(|i| {
+        i.category == "Pipeline"
+            && i.shortcut == "R"
+            && i.description.to_lowercase().contains("retry")
+    });
     assert!(has_cancel, "help should list C (cancel pipeline)");
     assert!(has_retry, "help should list R (retry pipeline)");
 }
@@ -158,7 +189,8 @@ async fn live_full_pipeline_cancel_sets_status_and_closes_popup() {
     let msg = app.status_message.as_deref().unwrap_or("");
     assert!(
         msg.contains("cancelled") || msg.contains("Cancel failed") || msg.contains("timed out"),
-        "expected a cancel status update, got {msg:?} (error: {:?})", app.last_error
+        "expected a cancel status update, got {msg:?} (error: {:?})",
+        app.last_error
     );
     assert!(!app.show_pipeline_popup, "cancel should not open the popup");
     assert!(!app.input_mode, "cancel should not leave input_mode on");
@@ -181,14 +213,19 @@ async fn live_full_pipeline_cancel_finished_pipeline_shows_error() {
         None => return,
     };
     if first.status == "running" {
-        eprintln!("[cancel_finished] skipping: first pipeline is still running, run cancel_running first");
+        eprintln!(
+            "[cancel_finished] skipping: first pipeline is still running, run cancel_running first"
+        );
         return;
     }
     let (app, _frames) = drive("C\nq").await;
     let msg = app.status_message.as_deref().unwrap_or("");
     let err = app.last_error.as_deref().unwrap_or("");
     assert!(
-        msg.contains("Cancel failed") || msg.contains("cancelled") || msg.contains("timed out") || !err.is_empty(),
+        msg.contains("Cancel failed")
+            || msg.contains("cancelled")
+            || msg.contains("timed out")
+            || !err.is_empty(),
         "expected a cancel status / error update on a finished pipeline, got status={msg:?} error={err:?}"
     );
     assert!(!app.show_pipeline_popup, "cancel should not open the popup");

@@ -7,11 +7,36 @@ fn test_parse_script_basic_keys() {
 
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     let expected = [
-        KeyEvent { code: KeyCode::Char('q'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE },
-        KeyEvent { code: KeyCode::Char('j'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE },
-        KeyEvent { code: KeyCode::Char('k'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE },
-        KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE },
-        KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE },
+        KeyEvent {
+            code: KeyCode::Char('q'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        },
+        KeyEvent {
+            code: KeyCode::Char('j'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        },
+        KeyEvent {
+            code: KeyCode::Char('k'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        },
+        KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        },
+        KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        },
     ];
     for (i, exp) in expected.iter().enumerate() {
         match &events[i] {
@@ -91,12 +116,26 @@ fn test_parse_options_default() {
 
 #[test]
 fn test_parse_options_with_flags() {
-    let args: Vec<String> = ["--width", "200", "--height", "50", "--script", "foo.txt", "--frames-dir", "out"]
-        .iter().map(|s| s.to_string()).collect();
+    let args: Vec<String> = [
+        "--width",
+        "200",
+        "--height",
+        "50",
+        "--script",
+        "foo.txt",
+        "--frames-dir",
+        "out",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     let opts = parse_options(&args).unwrap();
     assert_eq!(opts.width, 200);
     assert_eq!(opts.height, 50);
-    assert_eq!(opts.script_path.as_deref().unwrap().to_str().unwrap(), "foo.txt");
+    assert_eq!(
+        opts.script_path.as_deref().unwrap().to_str().unwrap(),
+        "foo.txt"
+    );
     assert_eq!(opts.frames_dir.as_deref().unwrap().to_str().unwrap(), "out");
 }
 
@@ -109,8 +148,8 @@ fn test_parse_options_unknown() {
 #[tokio::test]
 async fn test_scripted_event_source_fifo_order() {
     use crossterm::event::KeyCode;
-    use lazygitlab::headless::ScriptedEventSource;
     use lazygitlab::EventSource;
+    use lazygitlab::headless::ScriptedEventSource;
     let src = ScriptedEventSource::from_text("a\nb\nc").unwrap();
     let mut got = Vec::new();
     for _ in 0..3 {
@@ -123,5 +162,9 @@ async fn test_scripted_event_source_fifo_order() {
             got.push(ch);
         }
     }
-    assert_eq!(got, vec!['a', 'b', 'c'], "ScriptedEventSource must deliver events in script order (FIFO), not LIFO");
+    assert_eq!(
+        got,
+        vec!['a', 'b', 'c'],
+        "ScriptedEventSource must deliver events in script order (FIFO), not LIFO"
+    );
 }

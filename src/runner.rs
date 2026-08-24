@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use ratatui::backend::Backend;
 use ratatui::Terminal;
+use ratatui::backend::Backend;
 use tokio::sync::mpsc;
 
 use crate::events::EventSource;
@@ -69,12 +69,15 @@ where
         }
 
         let is_live_view = (app.view_mode == crate::models::ViewMode::List
-                && app.active_selection == crate::models::MenuSelection::Pipelines
-                && app.pipelines.iter().any(|p| !p.is_finished()))
+            && app.active_selection == crate::models::MenuSelection::Pipelines
+            && app.pipelines.iter().any(|p| !p.is_finished()))
             || (app.view_mode == crate::models::ViewMode::JobLog
                 && app.selected_job.as_ref().is_some_and(|j| !j.is_finished()))
             || (app.view_mode == crate::models::ViewMode::Detail
-                && app.selected_pipeline.as_ref().is_some_and(|p| !p.is_finished()));
+                && app
+                    .selected_pipeline
+                    .as_ref()
+                    .is_some_and(|p| !p.is_finished()));
 
         let idle_threshold = Duration::from_secs(60);
         let is_idle = app.last_input.elapsed() >= idle_threshold;

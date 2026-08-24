@@ -1,10 +1,15 @@
-use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, Context, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, PipelineFilter, DetailSection};
-use crate::ui::detail::render_detail_view;
+use crate::models::{
+    App, Context, DetailSection, GroupedItem, IssueFilter, MenuSelection, MergeRequestFilter,
+    Panel, PipelineFilter, TodoFilter,
+};
 use crate::ui::Theme;
+use crate::ui::detail::render_detail_view;
+use ratatui::{prelude::*, widgets::*};
 
 pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
-    let is_item_selected = app.selected_mr.is_some() || app.selected_issue.is_some() || app.selected_pipeline.is_some();
+    let is_item_selected = app.selected_mr.is_some()
+        || app.selected_issue.is_some()
+        || app.selected_pipeline.is_some();
 
     let chunks = if is_item_selected {
         Layout::default()
@@ -29,10 +34,14 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     let side_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),      // Status (Top)
-            Constraint::Length(5),      // Dashboard (3 items + title/border)
-            Constraint::Length(4),      // Explore (2 items + title/border)
-            if app.selected_project.is_some() { Constraint::Min(10) } else { Constraint::Length(0) },
+            Constraint::Length(3), // Status (Top)
+            Constraint::Length(5), // Dashboard (3 items + title/border)
+            Constraint::Length(4), // Explore (2 items + title/border)
+            if app.selected_project.is_some() {
+                Constraint::Min(10)
+            } else {
+                Constraint::Length(0)
+            },
         ])
         .split(chunks[0]);
 
@@ -42,29 +51,69 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .title(" Status ")
         .border_style(Style::default().fg(app.theme.dim));
     let status_text = if let Some(project) = &app.selected_project {
-        format!(" Project: {}\n Context: {:?}", project.name, app.active_context)
+        format!(
+            " Project: {}\n Context: {:?}",
+            project.name, app.active_context
+        )
     } else {
         " No Project Selected\n Context: Dashboard".to_string()
     };
-    f.render_widget(Paragraph::new(status_text).block(status_block), side_chunks[0]);
+    f.render_widget(
+        Paragraph::new(status_text).block(status_block),
+        side_chunks[0],
+    );
 
     // 2. Navigation Panels (Filling space)
     app.set_rect("nav_dashboard", side_chunks[1]);
-    render_nav_panel(f, app.active_panel == Panel::Dashboard, &app.theme, side_chunks[1], " Dashboard ", &mut app.dashboard_menu_state, vec!["  Todos", "  Merge Requests", "  Issues", "  Pipelines"]);
-    
+    render_nav_panel(
+        f,
+        app.active_panel == Panel::Dashboard,
+        &app.theme,
+        side_chunks[1],
+        " Dashboard ",
+        &mut app.dashboard_menu_state,
+        vec!["  Todos", "  Merge Requests", "  Issues", "  Pipelines"],
+    );
+
     app.set_rect("nav_explore", side_chunks[2]);
-    render_nav_panel(f, app.active_panel == Panel::Explore, &app.theme, side_chunks[2], " Explore ", &mut app.explore_menu_state, vec!["  Projects", "  Groups"]);
-    
+    render_nav_panel(
+        f,
+        app.active_panel == Panel::Explore,
+        &app.theme,
+        side_chunks[2],
+        " Explore ",
+        &mut app.explore_menu_state,
+        vec!["  Projects", "  Groups"],
+    );
+
     if app.selected_project.is_some() {
-        let has_epics = app.selected_project.as_ref()
+        let has_epics = app
+            .selected_project
+            .as_ref()
             .and_then(|p| p.namespace.as_ref())
             .is_some_and(|ns| ns.kind == "group");
         app.set_rect("nav_project", side_chunks[3]);
-        let mut project_items = vec!["  Merge Requests", "  Issues", "  Pipelines", "  Repository", "  Branches", "  Commits", "  Boards"];
+        let mut project_items = vec![
+            "  Merge Requests",
+            "  Issues",
+            "  Pipelines",
+            "  Repository",
+            "  Branches",
+            "  Commits",
+            "  Boards",
+        ];
         if has_epics {
             project_items.push("  Epics");
         }
-        render_nav_panel(f, app.active_panel == Panel::Project, &app.theme, side_chunks[3], " Project ", &mut app.project_menu_state, project_items);
+        render_nav_panel(
+            f,
+            app.active_panel == Panel::Project,
+            &app.theme,
+            side_chunks[3],
+            " Project ",
+            &mut app.project_menu_state,
+            project_items,
+        );
     }
 
     // --- RIGHT COLUMN: MAIN REGION (LIST & DETAIL COLUMN) ---
@@ -86,20 +135,38 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn render_nav_panel(f: &mut Frame, is_focused: bool, theme: &Theme, area: Rect, title: &str, state: &mut ListState, items: Vec<&str>) {
+fn render_nav_panel(
+    f: &mut Frame,
+    is_focused: bool,
+    theme: &Theme,
+    area: Rect,
+    title: &str,
+    state: &mut ListState,
+    items: Vec<&str>,
+) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(if is_focused { Style::default().fg(theme.border) } else { Style::default().fg(theme.dim) });
+        .border_style(if is_focused {
+            Style::default().fg(theme.border)
+        } else {
+            Style::default().fg(theme.dim)
+        });
 
     let list_items: Vec<ListItem> = items.iter().map(|i| ListItem::new(*i)).collect();
     f.render_stateful_widget(
         List::new(list_items)
             .block(block)
-            .highlight_style(if is_focused { Style::default().bg(theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
+            .highlight_style(if is_focused {
+                Style::default()
+                    .bg(theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            })
             .highlight_symbol(if is_focused { "> " } else { "  " }),
         area,
-        state
+        state,
     );
 }
 
@@ -132,23 +199,62 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         MenuSelection::Commits => " Commits ".to_string(),
         MenuSelection::Boards => " Boards ".to_string(),
         MenuSelection::Epics => match &app.selected_epic {
-            Some(epic) => format!(" Epic: {} ", crate::ui::widgets::truncate_str(&epic.title, 40)),
+            Some(epic) => format!(
+                " Epic: {} ",
+                crate::ui::widgets::truncate_str(&epic.title, 40)
+            ),
             None => " Epics ".to_string(),
         },
     };
     let list_block = Block::default()
         .borders(Borders::ALL)
         .title(list_title.as_str())
-        .border_style(if is_main_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
-    
+        .border_style(if is_main_focused {
+            Style::default().fg(app.theme.border)
+        } else {
+            Style::default().fg(app.theme.dim)
+        });
+
     let list_inner = list_block.inner(area);
     f.render_widget(list_block, area);
 
     let (titles, selected) = match app.active_selection {
-        MenuSelection::Todos => (vec!["Pending", "Snoozed", "Done"], Some(match app.todo_filter { TodoFilter::Pending => 0, TodoFilter::Snoozed => 1, TodoFilter::Done => 2 })),
-        MenuSelection::MergeRequests => (vec!["Opened", "Review", "Assigned", "Merged", "Closed", "All"], Some(match app.mr_filter { MergeRequestFilter::Opened => 0, MergeRequestFilter::Review => 1, MergeRequestFilter::Assigned => 2, MergeRequestFilter::Merged => 3, MergeRequestFilter::Closed => 4, MergeRequestFilter::All => 5 })),
-        MenuSelection::Issues => (vec!["Opened", "Closed", "All"], Some(match app.issue_filter { IssueFilter::Opened => 0, IssueFilter::Closed => 1, IssueFilter::All => 2 })),
-        MenuSelection::Pipelines => (vec!["All", "Running", "Failed", "Passed"], Some(match app.pipeline_filter { PipelineFilter::All => 0, PipelineFilter::Running => 1, PipelineFilter::Failed => 2, PipelineFilter::Passed => 3 })),
+        MenuSelection::Todos => (
+            vec!["Pending", "Snoozed", "Done"],
+            Some(match app.todo_filter {
+                TodoFilter::Pending => 0,
+                TodoFilter::Snoozed => 1,
+                TodoFilter::Done => 2,
+            }),
+        ),
+        MenuSelection::MergeRequests => (
+            vec!["Opened", "Review", "Assigned", "Merged", "Closed", "All"],
+            Some(match app.mr_filter {
+                MergeRequestFilter::Opened => 0,
+                MergeRequestFilter::Review => 1,
+                MergeRequestFilter::Assigned => 2,
+                MergeRequestFilter::Merged => 3,
+                MergeRequestFilter::Closed => 4,
+                MergeRequestFilter::All => 5,
+            }),
+        ),
+        MenuSelection::Issues => (
+            vec!["Opened", "Closed", "All"],
+            Some(match app.issue_filter {
+                IssueFilter::Opened => 0,
+                IssueFilter::Closed => 1,
+                IssueFilter::All => 2,
+            }),
+        ),
+        MenuSelection::Pipelines => (
+            vec!["All", "Running", "Failed", "Passed"],
+            Some(match app.pipeline_filter {
+                PipelineFilter::All => 0,
+                PipelineFilter::Running => 1,
+                PipelineFilter::Failed => 2,
+                PipelineFilter::Passed => 3,
+            }),
+        ),
         _ => (vec![], None),
     };
 
@@ -166,34 +272,72 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             .select(selected.unwrap_or(0))
             .divider(Span::styled(" │ ", Style::default().fg(app.theme.dim)))
             .style(Style::default().fg(app.theme.dim))
-            .highlight_style(Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD));
-        
+            .highlight_style(
+                Style::default()
+                    .fg(app.theme.border)
+                    .add_modifier(Modifier::BOLD),
+            );
+
         f.render_widget(tabs, list_chunks[0]);
     }
 
-    let highlight_style = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
+    let highlight_style = Style::default()
+        .bg(app.theme.highlight_bg)
+        .add_modifier(Modifier::BOLD);
     let no_highlight = Style::default();
 
     match app.active_selection {
         MenuSelection::Todos => {
-            let items: Vec<ListItem> = app.filtered_todos.iter().map(|item| {
-                match item {
-                    GroupedItem::Item(t) => ListItem::new(format!("{} - {}", t.action_name, t.body)),
+            let items: Vec<ListItem> = app
+                .filtered_todos
+                .iter()
+                .map(|item| match item {
+                    GroupedItem::Item(t) => {
+                        ListItem::new(format!("{} - {}", t.action_name, t.body))
+                    }
                     GroupedItem::Header(h) => {
                         let key = format!("todos:{}", h);
-                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
-                    },
-                }
-            }).collect();
-            if items.is_empty() { f.render_widget(Paragraph::new("No todos match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.todos_state); }
+                        let icon = if app.collapsed_groups.contains(&key) {
+                            "▶"
+                        } else {
+                            "▼"
+                        };
+                        ListItem::new(Line::from(vec![Span::styled(
+                            format!("{} {}", icon, h),
+                            Style::default()
+                                .fg(app.theme.header)
+                                .add_modifier(Modifier::BOLD),
+                        )]))
+                    }
+                })
+                .collect();
+            if items.is_empty() {
+                f.render_widget(
+                    Paragraph::new("No todos match this view or filter.")
+                        .style(Style::default().fg(app.theme.dim)),
+                    list_chunks[1],
+                );
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.todos_state,
+                );
+            }
         }
         MenuSelection::MergeRequests => {
-            let items: Vec<ListItem> = app.filtered_mrs.iter().map(|item| {
-                match item {
+            let items: Vec<ListItem> = app
+                .filtered_mrs
+                .iter()
+                .map(|item| match item {
                     GroupedItem::Item(mr) => {
-                        use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+                        use crate::ui::widgets::{get_contrasting_text_color, hex_to_color};
                         let mut involved = false;
                         if let Some(ref me) = app.current_user
                             && (mr.author.id == me.id
@@ -208,33 +352,75 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
                         let max_title = (area.width as usize).saturating_sub(24).max(16);
-                        spans.push(Span::raw(format!("!{} {}", mr.iid, crate::ui::widgets::truncate_str(&mr.title, max_title))));
-                        spans.push(Span::styled(format!(" [{}]", mr.state), crate::ui::widgets::get_status_style(&mr.state, &app.theme)));
+                        spans.push(Span::raw(format!(
+                            "!{} {}",
+                            mr.iid,
+                            crate::ui::widgets::truncate_str(&mr.title, max_title)
+                        )));
+                        spans.push(Span::styled(
+                            format!(" [{}]", mr.state),
+                            crate::ui::widgets::get_status_style(&mr.state, &app.theme),
+                        ));
                         spans.push(Span::raw(" "));
                         for label in &mr.labels {
                             let bg = hex_to_color(label.color());
                             let fg = get_contrasting_text_color(label.color());
-                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(bg).fg(fg)));
+                            spans.push(Span::styled(
+                                format!(" {} ", label.name()),
+                                Style::default().bg(bg).fg(fg),
+                            ));
                             spans.push(Span::raw(" "));
                         }
                         ListItem::new(Line::from(spans))
                     }
                     GroupedItem::Header(h) => {
-                        let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
+                        let scope = match app.active_selection {
+                            MenuSelection::MergeRequests => "mrs",
+                            MenuSelection::Issues => "issues",
+                            _ => "unknown",
+                        };
                         let key = format!("{}:{}", scope, h);
-                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
-                    },
-                }
-            }).collect();
-            if items.is_empty() { f.render_widget(Paragraph::new("No merge requests match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.mrs_state); }
+                        let icon = if app.collapsed_groups.contains(&key) {
+                            "▶"
+                        } else {
+                            "▼"
+                        };
+                        ListItem::new(Line::from(vec![Span::styled(
+                            format!("{} {}", icon, h),
+                            Style::default()
+                                .fg(app.theme.header)
+                                .add_modifier(Modifier::BOLD),
+                        )]))
+                    }
+                })
+                .collect();
+            if items.is_empty() {
+                f.render_widget(
+                    Paragraph::new("No merge requests match this view or filter.")
+                        .style(Style::default().fg(app.theme.dim)),
+                    list_chunks[1],
+                );
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.mrs_state,
+                );
+            }
         }
         MenuSelection::Issues => {
-            let items: Vec<ListItem> = app.filtered_issues.iter().map(|item| {
-                match item {
+            let items: Vec<ListItem> = app
+                .filtered_issues
+                .iter()
+                .map(|item| match item {
                     GroupedItem::Item(i) => {
-                        use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+                        use crate::ui::widgets::{get_contrasting_text_color, hex_to_color};
                         let mut involved = false;
                         if let Some(ref me) = app.current_user
                             && (i.author.id == me.id
@@ -248,149 +434,398 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
                         let max_title = (area.width as usize).saturating_sub(32).max(16);
-                        spans.push(Span::raw(format!("#{} {}", i.iid, crate::ui::widgets::truncate_str(&i.title, max_title))));
+                        spans.push(Span::raw(format!(
+                            "#{} {}",
+                            i.iid,
+                            crate::ui::widgets::truncate_str(&i.title, max_title)
+                        )));
                         spans.push(Span::raw(" "));
                         if let Some(m) = &i.milestone {
-                            spans.push(Span::styled(format!(" {} ", m.title), Style::default().fg(app.theme.project).add_modifier(Modifier::BOLD)));
+                            spans.push(Span::styled(
+                                format!(" {} ", m.title),
+                                Style::default()
+                                    .fg(app.theme.project)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
                             spans.push(Span::raw(" "));
                         }
                         if let Some(due) = &i.due_date {
-                            let overdue = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d").map(|d| d < chrono::Local::now().date_naive()).unwrap_or(false);
-                            let due_style = if overdue { Style::default().fg(app.theme.failed).add_modifier(Modifier::BOLD) } else { Style::default().fg(app.theme.dim) };
+                            let overdue = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d")
+                                .map(|d| d < chrono::Local::now().date_naive())
+                                .unwrap_or(false);
+                            let due_style = if overdue {
+                                Style::default()
+                                    .fg(app.theme.failed)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(app.theme.dim)
+                            };
                             spans.push(Span::styled(format!("due {}", due), due_style));
                             spans.push(Span::raw(" "));
                         }
                         for label in &i.labels {
                             let bg = hex_to_color(label.color());
                             let fg = get_contrasting_text_color(label.color());
-                            spans.push(Span::styled(format!(" {} ", label.name()), Style::default().bg(bg).fg(fg)));
+                            spans.push(Span::styled(
+                                format!(" {} ", label.name()),
+                                Style::default().bg(bg).fg(fg),
+                            ));
                             spans.push(Span::raw(" "));
                         }
                         ListItem::new(Line::from(spans))
                     }
                     GroupedItem::Header(h) => {
-                        let scope = match app.active_selection { MenuSelection::MergeRequests => "mrs", MenuSelection::Issues => "issues", _ => "unknown" };
+                        let scope = match app.active_selection {
+                            MenuSelection::MergeRequests => "mrs",
+                            MenuSelection::Issues => "issues",
+                            _ => "unknown",
+                        };
                         let key = format!("{}:{}", scope, h);
-                        let icon = if app.collapsed_groups.contains(&key) { "▶" } else { "▼" };
-                        ListItem::new(Line::from(vec![Span::styled(format!("{} {}", icon, h), Style::default().fg(app.theme.header).add_modifier(Modifier::BOLD))]))
-                    },
-                }
-            }).collect();
-            if items.is_empty() { f.render_widget(Paragraph::new("No issues match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.issues_state); }
+                        let icon = if app.collapsed_groups.contains(&key) {
+                            "▶"
+                        } else {
+                            "▼"
+                        };
+                        ListItem::new(Line::from(vec![Span::styled(
+                            format!("{} {}", icon, h),
+                            Style::default()
+                                .fg(app.theme.header)
+                                .add_modifier(Modifier::BOLD),
+                        )]))
+                    }
+                })
+                .collect();
+            if items.is_empty() {
+                f.render_widget(
+                    Paragraph::new("No issues match this view or filter.")
+                        .style(Style::default().fg(app.theme.dim)),
+                    list_chunks[1],
+                );
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.issues_state,
+                );
+            }
         }
         MenuSelection::Pipelines => {
-            let items: Vec<ListItem> = app.filtered_pipelines.iter().map(|p| {
-                let mut spans = vec![
-                    Span::styled(format!(" {} ", p.status), crate::ui::widgets::get_status_style(&p.status, &app.theme)),
-                ];
-                if app.active_context != Context::Project {
-                    let project_label = app.project_cache.get(&p.project_id)
-                        .and_then(|proj| proj.path_with_namespace.clone())
-                        .unwrap_or_else(|| format!("#{}", p.project_id));
-                    spans.push(Span::styled(format!(" {} ", crate::ui::widgets::truncate_str(&project_label, 24)), Style::default().fg(app.theme.project)));
-                }
-                spans.push(Span::styled(format!(" {} ", p.ref_name), Style::default().fg(app.theme.author)));
-                spans.push(Span::raw(format!(" {} ", p.source)));
-                ListItem::new(Line::from(spans))
-            }).collect();
-            if items.is_empty() { f.render_widget(Paragraph::new("No pipelines match this view or filter.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.pipelines_state); }
+            let items: Vec<ListItem> = app
+                .filtered_pipelines
+                .iter()
+                .map(|p| {
+                    let mut spans = vec![Span::styled(
+                        format!(" {} ", p.status),
+                        crate::ui::widgets::get_status_style(&p.status, &app.theme),
+                    )];
+                    if app.active_context != Context::Project {
+                        let project_label = app
+                            .project_cache
+                            .get(&p.project_id)
+                            .and_then(|proj| proj.path_with_namespace.clone())
+                            .unwrap_or_else(|| format!("#{}", p.project_id));
+                        spans.push(Span::styled(
+                            format!(" {} ", crate::ui::widgets::truncate_str(&project_label, 24)),
+                            Style::default().fg(app.theme.project),
+                        ));
+                    }
+                    spans.push(Span::styled(
+                        format!(" {} ", p.ref_name),
+                        Style::default().fg(app.theme.author),
+                    ));
+                    spans.push(Span::raw(format!(" {} ", p.source)));
+                    ListItem::new(Line::from(spans))
+                })
+                .collect();
+            if items.is_empty() {
+                f.render_widget(
+                    Paragraph::new("No pipelines match this view or filter.")
+                        .style(Style::default().fg(app.theme.dim)),
+                    list_chunks[1],
+                );
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.pipelines_state,
+                );
+            }
         }
         MenuSelection::Projects => {
-            let items: Vec<ListItem> = app.filtered_projects.iter().map(|p| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!(" {} ", p.name), Style::default().add_modifier(Modifier::BOLD)),
-                    Span::styled(format!(" ({})", p.path_with_namespace.as_deref().unwrap_or("")), Style::default().fg(app.theme.dim)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.projects_state);
+            let items: Vec<ListItem> = app
+                .filtered_projects
+                .iter()
+                .map(|p| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            format!(" {} ", p.name),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" ({})", p.path_with_namespace.as_deref().unwrap_or("")),
+                            Style::default().fg(app.theme.dim),
+                        ),
+                    ]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                list_chunks[1],
+                &mut app.projects_state,
+            );
         }
         MenuSelection::Groups => {
-            let items: Vec<ListItem> = app.filtered_groups.iter().map(|g| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!(" {} ", g.name), Style::default().add_modifier(Modifier::BOLD)),
-                    Span::styled(format!(" ({})", g.full_path), Style::default().fg(app.theme.dim)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.groups_state);
+            let items: Vec<ListItem> = app
+                .filtered_groups
+                .iter()
+                .map(|g| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            format!(" {} ", g.name),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" ({})", g.full_path),
+                            Style::default().fg(app.theme.dim),
+                        ),
+                    ]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                list_chunks[1],
+                &mut app.groups_state,
+            );
         }
         MenuSelection::Repository => {
             let mut tree_items: Vec<tui_tree_widget::TreeItem<'static, String>> = Vec::new();
             for item in &app.repository_tree {
-                let text = if item.r#type == "tree" { format!("📁 {}", item.name) } else { format!("📄 {}", item.name) };
+                let text = if item.r#type == "tree" {
+                    format!("📁 {}", item.name)
+                } else {
+                    format!("📄 {}", item.name)
+                };
                 tree_items.push(tui_tree_widget::TreeItem::new_leaf(item.path.clone(), text));
             }
             let tree = tui_tree_widget::Tree::new(&tree_items)
                 .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
-                .block(Block::default().title("Tree").borders(Borders::ALL).border_style(if is_main_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) }))
-                .highlight_style(if is_main_focused { highlight_style } else { no_highlight })
+                .block(
+                    Block::default()
+                        .title("Tree")
+                        .borders(Borders::ALL)
+                        .border_style(if is_main_focused {
+                            Style::default().fg(app.theme.border)
+                        } else {
+                            Style::default().fg(app.theme.dim)
+                        }),
+                )
+                .highlight_style(if is_main_focused {
+                    highlight_style
+                } else {
+                    no_highlight
+                })
                 .highlight_symbol(if is_main_focused { "> " } else { "  " });
             f.render_stateful_widget(tree, list_chunks[1], &mut app.repository_tree_state);
         }
         MenuSelection::Branches => {
-            let items: Vec<ListItem> = app.filtered_branches.iter().map(|b| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!(" {} ", b.name), Style::default().add_modifier(Modifier::BOLD)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.branches_state);
+            let items: Vec<ListItem> = app
+                .filtered_branches
+                .iter()
+                .map(|b| {
+                    ListItem::new(Line::from(vec![Span::styled(
+                        format!(" {} ", b.name),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                list_chunks[1],
+                &mut app.branches_state,
+            );
         }
         MenuSelection::Commits => {
-            let items: Vec<ListItem> = app.commits.iter().map(|c| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!(" {} ", c.short_id), Style::default().fg(app.theme.dim)),
-                    Span::styled(c.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
-                    Span::styled(format!(" - {}", c.author_name), Style::default().fg(app.theme.dim)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.commits_state);
+            let items: Vec<ListItem> = app
+                .commits
+                .iter()
+                .map(|c| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            format!(" {} ", c.short_id),
+                            Style::default().fg(app.theme.dim),
+                        ),
+                        Span::styled(
+                            c.title.clone(),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" - {}", c.author_name),
+                            Style::default().fg(app.theme.dim),
+                        ),
+                    ]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                list_chunks[1],
+                &mut app.commits_state,
+            );
         }
         MenuSelection::Boards => {
-            let items: Vec<ListItem> = app.project_boards.iter().map(|b| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!(" {} ", b.name), Style::default().add_modifier(Modifier::BOLD)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.project_boards_state);
+            let items: Vec<ListItem> = app
+                .project_boards
+                .iter()
+                .map(|b| {
+                    ListItem::new(Line::from(vec![Span::styled(
+                        format!(" {} ", b.name),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                list_chunks[1],
+                &mut app.project_boards_state,
+            );
         }
         MenuSelection::Epics => {
-            if let Some(epic) = &app.selected_epic {
-                let items: Vec<ListItem> = app.filtered_epic_issues.iter().map(|i| {
-                    ListItem::new(Line::from(vec![
-                        Span::styled(format!(" {} ", i.state), crate::ui::widgets::get_status_style(&i.state, &app.theme)),
-                        Span::raw(format!("#{} ", i.iid)),
-                        Span::styled(crate::ui::widgets::truncate_str(&i.title, (area.width as usize).saturating_sub(24).max(16)), Style::default().add_modifier(Modifier::BOLD)),
-                    ]))
-                }).collect();
-                if items.is_empty() { f.render_widget(Paragraph::new("No issues linked to this epic.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
-                f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epic_issues_state); }
+            if app.selected_epic.is_some() {
+                let items: Vec<ListItem> = app
+                    .filtered_epic_issues
+                    .iter()
+                    .map(|i| {
+                        ListItem::new(Line::from(vec![
+                            Span::styled(
+                                format!(" {} ", i.state),
+                                crate::ui::widgets::get_status_style(&i.state, &app.theme),
+                            ),
+                            Span::raw(format!("#{} ", i.iid)),
+                            Span::styled(
+                                crate::ui::widgets::truncate_str(
+                                    &i.title,
+                                    (area.width as usize).saturating_sub(24).max(16),
+                                ),
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ),
+                        ]))
+                    })
+                    .collect();
+                if items.is_empty() {
+                    f.render_widget(
+                        Paragraph::new("No issues linked to this epic.")
+                            .style(Style::default().fg(app.theme.dim)),
+                        list_chunks[1],
+                    );
+                } else {
+                    f.render_stateful_widget(
+                        List::new(items)
+                            .highlight_style(if is_main_focused {
+                                highlight_style
+                            } else {
+                                no_highlight
+                            })
+                            .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        list_chunks[1],
+                        &mut app.epic_issues_state,
+                    );
+                }
             } else {
-                let items: Vec<ListItem> = app.epics.iter().map(|e| {
-                    ListItem::new(Line::from(vec![
-                        Span::styled(format!("&{} ", e.iid), Style::default().fg(app.theme.dim)),
-                        Span::styled(e.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
-                        Span::styled(format!(" [{}]", e.state), crate::ui::widgets::get_status_style(&e.state, &app.theme)),
-                    ]))
-                }).collect();
-                f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
+                let items: Vec<ListItem> = app
+                    .epics
+                    .iter()
+                    .map(|e| {
+                        ListItem::new(Line::from(vec![
+                            Span::styled(
+                                format!("&{} ", e.iid),
+                                Style::default().fg(app.theme.dim),
+                            ),
+                            Span::styled(
+                                e.title.clone(),
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!(" [{}]", e.state),
+                                crate::ui::widgets::get_status_style(&e.state, &app.theme),
+                            ),
+                        ]))
+                    })
+                    .collect();
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.epics_state,
+                );
             }
         }
     }
 }
 
 pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
-    let is_disc_focused = app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Discussions;
+    let is_disc_focused =
+        app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Discussions;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Discussions (Threads) ")
-        .border_style(if is_disc_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+        .border_style(if is_disc_focused {
+            Style::default().fg(app.theme.border)
+        } else {
+            Style::default().fg(app.theme.dim)
+        });
 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let is_replying = is_disc_focused && app.input_mode && app.input_target == crate::models::InputTarget::Reply;
-    
+    let is_replying =
+        is_disc_focused && app.input_mode && app.input_target == crate::models::InputTarget::Reply;
+
     let chunks = if is_replying {
         Layout::default()
             .direction(Direction::Vertical)
@@ -403,56 +838,96 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
             .split(inner)
     };
 
-    let comments: Vec<ListItem> = app.discussions.iter().enumerate().map(|(idx, d)| {
-        let is_selected = is_disc_focused && app.discussion_state.selected() == Some(idx);
-        let highlight = if is_selected { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() };
-        if let Some(note) = d.notes.first() {
-            let is_activity = note.system;
-            let is_resolved = !is_activity && d.resolved.unwrap_or(false);
-
-            let mut spans = vec![
-                Span::styled(if is_selected { "● " } else { "  " }, highlight.fg(app.theme.border)),
-            ];
-
-            let text_style = if is_resolved || is_activity {
-                highlight.fg(app.theme.dim)
+    let comments: Vec<ListItem> = app
+        .discussions
+        .iter()
+        .enumerate()
+        .map(|(idx, d)| {
+            let is_selected = is_disc_focused && app.discussion_state.selected() == Some(idx);
+            let highlight = if is_selected {
+                Style::default()
+                    .bg(app.theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                highlight
+                Style::default()
             };
+            if let Some(note) = d.notes.first() {
+                let is_activity = note.system;
+                let is_resolved = !is_activity && d.resolved.unwrap_or(false);
 
-            if is_activity {
-                spans.push(Span::styled("[ACTIVITY] ", highlight.fg(app.theme.dim)));
-                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
-            } else if let Some(resolved) = d.resolved {
-                if resolved {
-                    spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.dim)));
-                    spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD)));
+                let mut spans = vec![Span::styled(
+                    if is_selected { "● " } else { "  " },
+                    highlight.fg(app.theme.border),
+                )];
+
+                let text_style = if is_resolved || is_activity {
+                    highlight.fg(app.theme.dim)
                 } else {
-                    spans.push(Span::styled("[UNRESOLVED] ", highlight.fg(app.theme.pending)));
-                    spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)));
-                }
-            } else {
-                spans.push(Span::styled(format!("@{} ", note.author.username), highlight.fg(app.theme.author).add_modifier(Modifier::BOLD)));
-            }
+                    highlight
+                };
 
-            spans.push(Span::styled(": ", text_style));
-            
-            // Show more content (up to 100 chars) for a better overview
-            let body = note.body.replace('\n', " ");
-            spans.push(Span::styled(body.chars().take(100).collect::<String>(), text_style));
-            if body.len() > 100 { spans.push(Span::styled("...", text_style)); }
-            ListItem::new(Line::from(spans))
-        } else { ListItem::new(" (empty thread)") }
-    }).collect();
+                if is_activity {
+                    spans.push(Span::styled("[ACTIVITY] ", highlight.fg(app.theme.dim)));
+                    spans.push(Span::styled(
+                        format!("@{} ", note.author.username),
+                        highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD),
+                    ));
+                } else if let Some(resolved) = d.resolved {
+                    if resolved {
+                        spans.push(Span::styled("[RESOLVED] ", highlight.fg(app.theme.dim)));
+                        spans.push(Span::styled(
+                            format!("@{} ", note.author.username),
+                            highlight.fg(app.theme.dim).add_modifier(Modifier::BOLD),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            "[UNRESOLVED] ",
+                            highlight.fg(app.theme.pending),
+                        ));
+                        spans.push(Span::styled(
+                            format!("@{} ", note.author.username),
+                            highlight.fg(app.theme.author).add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                } else {
+                    spans.push(Span::styled(
+                        format!("@{} ", note.author.username),
+                        highlight.fg(app.theme.author).add_modifier(Modifier::BOLD),
+                    ));
+                }
+
+                spans.push(Span::styled(": ", text_style));
+
+                // Show more content (up to 100 chars) for a better overview
+                let body = note.body.replace('\n', " ");
+                spans.push(Span::styled(
+                    body.chars().take(100).collect::<String>(),
+                    text_style,
+                ));
+                if body.len() > 100 {
+                    spans.push(Span::styled("...", text_style));
+                }
+                ListItem::new(Line::from(spans))
+            } else {
+                ListItem::new(" (empty thread)")
+            }
+        })
+        .collect();
 
     if comments.is_empty() {
-        f.render_widget(Paragraph::new(" No discussions found.").fg(app.theme.dim), chunks[0]);
+        f.render_widget(
+            Paragraph::new(" No discussions found.").fg(app.theme.dim),
+            chunks[0],
+        );
     } else {
         f.render_stateful_widget(List::new(comments), chunks[0], &mut app.discussion_state);
     }
 
     if is_replying {
-        let reply_block = Block::default().borders(Borders::ALL).title(" Reply (Ctrl+Enter to send, Esc to cancel) ").border_style(Style::default().fg(app.theme.border));
+        let reply_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Reply (Ctrl+Enter to send, Esc to cancel) ")
+            .border_style(Style::default().fg(app.theme.border));
         f.render_widget(Clear, chunks[1]);
         app.textarea.set_block(reply_block);
         f.render_widget(&app.textarea, chunks[1]);
@@ -464,52 +939,98 @@ pub fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Pipeline Jobs ")
-        .border_style(if is_jobs_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+        .border_style(if is_jobs_focused {
+            Style::default().fg(app.theme.border)
+        } else {
+            Style::default().fg(app.theme.dim)
+        });
 
-    let items: Vec<ListItem> = app.jobs.iter().map(|j| {
-        ListItem::new(Line::from(vec![
-            Span::styled(format!(" {} ", j.status), crate::ui::widgets::get_status_style(&j.status, &app.theme)),
-            Span::raw(format!(" {} ", j.name)),
-            Span::styled(format!("({})", j.stage), Style::default().fg(app.theme.dim)),
-        ]))
-    }).collect();
+    let items: Vec<ListItem> = app
+        .jobs
+        .iter()
+        .map(|j| {
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(" {} ", j.status),
+                    crate::ui::widgets::get_status_style(&j.status, &app.theme),
+                ),
+                Span::raw(format!(" {} ", j.name)),
+                Span::styled(format!("({})", j.stage), Style::default().fg(app.theme.dim)),
+            ]))
+        })
+        .collect();
 
     if items.is_empty() {
-        f.render_widget(Paragraph::new(" No jobs found for this pipeline.").fg(app.theme.dim).block(block), area);
+        f.render_widget(
+            Paragraph::new(" No jobs found for this pipeline.")
+                .fg(app.theme.dim)
+                .block(block),
+            area,
+        );
     } else {
         f.render_stateful_widget(
             List::new(items)
                 .block(block)
-                .highlight_style(if is_jobs_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
-                .highlight_symbol(if is_jobs_focused { "> " } else { "  " }), 
-            area, 
-            &mut app.jobs_state
+                .highlight_style(if is_jobs_focused {
+                    Style::default()
+                        .bg(app.theme.highlight_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                })
+                .highlight_symbol(if is_jobs_focused { "> " } else { "  " }),
+            area,
+            &mut app.jobs_state,
         );
     }
 }
 
 pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
-    let is_meta_focused = app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Metadata;
+    let is_meta_focused =
+        app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Metadata;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Metadata ")
-        .border_style(if is_meta_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+        .border_style(if is_meta_focused {
+            Style::default().fg(app.theme.border)
+        } else {
+            Style::default().fg(app.theme.dim)
+        });
 
     let mut lines = Vec::new();
-    let highlight = Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
-    let field_style = |f| if is_meta_focused && app.selected_metadata_field == f { highlight } else { Style::default() };
-
-    use crate::models::MetadataField;
-    
-    if let Some(mr) = &app.selected_mr {
-        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { mr.title.clone() };
-        lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
-        
-        let target_branch_style = if is_meta_focused && app.selected_metadata_field == MetadataField::TargetBranch {
+    let highlight = Style::default()
+        .bg(app.theme.highlight_bg)
+        .add_modifier(Modifier::BOLD);
+    let field_style = |f| {
+        if is_meta_focused && app.selected_metadata_field == f {
             highlight
         } else {
-            Style::default().fg(app.theme.project)
+            Style::default()
+        }
+    };
+
+    use crate::models::MetadataField;
+
+    if let Some(mr) = &app.selected_mr {
+        let title = if is_meta_focused
+            && app.selected_metadata_field == MetadataField::Title
+            && app.input_mode
+        {
+            app.textarea.lines().first().cloned().unwrap_or_default()
+        } else {
+            mr.title.clone()
         };
+        lines.push(Line::from(vec![
+            Span::raw(" Title: "),
+            Span::styled(title, field_style(MetadataField::Title)),
+        ]));
+
+        let target_branch_style =
+            if is_meta_focused && app.selected_metadata_field == MetadataField::TargetBranch {
+                highlight
+            } else {
+                Style::default().fg(app.theme.project)
+            };
         lines.push(Line::from(vec![
             Span::raw(" Branches: "),
             Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
@@ -518,44 +1039,81 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         ]));
 
         let mut label_spans = vec![Span::raw(" Labels: ")];
-        if mr.labels.is_empty() { label_spans.push(Span::styled("None", field_style(MetadataField::Labels))); }
-        else {
-            use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+        if mr.labels.is_empty() {
+            label_spans.push(Span::styled("None", field_style(MetadataField::Labels)));
+        } else {
+            use crate::ui::widgets::{get_contrasting_text_color, hex_to_color};
             for (i, label) in mr.labels.iter().enumerate() {
-                if i > 0 { label_spans.push(Span::raw(", ")); }
+                if i > 0 {
+                    label_spans.push(Span::raw(", "));
+                }
                 let bg = hex_to_color(label.color());
                 let fg = get_contrasting_text_color(label.color());
-                label_spans.push(Span::styled(format!(" {} ", label.name()), field_style(MetadataField::Labels).bg(bg).fg(fg)));
+                label_spans.push(Span::styled(
+                    format!(" {} ", label.name()),
+                    field_style(MetadataField::Labels).bg(bg).fg(fg),
+                ));
             }
         }
         lines.push(Line::from(label_spans));
 
         let mut assign_spans = vec![Span::raw(" Assign: ")];
-        if mr.assignees.is_empty() { assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees))); }
-        else {
+        if mr.assignees.is_empty() {
+            assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees)));
+        } else {
             for (i, a) in mr.assignees.iter().enumerate() {
-                if i > 0 { assign_spans.push(Span::raw(", ")); }
-                assign_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Assignees).fg(app.theme.author)));
+                if i > 0 {
+                    assign_spans.push(Span::raw(", "));
+                }
+                assign_spans.push(Span::styled(
+                    format!("@{}", a.username),
+                    field_style(MetadataField::Assignees).fg(app.theme.author),
+                ));
             }
         }
         lines.push(Line::from(assign_spans));
 
         let mut reviewer_spans = vec![Span::raw(" Review: ")];
-        if mr.reviewers.is_empty() { reviewer_spans.push(Span::styled("None", field_style(MetadataField::Reviewers))); }
-        else {
+        if mr.reviewers.is_empty() {
+            reviewer_spans.push(Span::styled("None", field_style(MetadataField::Reviewers)));
+        } else {
             for (i, a) in mr.reviewers.iter().enumerate() {
-                if i > 0 { reviewer_spans.push(Span::raw(", ")); }
-                reviewer_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Reviewers).fg(app.theme.author)));
+                if i > 0 {
+                    reviewer_spans.push(Span::raw(", "));
+                }
+                reviewer_spans.push(Span::styled(
+                    format!("@{}", a.username),
+                    field_style(MetadataField::Reviewers).fg(app.theme.author),
+                ));
             }
         }
         lines.push(Line::from(reviewer_spans));
 
-        lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(mr.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
-        lines.push(Line::from(vec![Span::raw(" Squash: "), Span::raw(if mr.squash.unwrap_or(false) { "Yes" } else { "No" })]));
+        lines.push(Line::from(vec![
+            Span::raw(" Miles: "),
+            Span::styled(
+                mr.milestone
+                    .as_ref()
+                    .map(|m| m.title.as_str())
+                    .unwrap_or("None"),
+                field_style(MetadataField::Milestone),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" Squash: "),
+            Span::raw(if mr.squash.unwrap_or(false) {
+                "Yes"
+            } else {
+                "No"
+            }),
+        ]));
 
         use crate::ui::widgets::get_status_style;
         let pipeline_status = if let Some(pipeline) = &mr.head_pipeline {
-            Span::styled(&pipeline.status, get_status_style(&pipeline.status, &app.theme))
+            Span::styled(
+                &pipeline.status,
+                get_status_style(&pipeline.status, &app.theme),
+            )
         } else {
             Span::raw("None")
         };
@@ -577,8 +1135,13 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, p) in mr.participants.iter().enumerate() {
-                if i > 0 { participant_spans.push(Span::raw(", ")); }
-                participant_spans.push(Span::styled(format!("@{}", p.username), Style::default().fg(app.theme.author)));
+                if i > 0 {
+                    participant_spans.push(Span::raw(", "));
+                }
+                participant_spans.push(Span::styled(
+                    format!("@{}", p.username),
+                    Style::default().fg(app.theme.author),
+                ));
             }
         }
         lines.push(Line::from(participant_spans));
@@ -588,9 +1151,17 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             related_mr_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, r) in app.related_mrs.iter().enumerate() {
-                if i > 0 { related_mr_spans.push(Span::raw(", ")); }
-                related_mr_spans.push(Span::styled(format!("!{} {}", r.iid, r.title), Style::default().fg(app.theme.author)));
-                related_mr_spans.push(Span::styled(format!(" [{}]", r.state), crate::ui::widgets::get_status_style(&r.state, &app.theme)));
+                if i > 0 {
+                    related_mr_spans.push(Span::raw(", "));
+                }
+                related_mr_spans.push(Span::styled(
+                    format!("!{} {}", r.iid, r.title),
+                    Style::default().fg(app.theme.author),
+                ));
+                related_mr_spans.push(Span::styled(
+                    format!(" [{}]", r.state),
+                    crate::ui::widgets::get_status_style(&r.state, &app.theme),
+                ));
             }
         }
         lines.push(Line::from(related_mr_spans));
@@ -600,9 +1171,17 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             closes_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, iss) in app.mr_closing_issues.iter().enumerate() {
-                if i > 0 { closes_spans.push(Span::raw(", ")); }
-                closes_spans.push(Span::styled(format!("#{} {}", iss.iid, iss.title), Style::default().fg(app.theme.author)));
-                closes_spans.push(Span::styled(format!(" [{}]", iss.state), crate::ui::widgets::get_status_style(&iss.state, &app.theme)));
+                if i > 0 {
+                    closes_spans.push(Span::raw(", "));
+                }
+                closes_spans.push(Span::styled(
+                    format!("#{} {}", iss.iid, iss.title),
+                    Style::default().fg(app.theme.author),
+                ));
+                closes_spans.push(Span::styled(
+                    format!(" [{}]", iss.state),
+                    crate::ui::widgets::get_status_style(&iss.state, &app.theme),
+                ));
             }
         }
         lines.push(Line::from(closes_spans));
@@ -613,59 +1192,112 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             Span::styled(&issue.state, get_status_style(&issue.state, &app.theme)),
         ]));
 
-        let title = if is_meta_focused && app.selected_metadata_field == MetadataField::Title && app.input_mode { app.textarea.lines().first().cloned().unwrap_or_default() } else { issue.title.clone() };
-        lines.push(Line::from(vec![Span::raw(" Title: "), Span::styled(title, field_style(MetadataField::Title))]));
+        let title = if is_meta_focused
+            && app.selected_metadata_field == MetadataField::Title
+            && app.input_mode
+        {
+            app.textarea.lines().first().cloned().unwrap_or_default()
+        } else {
+            issue.title.clone()
+        };
+        lines.push(Line::from(vec![
+            Span::raw(" Title: "),
+            Span::styled(title, field_style(MetadataField::Title)),
+        ]));
 
         let mut label_spans = vec![Span::raw(" Labels: ")];
-        if issue.labels.is_empty() { label_spans.push(Span::styled("None", field_style(MetadataField::Labels))); }
-        else {
-            use crate::ui::widgets::{hex_to_color, get_contrasting_text_color};
+        if issue.labels.is_empty() {
+            label_spans.push(Span::styled("None", field_style(MetadataField::Labels)));
+        } else {
+            use crate::ui::widgets::{get_contrasting_text_color, hex_to_color};
             for (i, label) in issue.labels.iter().enumerate() {
-                if i > 0 { label_spans.push(Span::raw(", ")); }
+                if i > 0 {
+                    label_spans.push(Span::raw(", "));
+                }
                 let bg = hex_to_color(label.color());
                 let fg = get_contrasting_text_color(label.color());
-                label_spans.push(Span::styled(format!(" {} ", label.name()), field_style(MetadataField::Labels).bg(bg).fg(fg)));
+                label_spans.push(Span::styled(
+                    format!(" {} ", label.name()),
+                    field_style(MetadataField::Labels).bg(bg).fg(fg),
+                ));
             }
         }
         lines.push(Line::from(label_spans));
 
         let mut assign_spans = vec![Span::raw(" Assign: ")];
-        if issue.assignees.is_empty() { assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees))); }
-        else {
+        if issue.assignees.is_empty() {
+            assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees)));
+        } else {
             for (i, a) in issue.assignees.iter().enumerate() {
-                if i > 0 { assign_spans.push(Span::raw(", ")); }
-                assign_spans.push(Span::styled(format!("@{}", a.username), field_style(MetadataField::Assignees).fg(app.theme.author)));
+                if i > 0 {
+                    assign_spans.push(Span::raw(", "));
+                }
+                assign_spans.push(Span::styled(
+                    format!("@{}", a.username),
+                    field_style(MetadataField::Assignees).fg(app.theme.author),
+                ));
             }
         }
         lines.push(Line::from(assign_spans));
 
-        lines.push(Line::from(vec![Span::raw(" Miles: "), Span::styled(issue.milestone.as_ref().map(|m| m.title.as_str()).unwrap_or("None"), field_style(MetadataField::Milestone))]));
-        
+        lines.push(Line::from(vec![
+            Span::raw(" Miles: "),
+            Span::styled(
+                issue
+                    .milestone
+                    .as_ref()
+                    .map(|m| m.title.as_str())
+                    .unwrap_or("None"),
+                field_style(MetadataField::Milestone),
+            ),
+        ]));
+
         let start_date_str = issue.start_date.as_deref().unwrap_or("None");
-        lines.push(Line::from(vec![Span::raw(" Start Date: "), Span::styled(start_date_str, field_style(MetadataField::StartDate))]));
+        lines.push(Line::from(vec![
+            Span::raw(" Start Date: "),
+            Span::styled(start_date_str, field_style(MetadataField::StartDate)),
+        ]));
 
         let due_date_str = issue.due_date.as_deref().unwrap_or("None");
-        let is_overdue = issue.due_date.as_deref()
+        let is_overdue = issue
+            .due_date
+            .as_deref()
             .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
             .map(|d| d < chrono::Local::now().date_naive())
             .unwrap_or(false);
         let due_style = if is_overdue {
-            Style::default().fg(app.theme.failed).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(app.theme.failed)
+                .add_modifier(Modifier::BOLD)
         } else {
             field_style(MetadataField::DueDate)
         };
         let due_label = if is_overdue { " (overdue)" } else { "" };
-        lines.push(Line::from(vec![Span::raw(" Due Date: "), Span::styled(format!("{}{}", due_date_str, due_label), due_style)]));
+        lines.push(Line::from(vec![
+            Span::raw(" Due Date: "),
+            Span::styled(format!("{}{}", due_date_str, due_label), due_style),
+        ]));
 
-        lines.push(Line::from(vec![Span::raw(" Confidential: "), Span::styled(if issue.confidential { "Yes" } else { "No" }, field_style(MetadataField::Confidential))]));
+        lines.push(Line::from(vec![
+            Span::raw(" Confidential: "),
+            Span::styled(
+                if issue.confidential { "Yes" } else { "No" },
+                field_style(MetadataField::Confidential),
+            ),
+        ]));
 
         let mut participant_spans = vec![Span::raw(" Participants: ")];
         if issue.participants.is_empty() {
             participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, p) in issue.participants.iter().enumerate() {
-                if i > 0 { participant_spans.push(Span::raw(", ")); }
-                participant_spans.push(Span::styled(format!("@{}", p.username), Style::default().fg(app.theme.author)));
+                if i > 0 {
+                    participant_spans.push(Span::raw(", "));
+                }
+                participant_spans.push(Span::styled(
+                    format!("@{}", p.username),
+                    Style::default().fg(app.theme.author),
+                ));
             }
         }
         lines.push(Line::from(participant_spans));
@@ -675,9 +1307,17 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             links_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, l) in app.linked_issues.iter().enumerate() {
-                if i > 0 { links_spans.push(Span::raw(", ")); }
-                links_spans.push(Span::styled(format!("#{} {}", l.iid, l.title), Style::default().fg(app.theme.author)));
-                links_spans.push(Span::styled(format!(" [{}]", l.state), crate::ui::widgets::get_status_style(&l.state, &app.theme)));
+                if i > 0 {
+                    links_spans.push(Span::raw(", "));
+                }
+                links_spans.push(Span::styled(
+                    format!("#{} {}", l.iid, l.title),
+                    Style::default().fg(app.theme.author),
+                ));
+                links_spans.push(Span::styled(
+                    format!(" [{}]", l.state),
+                    crate::ui::widgets::get_status_style(&l.state, &app.theme),
+                ));
             }
         }
         lines.push(Line::from(links_spans));
@@ -687,16 +1327,39 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             closed_by_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
             for (i, m) in app.issue_closing_mrs.iter().enumerate() {
-                if i > 0 { closed_by_spans.push(Span::raw(", ")); }
-                closed_by_spans.push(Span::styled(format!("!{} {}", m.iid, m.title), Style::default().fg(app.theme.author)));
-                closed_by_spans.push(Span::styled(format!(" [{}]", m.state), crate::ui::widgets::get_status_style(&m.state, &app.theme)));
+                if i > 0 {
+                    closed_by_spans.push(Span::raw(", "));
+                }
+                closed_by_spans.push(Span::styled(
+                    format!("!{} {}", m.iid, m.title),
+                    Style::default().fg(app.theme.author),
+                ));
+                closed_by_spans.push(Span::styled(
+                    format!(" [{}]", m.state),
+                    crate::ui::widgets::get_status_style(&m.state, &app.theme),
+                ));
             }
         }
         lines.push(Line::from(closed_by_spans));
     } else if let Some(pipeline) = &app.selected_pipeline {
-        lines.push(Line::from(vec![Span::raw(" Pipeline: "), Span::styled(format!("#{}", pipeline.id), field_style(MetadataField::Title))]));
-        lines.push(Line::from(vec![Span::raw(" Status: "), Span::styled(&pipeline.status, crate::ui::widgets::get_status_style(&pipeline.status, &app.theme))]));
-        lines.push(Line::from(vec![Span::raw(" Ref: "), Span::raw(&pipeline.ref_name)]));
+        lines.push(Line::from(vec![
+            Span::raw(" Pipeline: "),
+            Span::styled(
+                format!("#{}", pipeline.id),
+                field_style(MetadataField::Title),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" Status: "),
+            Span::styled(
+                &pipeline.status,
+                crate::ui::widgets::get_status_style(&pipeline.status, &app.theme),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" Ref: "),
+            Span::raw(&pipeline.ref_name),
+        ]));
     }
 
     f.render_widget(Paragraph::new(lines).block(block), area);

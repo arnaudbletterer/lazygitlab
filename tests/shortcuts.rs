@@ -1,13 +1,22 @@
-use lazygitlab::models::{App, Context, MenuSelection, Panel};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use gitlab::GitlabBuilder;
-use wiremock::{MockServer, Mock, ResponseTemplate};
+use lazygitlab::models::{App, Context, MenuSelection, Panel};
 use wiremock::matchers::path;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
-    Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-    let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+    Mock::given(path("/api/v4/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
+        .mount(&server)
+        .await;
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+        .insecure()
+        .build_async()
+        .await
+        .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     (server, App::new(client, tx))
 }
@@ -24,7 +33,7 @@ fn key_event(code: KeyCode) -> KeyEvent {
 #[tokio::test]
 async fn test_g_prefix_shortcuts() {
     let (_server, mut app) = setup_app().await;
-    
+
     // Initial state
     assert_eq!(app.active_context, Context::Dashboard);
     assert_eq!(app.active_selection, MenuSelection::Todos);
@@ -134,15 +143,13 @@ async fn test_ux_interaction_refinements() {
     app.filtered_mrs = vec![lazygitlab::models::GroupedItem::Item(mr.clone())];
     app.mrs_state.select(Some(0));
     app.selected_mr = Some(mr);
-    app.mr_diffs = vec![
-        lazygitlab::models::MRDiff {
-            old_path: "a".to_string(),
-            new_path: "b".to_string(),
-            diff: "diff".to_string(),
-            collapsed: false,
-            display_lines: vec![],
-        }
-    ];
+    app.mr_diffs = vec![lazygitlab::models::MRDiff {
+        old_path: "a".to_string(),
+        new_path: "b".to_string(),
+        diff: "diff".to_string(),
+        collapsed: false,
+        display_lines: vec![],
+    }];
 
     app.active_panel = Panel::Main;
     app.active_selection = MenuSelection::Todos;
@@ -154,10 +161,16 @@ async fn test_ux_interaction_refinements() {
     app.active_selection = MenuSelection::MergeRequests;
     app.detail_section = lazygitlab::models::DetailSection::Description;
     app.handle_key(key_event(KeyCode::Char(']'))).await;
-    assert_eq!(app.detail_section, lazygitlab::models::DetailSection::Discussions);
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Discussions
+    );
 
     app.handle_key(key_event(KeyCode::Char('['))).await;
-    assert_eq!(app.detail_section, lazygitlab::models::DetailSection::Metadata);
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Metadata
+    );
 
     // 3. Mouse Click Selection: Detail tabs & Changes panel
     app.set_rect("detail_tabs", ratatui::layout::Rect::new(10, 5, 50, 1));
@@ -170,28 +183,33 @@ async fn test_ux_interaction_refinements() {
         column: 28,
         row: 5,
         modifiers: crossterm::event::KeyModifiers::empty(),
-    }).await;
+    })
+    .await;
     assert_eq!(app.active_panel, Panel::MainDetail);
-    assert_eq!(app.detail_section, lazygitlab::models::DetailSection::Discussions);
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Discussions
+    );
 
     // Handle mouse click on changes panel (Tab 2)
     app.detail_section = lazygitlab::models::DetailSection::Changes;
-    app.mr_diffs = vec![
-        lazygitlab::models::MRDiff {
-            old_path: "a".to_string(),
-            new_path: "b".to_string(),
-            diff: "diff".to_string(),
-            collapsed: false,
-            display_lines: vec![],
-        }
-    ];
+    app.mr_diffs = vec![lazygitlab::models::MRDiff {
+        old_path: "a".to_string(),
+        new_path: "b".to_string(),
+        diff: "diff".to_string(),
+        collapsed: false,
+        display_lines: vec![],
+    }];
     app.handle_mouse(crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
         column: 15,
         row: 6,
         modifiers: crossterm::event::KeyModifiers::empty(),
-    }).await;
-    assert_eq!(app.detail_section, lazygitlab::models::DetailSection::Changes);
+    })
+    .await;
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Changes
+    );
     assert_eq!(app.mr_diff_state.selected(), Some(0));
 }
-

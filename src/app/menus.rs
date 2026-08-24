@@ -1,6 +1,6 @@
 use crate::models::{
-    App, Context, MenuSelection, Panel, ViewMode, DetailSection,
-    MetadataField, DataUpdate, GroupedItem
+    App, Context, DataUpdate, DetailSection, GroupedItem, MenuSelection, MetadataField, Panel,
+    ViewMode,
 };
 
 impl App {
@@ -14,7 +14,8 @@ impl App {
         }
         if self.show_pipeline_popup {
             if self.show_branches_dropdown && !self.filtered_branches.is_empty() {
-                let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.filtered_branches.len();
+                let i = (self.branches_state.selected().unwrap_or(0) + 1)
+                    % self.filtered_branches.len();
                 self.branches_state.select(Some(i));
             }
             return;
@@ -22,45 +23,123 @@ impl App {
         match self.active_panel {
             Panel::Dashboard => {
                 let current = self.dashboard_menu_state.selected().unwrap_or(0);
-                if current >= 2 { self.active_panel = Panel::Explore; self.explore_menu_state.select(Some(0)); }
-                else { self.dashboard_menu_state.select(Some(current + 1)); }
+                if current >= 2 {
+                    self.active_panel = Panel::Explore;
+                    self.explore_menu_state.select(Some(0));
+                } else {
+                    self.dashboard_menu_state.select(Some(current + 1));
+                }
             }
             Panel::Explore => {
                 let current = self.explore_menu_state.selected().unwrap_or(0);
-                if current >= 1 { 
+                if current >= 1 {
                     if self.selected_project.is_some() {
-                        self.active_panel = Panel::Project; self.project_menu_state.select(Some(0)); 
+                        self.active_panel = Panel::Project;
+                        self.project_menu_state.select(Some(0));
                     } else {
-                        self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(0));
+                        self.active_panel = Panel::Dashboard;
+                        self.dashboard_menu_state.select(Some(0));
                     }
+                } else {
+                    self.explore_menu_state.select(Some(current + 1));
                 }
-                else { self.explore_menu_state.select(Some(current + 1)); }
             }
             Panel::Project => {
                 let current = self.project_menu_state.selected().unwrap_or(0);
                 let max_idx = if let Some(p) = &self.selected_project {
-                    if p.namespace.as_ref().is_some_and(|n| n.kind == "group") { 7 } else { 6 }
-                } else { 0 };
-                if current >= max_idx { self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(0)); }
-                else { self.project_menu_state.select(Some(current + 1)); }
+                    if p.namespace.as_ref().is_some_and(|n| n.kind == "group") {
+                        7
+                    } else {
+                        6
+                    }
+                } else {
+                    0
+                };
+                if current >= max_idx {
+                    self.active_panel = Panel::Dashboard;
+                    self.dashboard_menu_state.select(Some(0));
+                } else {
+                    self.project_menu_state.select(Some(current + 1));
+                }
             }
             Panel::Main => {
                 match self.active_selection {
-                    MenuSelection::Todos => if !self.filtered_todos.is_empty() { let i = (self.todos_state.selected().unwrap_or(0) + 1) % self.filtered_todos.len(); self.todos_state.select(Some(i)); }
-                    MenuSelection::MergeRequests => if !self.filtered_mrs.is_empty() { let i = (self.mrs_state.selected().unwrap_or(0) + 1) % self.filtered_mrs.len(); self.mrs_state.select(Some(i)); }
-                    MenuSelection::Issues => if !self.filtered_issues.is_empty() { let i = (self.issues_state.selected().unwrap_or(0) + 1) % self.filtered_issues.len(); self.issues_state.select(Some(i)); }
-                    MenuSelection::Pipelines => if !self.pipelines.is_empty() { let i = (self.pipelines_state.selected().unwrap_or(0) + 1) % self.pipelines.len(); self.pipelines_state.select(Some(i)); }
-                    MenuSelection::Projects => if !self.projects.is_empty() { let i = (self.projects_state.selected().unwrap_or(0) + 1) % self.projects.len(); self.projects_state.select(Some(i)); }
-                    MenuSelection::Groups => if !self.groups.is_empty() { let i = (self.groups_state.selected().unwrap_or(0) + 1) % self.groups.len(); self.groups_state.select(Some(i)); }
-                    MenuSelection::Repository => { self.repository_tree_state.key_down(); }
-                    MenuSelection::Branches => if !self.project_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.branches_state.select(Some(i)); }
-                    MenuSelection::Commits => if !self.commits.is_empty() { let i = (self.commits_state.selected().unwrap_or(0) + 1) % self.commits.len(); self.commits_state.select(Some(i)); }
-                    MenuSelection::Boards => if !self.project_boards.is_empty() { let i = (self.project_boards_state.selected().unwrap_or(0) + 1) % self.project_boards.len(); self.project_boards_state.select(Some(i)); }
+                    MenuSelection::Todos => {
+                        if !self.filtered_todos.is_empty() {
+                            let i = (self.todos_state.selected().unwrap_or(0) + 1)
+                                % self.filtered_todos.len();
+                            self.todos_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::MergeRequests => {
+                        if !self.filtered_mrs.is_empty() {
+                            let i = (self.mrs_state.selected().unwrap_or(0) + 1)
+                                % self.filtered_mrs.len();
+                            self.mrs_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Issues => {
+                        if !self.filtered_issues.is_empty() {
+                            let i = (self.issues_state.selected().unwrap_or(0) + 1)
+                                % self.filtered_issues.len();
+                            self.issues_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Pipelines => {
+                        if !self.pipelines.is_empty() {
+                            let i = (self.pipelines_state.selected().unwrap_or(0) + 1)
+                                % self.pipelines.len();
+                            self.pipelines_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Projects => {
+                        if !self.projects.is_empty() {
+                            let i = (self.projects_state.selected().unwrap_or(0) + 1)
+                                % self.projects.len();
+                            self.projects_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Groups => {
+                        if !self.groups.is_empty() {
+                            let i =
+                                (self.groups_state.selected().unwrap_or(0) + 1) % self.groups.len();
+                            self.groups_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Repository => {
+                        self.repository_tree_state.key_down();
+                    }
+                    MenuSelection::Branches => {
+                        if !self.project_branches.is_empty() {
+                            let i = (self.branches_state.selected().unwrap_or(0) + 1)
+                                % self.project_branches.len();
+                            self.branches_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Commits => {
+                        if !self.commits.is_empty() {
+                            let i = (self.commits_state.selected().unwrap_or(0) + 1)
+                                % self.commits.len();
+                            self.commits_state.select(Some(i));
+                        }
+                    }
+                    MenuSelection::Boards => {
+                        if !self.project_boards.is_empty() {
+                            let i = (self.project_boards_state.selected().unwrap_or(0) + 1)
+                                % self.project_boards.len();
+                            self.project_boards_state.select(Some(i));
+                        }
+                    }
                     MenuSelection::Epics => {
                         if self.selected_epic.is_some() && !self.filtered_epic_issues.is_empty() {
-                            let i = (self.epic_issues_state.selected().unwrap_or(0) + 1) % self.filtered_epic_issues.len();
+                            let i = (self.epic_issues_state.selected().unwrap_or(0) + 1)
+                                % self.filtered_epic_issues.len();
                             self.epic_issues_state.select(Some(i));
-                        } else if !self.epics.is_empty() { let i = (self.epics_state.selected().unwrap_or(0) + 1) % self.epics.len(); self.epics_state.select(Some(i)); }
+                        } else if !self.epics.is_empty() {
+                            let i =
+                                (self.epics_state.selected().unwrap_or(0) + 1) % self.epics.len();
+                            self.epics_state.select(Some(i));
+                        }
                     }
                 }
                 let _ = self.tx.send(DataUpdate::CheckPagination);
@@ -74,56 +153,74 @@ impl App {
                     return;
                 }
                 match self.detail_section {
-                    DetailSection::Metadata => {
-                        match self.selected_metadata_field {
-                            MetadataField::Title => {
-                                if self.selected_mr.is_some() {
-                                    self.selected_metadata_field = MetadataField::TargetBranch;
-                                } else {
-                                    self.selected_metadata_field = MetadataField::Labels;
-                                }
+                    DetailSection::Metadata => match self.selected_metadata_field {
+                        MetadataField::Title => {
+                            if self.selected_mr.is_some() {
+                                self.selected_metadata_field = MetadataField::TargetBranch;
+                            } else {
+                                self.selected_metadata_field = MetadataField::Labels;
                             }
-                            MetadataField::TargetBranch => self.selected_metadata_field = MetadataField::Labels,
-                            MetadataField::Labels => self.selected_metadata_field = MetadataField::Assignees,
-                            MetadataField::Assignees => {
-                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
-                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
-                                else { self.detail_section = DetailSection::Description; }
-                            }
-                            MetadataField::Reviewers => {
+                        }
+                        MetadataField::TargetBranch => {
+                            self.selected_metadata_field = MetadataField::Labels
+                        }
+                        MetadataField::Labels => {
+                            self.selected_metadata_field = MetadataField::Assignees
+                        }
+                        MetadataField::Assignees => {
+                            if self.selected_mr.is_some() {
+                                self.selected_metadata_field = MetadataField::Reviewers;
+                            } else if self.selected_issue.is_some() {
                                 self.selected_metadata_field = MetadataField::Milestone;
-                            }
-                            MetadataField::Milestone => {
-                                if self.selected_mr.is_some() { self.detail_section = DetailSection::Description; }
-                                else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::StartDate; }
-                                else { self.detail_section = DetailSection::Description; }
-                            }
-                            MetadataField::StartDate => {
-                                if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::DueDate; }
-                                else { self.detail_section = DetailSection::Description; }
-                            }
-                            MetadataField::DueDate => {
-                                if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Confidential; }
-                                else { self.detail_section = DetailSection::Description; }
-                            }
-                            MetadataField::Confidential => {
+                            } else {
                                 self.detail_section = DetailSection::Description;
                             }
-                            _ => self.detail_section = DetailSection::Description,
                         }
-                    }
+                        MetadataField::Reviewers => {
+                            self.selected_metadata_field = MetadataField::Milestone;
+                        }
+                        MetadataField::Milestone => {
+                            if self.selected_mr.is_some() {
+                                self.detail_section = DetailSection::Description;
+                            } else if self.selected_issue.is_some() {
+                                self.selected_metadata_field = MetadataField::StartDate;
+                            } else {
+                                self.detail_section = DetailSection::Description;
+                            }
+                        }
+                        MetadataField::StartDate => {
+                            if self.selected_issue.is_some() {
+                                self.selected_metadata_field = MetadataField::DueDate;
+                            } else {
+                                self.detail_section = DetailSection::Description;
+                            }
+                        }
+                        MetadataField::DueDate => {
+                            if self.selected_issue.is_some() {
+                                self.selected_metadata_field = MetadataField::Confidential;
+                            } else {
+                                self.detail_section = DetailSection::Description;
+                            }
+                        }
+                        MetadataField::Confidential => {
+                            self.detail_section = DetailSection::Description;
+                        }
+                        _ => self.detail_section = DetailSection::Description,
+                    },
                     DetailSection::Description => {
                         // Do nothing (it is the bottom sub-panel of Tab 0)
                     }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
-                            let i = (self.discussion_state.selected().unwrap_or(0) + 1) % self.discussions.len();
+                            let i = (self.discussion_state.selected().unwrap_or(0) + 1)
+                                % self.discussions.len();
                             self.discussion_state.select(Some(i));
                         }
                     }
                     DetailSection::Changes => {
                         if !self.mr_diffs.is_empty() {
-                            let i = (self.mr_diff_state.selected().unwrap_or(0) + 1) % self.mr_diffs.len();
+                            let i = (self.mr_diff_state.selected().unwrap_or(0) + 1)
+                                % self.mr_diffs.len();
                             self.mr_diff_state.select(Some(i));
                         }
                     }
@@ -136,54 +233,165 @@ impl App {
         match self.active_panel {
             Panel::Dashboard => {
                 let current = self.dashboard_menu_state.selected().unwrap_or(0);
-                if current == 0 { 
+                if current == 0 {
                     if self.selected_project.is_some() {
-                        self.active_panel = Panel::Project; 
+                        self.active_panel = Panel::Project;
                         let max_idx = if let Some(p) = &self.selected_project {
-                            if p.namespace.as_ref().is_some_and(|n| n.kind == "group") { 7 } else { 6 }
-                        } else { 0 };
-                        self.project_menu_state.select(Some(max_idx)); 
+                            if p.namespace.as_ref().is_some_and(|n| n.kind == "group") {
+                                7
+                            } else {
+                                6
+                            }
+                        } else {
+                            0
+                        };
+                        self.project_menu_state.select(Some(max_idx));
                     } else {
                         self.active_panel = Panel::Explore;
                         self.explore_menu_state.select(Some(1));
                     }
+                } else {
+                    self.dashboard_menu_state.select(Some(current - 1));
                 }
-                else { self.dashboard_menu_state.select(Some(current - 1)); }
             }
             Panel::Explore => {
                 let current = self.explore_menu_state.selected().unwrap_or(0);
-                if current == 0 { self.active_panel = Panel::Dashboard; self.dashboard_menu_state.select(Some(2)); }
-                else { self.explore_menu_state.select(Some(current - 1)); }
+                if current == 0 {
+                    self.active_panel = Panel::Dashboard;
+                    self.dashboard_menu_state.select(Some(2));
+                } else {
+                    self.explore_menu_state.select(Some(current - 1));
+                }
             }
             Panel::Project => {
                 let current = self.project_menu_state.selected().unwrap_or(0);
-                if current == 0 { self.active_panel = Panel::Explore; self.explore_menu_state.select(Some(1)); }
-                else { self.project_menu_state.select(Some(current - 1)); }
-            }
-            Panel::Main => {
-                match self.active_selection {
-                    MenuSelection::Todos => if !self.filtered_todos.is_empty() { let i = if self.todos_state.selected().unwrap_or(0) == 0 { self.filtered_todos.len() - 1 } else { self.todos_state.selected().unwrap() - 1 }; self.todos_state.select(Some(i)); }
-                    MenuSelection::MergeRequests => if !self.filtered_mrs.is_empty() { let i = if self.mrs_state.selected().unwrap_or(0) == 0 { self.filtered_mrs.len() - 1 } else { self.mrs_state.selected().unwrap() - 1 }; self.mrs_state.select(Some(i)); }
-                    MenuSelection::Issues => if !self.filtered_issues.is_empty() { let i = if self.issues_state.selected().unwrap_or(0) == 0 { self.filtered_issues.len() - 1 } else { self.issues_state.selected().unwrap() - 1 }; self.issues_state.select(Some(i)); }
-                    MenuSelection::Pipelines => if !self.pipelines.is_empty() { let i = if self.pipelines_state.selected().unwrap_or(0) == 0 { self.pipelines.len() - 1 } else { self.pipelines_state.selected().unwrap() - 1 }; self.pipelines_state.select(Some(i)); }
-                    MenuSelection::Projects => if !self.projects.is_empty() { let i = if self.projects_state.selected().unwrap_or(0) == 0 { self.projects.len() - 1 } else { self.projects_state.selected().unwrap() - 1 }; self.projects_state.select(Some(i)); }
-                    MenuSelection::Groups => if !self.groups.is_empty() { let i = if self.groups_state.selected().unwrap_or(0) == 0 { self.groups.len() - 1 } else { self.groups_state.selected().unwrap() - 1 }; self.groups_state.select(Some(i)); }
-                    MenuSelection::Repository => { self.repository_tree_state.key_up(); }
-                    MenuSelection::Branches => if !self.project_branches.is_empty() { let i = if self.branches_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.branches_state.selected().unwrap() - 1 }; self.branches_state.select(Some(i)); }
-                    MenuSelection::Commits => if !self.commits.is_empty() { let i = if self.commits_state.selected().unwrap_or(0) == 0 { self.commits.len() - 1 } else { self.commits_state.selected().unwrap() - 1 }; self.commits_state.select(Some(i)); }
-                    MenuSelection::Boards => if !self.project_boards.is_empty() { let i = if self.project_boards_state.selected().unwrap_or(0) == 0 { self.project_boards.len() - 1 } else { self.project_boards_state.selected().unwrap() - 1 }; self.project_boards_state.select(Some(i)); }
-                    MenuSelection::Epics => {
-                        if self.selected_epic.is_some() && !self.filtered_epic_issues.is_empty() {
-                            let i = if self.epic_issues_state.selected().unwrap_or(0) == 0 { self.filtered_epic_issues.len() - 1 } else { self.epic_issues_state.selected().unwrap() - 1 };
-                            self.epic_issues_state.select(Some(i));
-                        } else if !self.epics.is_empty() { let i = if self.epics_state.selected().unwrap_or(0) == 0 { self.epics.len() - 1 } else { self.epics_state.selected().unwrap() - 1 }; self.epics_state.select(Some(i)); }
-                    }
+                if current == 0 {
+                    self.active_panel = Panel::Explore;
+                    self.explore_menu_state.select(Some(1));
+                } else {
+                    self.project_menu_state.select(Some(current - 1));
                 }
             }
+            Panel::Main => match self.active_selection {
+                MenuSelection::Todos => {
+                    if !self.filtered_todos.is_empty() {
+                        let i = if self.todos_state.selected().unwrap_or(0) == 0 {
+                            self.filtered_todos.len() - 1
+                        } else {
+                            self.todos_state.selected().unwrap() - 1
+                        };
+                        self.todos_state.select(Some(i));
+                    }
+                }
+                MenuSelection::MergeRequests => {
+                    if !self.filtered_mrs.is_empty() {
+                        let i = if self.mrs_state.selected().unwrap_or(0) == 0 {
+                            self.filtered_mrs.len() - 1
+                        } else {
+                            self.mrs_state.selected().unwrap() - 1
+                        };
+                        self.mrs_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Issues => {
+                    if !self.filtered_issues.is_empty() {
+                        let i = if self.issues_state.selected().unwrap_or(0) == 0 {
+                            self.filtered_issues.len() - 1
+                        } else {
+                            self.issues_state.selected().unwrap() - 1
+                        };
+                        self.issues_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Pipelines => {
+                    if !self.pipelines.is_empty() {
+                        let i = if self.pipelines_state.selected().unwrap_or(0) == 0 {
+                            self.pipelines.len() - 1
+                        } else {
+                            self.pipelines_state.selected().unwrap() - 1
+                        };
+                        self.pipelines_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Projects => {
+                    if !self.projects.is_empty() {
+                        let i = if self.projects_state.selected().unwrap_or(0) == 0 {
+                            self.projects.len() - 1
+                        } else {
+                            self.projects_state.selected().unwrap() - 1
+                        };
+                        self.projects_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Groups => {
+                    if !self.groups.is_empty() {
+                        let i = if self.groups_state.selected().unwrap_or(0) == 0 {
+                            self.groups.len() - 1
+                        } else {
+                            self.groups_state.selected().unwrap() - 1
+                        };
+                        self.groups_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Repository => {
+                    self.repository_tree_state.key_up();
+                }
+                MenuSelection::Branches => {
+                    if !self.project_branches.is_empty() {
+                        let i = if self.branches_state.selected().unwrap_or(0) == 0 {
+                            self.project_branches.len() - 1
+                        } else {
+                            self.branches_state.selected().unwrap() - 1
+                        };
+                        self.branches_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Commits => {
+                    if !self.commits.is_empty() {
+                        let i = if self.commits_state.selected().unwrap_or(0) == 0 {
+                            self.commits.len() - 1
+                        } else {
+                            self.commits_state.selected().unwrap() - 1
+                        };
+                        self.commits_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Boards => {
+                    if !self.project_boards.is_empty() {
+                        let i = if self.project_boards_state.selected().unwrap_or(0) == 0 {
+                            self.project_boards.len() - 1
+                        } else {
+                            self.project_boards_state.selected().unwrap() - 1
+                        };
+                        self.project_boards_state.select(Some(i));
+                    }
+                }
+                MenuSelection::Epics => {
+                    if self.selected_epic.is_some() && !self.filtered_epic_issues.is_empty() {
+                        let i = if self.epic_issues_state.selected().unwrap_or(0) == 0 {
+                            self.filtered_epic_issues.len() - 1
+                        } else {
+                            self.epic_issues_state.selected().unwrap() - 1
+                        };
+                        self.epic_issues_state.select(Some(i));
+                    } else if !self.epics.is_empty() {
+                        let i = if self.epics_state.selected().unwrap_or(0) == 0 {
+                            self.epics.len() - 1
+                        } else {
+                            self.epics_state.selected().unwrap() - 1
+                        };
+                        self.epics_state.select(Some(i));
+                    }
+                }
+            },
             Panel::MainDetail => {
                 if self.active_selection == MenuSelection::Pipelines {
                     if !self.jobs.is_empty() {
-                        let i = if self.jobs_state.selected().unwrap_or(0) == 0 { self.jobs.len() - 1 } else { self.jobs_state.selected().unwrap() - 1 };
+                        let i = if self.jobs_state.selected().unwrap_or(0) == 0 {
+                            self.jobs.len() - 1
+                        } else {
+                            self.jobs_state.selected().unwrap() - 1
+                        };
                         self.jobs_state.select(Some(i));
                     }
                     return;
@@ -194,7 +402,9 @@ impl App {
                             MetadataField::Title => {
                                 // Do nothing (it is the top sub-panel of Tab 0)
                             }
-                            MetadataField::TargetBranch => self.selected_metadata_field = MetadataField::Title,
+                            MetadataField::TargetBranch => {
+                                self.selected_metadata_field = MetadataField::Title
+                            }
                             MetadataField::Labels => {
                                 if self.selected_mr.is_some() {
                                     self.selected_metadata_field = MetadataField::TargetBranch;
@@ -202,33 +412,58 @@ impl App {
                                     self.selected_metadata_field = MetadataField::Title;
                                 }
                             }
-                            MetadataField::Assignees => self.selected_metadata_field = MetadataField::Labels,
-                            MetadataField::Reviewers => self.selected_metadata_field = MetadataField::Assignees,
-                            MetadataField::Milestone => {
-                                if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Reviewers; }
-                                else { self.selected_metadata_field = MetadataField::Assignees; }
+                            MetadataField::Assignees => {
+                                self.selected_metadata_field = MetadataField::Labels
                             }
-                            MetadataField::StartDate => self.selected_metadata_field = MetadataField::Milestone,
-                            MetadataField::DueDate => self.selected_metadata_field = MetadataField::StartDate,
-                            MetadataField::Confidential => self.selected_metadata_field = MetadataField::DueDate,
+                            MetadataField::Reviewers => {
+                                self.selected_metadata_field = MetadataField::Assignees
+                            }
+                            MetadataField::Milestone => {
+                                if self.selected_mr.is_some() {
+                                    self.selected_metadata_field = MetadataField::Reviewers;
+                                } else {
+                                    self.selected_metadata_field = MetadataField::Assignees;
+                                }
+                            }
+                            MetadataField::StartDate => {
+                                self.selected_metadata_field = MetadataField::Milestone
+                            }
+                            MetadataField::DueDate => {
+                                self.selected_metadata_field = MetadataField::StartDate
+                            }
+                            MetadataField::Confidential => {
+                                self.selected_metadata_field = MetadataField::DueDate
+                            }
                             _ => self.selected_metadata_field = MetadataField::Title,
                         }
                     }
                     DetailSection::Description => {
                         self.detail_section = DetailSection::Metadata;
-                        if self.selected_mr.is_some() { self.selected_metadata_field = MetadataField::Milestone; }
-                        else if self.selected_issue.is_some() { self.selected_metadata_field = MetadataField::Confidential; }
-                        else { self.selected_metadata_field = MetadataField::Assignees; }
+                        if self.selected_mr.is_some() {
+                            self.selected_metadata_field = MetadataField::Milestone;
+                        } else if self.selected_issue.is_some() {
+                            self.selected_metadata_field = MetadataField::Confidential;
+                        } else {
+                            self.selected_metadata_field = MetadataField::Assignees;
+                        }
                     }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
-                            let i = if self.discussion_state.selected().unwrap_or(0) == 0 { self.discussions.len() - 1 } else { self.discussion_state.selected().unwrap() - 1 };
+                            let i = if self.discussion_state.selected().unwrap_or(0) == 0 {
+                                self.discussions.len() - 1
+                            } else {
+                                self.discussion_state.selected().unwrap() - 1
+                            };
                             self.discussion_state.select(Some(i));
                         }
                     }
                     DetailSection::Changes => {
                         if !self.mr_diffs.is_empty() {
-                            let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 { self.mr_diffs.len() - 1 } else { self.mr_diff_state.selected().unwrap() - 1 };
+                            let i = if self.mr_diff_state.selected().unwrap_or(0) == 0 {
+                                self.mr_diffs.len() - 1
+                            } else {
+                                self.mr_diff_state.selected().unwrap() - 1
+                            };
                             self.mr_diff_state.select(Some(i));
                         }
                     }
@@ -277,19 +512,40 @@ impl App {
             MenuSelection::Issues => (Some("issues"), self.issues_state.selected()),
             _ => (None, None),
         };
-        
+
         if let (Some(s), Some(i)) = (scope, idx) {
             let header = match self.active_selection {
-                MenuSelection::Todos => self.filtered_todos.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
-                MenuSelection::MergeRequests => self.filtered_mrs.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
-                MenuSelection::Issues => self.filtered_issues.get(i).and_then(|item| if let GroupedItem::Header(h) = item { Some(h.clone()) } else { None }),
+                MenuSelection::Todos => self.filtered_todos.get(i).and_then(|item| {
+                    if let GroupedItem::Header(h) = item {
+                        Some(h.clone())
+                    } else {
+                        None
+                    }
+                }),
+                MenuSelection::MergeRequests => self.filtered_mrs.get(i).and_then(|item| {
+                    if let GroupedItem::Header(h) = item {
+                        Some(h.clone())
+                    } else {
+                        None
+                    }
+                }),
+                MenuSelection::Issues => self.filtered_issues.get(i).and_then(|item| {
+                    if let GroupedItem::Header(h) = item {
+                        Some(h.clone())
+                    } else {
+                        None
+                    }
+                }),
                 _ => None,
             };
 
             if let Some(h) = header {
                 let key = format!("{}:{}", s, h);
-                if self.collapsed_groups.contains(&key) { self.collapsed_groups.remove(&key); }
-                else { self.collapsed_groups.insert(key); }
+                if self.collapsed_groups.contains(&key) {
+                    self.collapsed_groups.remove(&key);
+                } else {
+                    self.collapsed_groups.insert(key);
+                }
                 self.filter_lists();
                 return true;
             }
@@ -303,10 +559,16 @@ impl App {
                 self.active_panel = Panel::Main;
             }
             Panel::Main => {
-                if self.toggle_group_collapse() { return; }
+                if self.toggle_group_collapse() {
+                    return;
+                }
                 match self.active_selection {
                     MenuSelection::Pipelines => {
-                        if let Some(p) = self.pipelines_state.selected().and_then(|i| self.filtered_pipelines.get(i)) {
+                        if let Some(p) = self
+                            .pipelines_state
+                            .selected()
+                            .and_then(|i| self.filtered_pipelines.get(i))
+                        {
                             self.selected_pipeline = Some(p.clone());
                             self.active_panel = Panel::MainDetail;
                             self.detail_section = DetailSection::Metadata;
@@ -324,9 +586,17 @@ impl App {
                         }
                     }
                     MenuSelection::Repository => {
-                        if let Some((selected_path, item)) = self.repository_tree_state.selected().last().and_then(|path| {
-                            self.repository_tree.iter().find(|i| &i.path == path).map(|item| (path, item))
-                        }) {
+                        if let Some((selected_path, item)) = self
+                            .repository_tree_state
+                            .selected()
+                            .last()
+                            .and_then(|path| {
+                                self.repository_tree
+                                    .iter()
+                                    .find(|i| &i.path == path)
+                                    .map(|item| (path, item))
+                            })
+                        {
                             if item.r#type == "blob" {
                                 self.view_mode = ViewMode::Tree;
                                 self.file_scroll = 0;
@@ -338,7 +608,12 @@ impl App {
                     }
                     MenuSelection::Epics => {
                         if self.selected_epic.is_none() {
-                            if let Some(epic) = self.epics_state.selected().and_then(|i| self.epics.get(i)).cloned() {
+                            if let Some(epic) = self
+                                .epics_state
+                                .selected()
+                                .and_then(|i| self.epics.get(i))
+                                .cloned()
+                            {
                                 let (group_id, iid) = (epic.group_id, epic.iid);
                                 self.selected_epic = Some(epic);
                                 self.epic_issues.clear();
@@ -347,7 +622,12 @@ impl App {
                                     let _ = self.fetch_epic_issues(gid, iid).await;
                                 }
                             }
-                        } else if let Some(issue) = self.epic_issues_state.selected().and_then(|i| self.filtered_epic_issues.get(i)).cloned() {
+                        } else if let Some(issue) = self
+                            .epic_issues_state
+                            .selected()
+                            .and_then(|i| self.filtered_epic_issues.get(i))
+                            .cloned()
+                        {
                             self.selected_issue = Some(issue);
                             self.selected_mr = None;
                             self.discussions.clear();
@@ -356,7 +636,12 @@ impl App {
                         }
                     }
                     MenuSelection::Boards => {
-                        if let Some(board) = self.project_boards_state.selected().and_then(|i| self.project_boards.get(i)).cloned() {
+                        if let Some(board) = self
+                            .project_boards_state
+                            .selected()
+                            .and_then(|i| self.project_boards.get(i))
+                            .cloned()
+                        {
                             self.selected_board = Some(board.clone());
                             self.view_mode = ViewMode::Board;
                             self.board_lists.clear();
@@ -369,7 +654,10 @@ impl App {
                         if self.mr_diff_state.selected().is_none() {
                             self.mr_diff_state.select(Some(0));
                         }
-                        let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
+                        let (pid, iid) = {
+                            let m = self.selected_mr.as_ref().unwrap();
+                            (m.project_id, m.iid)
+                        };
                         let _ = self.fetch_mr_diffs(pid, iid).await;
                     }
                     _ => {
@@ -386,7 +674,10 @@ impl App {
                     if self.mr_diff_state.selected().is_none() {
                         self.mr_diff_state.select(Some(0));
                     }
-                    let (pid, iid) = { let m = self.selected_mr.as_ref().unwrap(); (m.project_id, m.iid) };
+                    let (pid, iid) = {
+                        let m = self.selected_mr.as_ref().unwrap();
+                        (m.project_id, m.iid)
+                    };
                     let _ = self.fetch_mr_diffs(pid, iid).await;
                 } else if self.active_selection == MenuSelection::Pipelines {
                     // If the user pressed Enter on a pipeline before its jobs finished
@@ -399,7 +690,12 @@ impl App {
                         let _ = self.update_preview().await;
                         let _ = self.fetch_jobs_sync(pipeline.project_id, pipeline.id).await;
                     }
-                    if let Some(j) = self.jobs_state.selected().and_then(|i| self.jobs.get(i)).cloned() {
+                    if let Some(j) = self
+                        .jobs_state
+                        .selected()
+                        .and_then(|i| self.jobs.get(i))
+                        .cloned()
+                    {
                         self.selected_job = Some(j.clone());
                         self.view_mode = ViewMode::JobLog;
                         self.job_log_scroll = 0;

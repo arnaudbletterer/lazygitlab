@@ -42,7 +42,9 @@ async fn live_full_create_issue_optimistic_insert() {
     if common::skip_if_live_unavailable("live_full_create_issue_optimistic_insert") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -61,10 +63,20 @@ async fn live_full_create_issue_optimistic_insert() {
     let initial_issue_count = app.issues.len();
 
     let _ = app.create_issue().await;
-    assert_eq!(app.issues.len(), initial_issue_count + 1, "the pending issue should be inserted before the API call returns");
-    let pending = app.issues.iter().find(|i| i.title == "Test issue from optimistic insert")
+    assert_eq!(
+        app.issues.len(),
+        initial_issue_count + 1,
+        "the pending issue should be inserted before the API call returns"
+    );
+    let pending = app
+        .issues
+        .iter()
+        .find(|i| i.title == "Test issue from optimistic insert")
         .expect("the pending issue should be in the local list");
-    assert!(pending.web_url.is_empty(), "pending issue should have empty web_url");
+    assert!(
+        pending.web_url.is_empty(),
+        "pending issue should have empty web_url"
+    );
 
     wait_for_loading_finish(&mut app, &mut rx).await;
 }
@@ -75,7 +87,9 @@ async fn live_full_remove_pending_issue_data_update() {
     if common::skip_if_live_unavailable("live_full_remove_pending_issue_data_update") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -118,8 +132,14 @@ async fn live_full_remove_pending_issue_data_update() {
     let before = app.issues.len();
     assert_eq!(app.issues.iter().filter(|i| i.iid == fake_iid).count(), 1);
 
-    let _ = app.tx.send(DataUpdate::RemovePendingIssue { iid: fake_iid });
+    let _ = app
+        .tx
+        .send(DataUpdate::RemovePendingIssue { iid: fake_iid });
     wait_for_loading_finish(&mut app, &mut rx).await;
-    assert_eq!(app.issues.len(), before - 1, "the pending issue should be removed");
+    assert_eq!(
+        app.issues.len(),
+        before - 1,
+        "the pending issue should be removed"
+    );
     assert_eq!(app.issues.iter().filter(|i| i.iid == fake_iid).count(), 0);
 }

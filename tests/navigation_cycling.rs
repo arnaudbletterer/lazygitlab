@@ -1,18 +1,27 @@
-use lazygitlab::models::*;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::path;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use gitlab::GitlabBuilder;
+use lazygitlab::models::*;
+use wiremock::matchers::path;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
-    Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-    let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+    Mock::given(path("/api/v4/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
+        .mount(&server)
+        .await;
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+        .insecure()
+        .build_async()
+        .await
+        .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx);
     app.dashboard_menu_state.select(Some(1));
     app.active_selection = MenuSelection::MergeRequests;
-    
+
     let mr = MergeRequest {
         iid: 1,
         project_id: 1,
@@ -53,15 +62,28 @@ async fn test_panel_cycling_forward() {
     let (_server, mut app) = setup_app().await;
     app.active_panel = Panel::Main;
 
-    let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
-    let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    let right = KeyEvent {
+        code: KeyCode::Right,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
+    let tab = KeyEvent {
+        code: KeyCode::Tab,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
 
     // Under app's new logic:
     // Tab cycles Sidebar <-> Main panels (excluding MainDetail).
-    
+
     // Main -> Sidebar (Dashboard)
     app.handle_key(tab).await;
-    assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
+    assert!(matches!(
+        app.active_panel,
+        Panel::Dashboard | Panel::Explore | Panel::Project
+    ));
 
     // Sidebar -> Main
     app.handle_key(tab).await;
@@ -88,15 +110,28 @@ async fn test_panel_cycling_backward() {
     let (_server, mut app) = setup_app().await;
     app.active_panel = Panel::Main;
 
-    let left = KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
-    let shift_tab = KeyEvent { code: KeyCode::BackTab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    let left = KeyEvent {
+        code: KeyCode::Left,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
+    let shift_tab = KeyEvent {
+        code: KeyCode::BackTab,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
 
     // Under app's new logic:
     // BackTab cycles Sidebar <-> Main panels (excluding MainDetail).
 
     // Main -> Sidebar
     app.handle_key(shift_tab).await;
-    assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
+    assert!(matches!(
+        app.active_panel,
+        Panel::Dashboard | Panel::Explore | Panel::Project
+    ));
 
     // Sidebar -> Main
     app.handle_key(shift_tab).await;
@@ -104,12 +139,15 @@ async fn test_panel_cycling_backward() {
 
     // Main -> Sidebar via Left
     app.handle_key(left).await;
-    assert!(matches!(app.active_panel, Panel::Dashboard | Panel::Explore | Panel::Project));
+    assert!(matches!(
+        app.active_panel,
+        Panel::Dashboard | Panel::Explore | Panel::Project
+    ));
 
     // Focus MainDetail again to test Tab cycling and Left navigation
     app.active_panel = Panel::MainDetail;
     app.detail_section = DetailSection::Discussions;
-    
+
     // Focused on MainDetail + BackTab cycles detail tabs backward locally
     app.handle_key(shift_tab).await;
     assert_eq!(app.active_panel, Panel::MainDetail);
@@ -125,14 +163,31 @@ async fn test_job_log_toggle_section() {
     let (_server, mut app) = setup_app().await;
     app.view_mode = ViewMode::JobLog;
     app.job_log_lines = vec![
-        LogLine { timestamp: "t".into(), content: "section_start:1:s1".into(), section: Some("s1".into()), is_section_start: true, is_section_end: false },
-        LogLine { timestamp: "t".into(), content: "content".into(), section: Some("s1".into()), is_section_start: false, is_section_end: false },
+        LogLine {
+            timestamp: "t".into(),
+            content: "section_start:1:s1".into(),
+            section: Some("s1".into()),
+            is_section_start: true,
+            is_section_end: false,
+        },
+        LogLine {
+            timestamp: "t".into(),
+            content: "content".into(),
+            section: Some("s1".into()),
+            is_section_start: false,
+            is_section_end: false,
+        },
     ];
     app.job_log_scroll = 0;
     app.collapsed_sections.clear();
 
-    let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
-    
+    let tab = KeyEvent {
+        code: KeyCode::Tab,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
+
     // Tab should toggle section instead of cycling panels
     app.handle_key(tab).await;
     assert!(app.collapsed_sections.contains("s1"));
@@ -147,8 +202,18 @@ async fn test_vim_keys_navigation() {
     let (_server, mut app) = setup_app().await;
     app.active_panel = Panel::Main;
 
-    let l = KeyEvent { code: KeyCode::Char('l'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
-    let h = KeyEvent { code: KeyCode::Char('h'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    let l = KeyEvent {
+        code: KeyCode::Char('l'),
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
+    let h = KeyEvent {
+        code: KeyCode::Char('h'),
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
 
     // Main -> MainDetail
     app.handle_key(l).await;

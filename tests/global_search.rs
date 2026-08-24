@@ -1,25 +1,31 @@
-use lazygitlab::models::{App, SearchResult};
 use gitlab::GitlabBuilder;
+use lazygitlab::models::{App, SearchResult};
 use tokio::sync::mpsc;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{path, method, query_param, query_param_is_missing};
+use wiremock::matchers::{method, path, query_param, query_param_is_missing};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_hybrid_search_logic() {
     let server = MockServer::start().await;
     let (tx, mut rx) = mpsc::unbounded_channel();
-    
+
     // Mock for version check (often used by Gitlab client)
     Mock::given(method("GET"))
         .and(path("/api/v4/version"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "version": "15.0.0", "revision": "rev" })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "version": "15.0.0", "revision": "rev" })),
+        )
         .mount(&server)
         .await;
 
     // Mock for current user
     Mock::given(method("GET"))
         .and(path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "id": 1, "username": "u" })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({ "id": 1, "username": "u" })),
+        )
         .mount(&server)
         .await;
 
@@ -51,8 +57,8 @@ async fn test_hybrid_search_logic() {
         .and(path("/api/v4/search"))
         .and(query_param("scope", "issues"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            { 
-                "id": 10, "iid": 1, "project_id": 1, "title": "Member Issue", 
+            {
+                "id": 10, "iid": 1, "project_id": 1, "title": "Member Issue",
                 "state": "opened", "web_url": "http://url", "author": { "id": 1, "username": "u" },
                 "assignees": [], "labels": []
             }
@@ -65,8 +71,8 @@ async fn test_hybrid_search_logic() {
         .and(path("/api/v4/search"))
         .and(query_param("scope", "merge_requests"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            { 
-                "id": 20, "iid": 1, "project_id": 1, "title": "Member MR", 
+            {
+                "id": 20, "iid": 1, "project_id": 1, "title": "Member MR",
                 "state": "merged", "web_url": "http://url", "author": { "id": 1, "username": "u" },
                 "assignees": [], "labels": []
             }
@@ -94,7 +100,7 @@ async fn test_hybrid_search_logic() {
         .mount(&server)
         .await;
 
-    let client = GitlabBuilder::new(server.uri().replace("http://",""), "t")
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
         .insecure()
         .build_async()
         .await
@@ -123,16 +129,28 @@ async fn test_hybrid_search_logic() {
 
     // 3. Verify results (should only contain the one in member projects)
     assert_eq!(app.search_results.len(), 3);
-    
+
     let mut found_issue = false;
     let mut found_project = false;
     let mut found_mr = false;
 
     for res in &app.search_results {
         match res {
-            SearchResult::Project(p) => { if p.id == 1 { found_project = true; } }
-            SearchResult::Issue(i) => { if i.project_id == 1 { found_issue = true; } }
-            SearchResult::MergeRequest(m) => { if m.project_id == 1 { found_mr = true; } }
+            SearchResult::Project(p) => {
+                if p.id == 1 {
+                    found_project = true;
+                }
+            }
+            SearchResult::Issue(i) => {
+                if i.project_id == 1 {
+                    found_issue = true;
+                }
+            }
+            SearchResult::MergeRequest(m) => {
+                if m.project_id == 1 {
+                    found_mr = true;
+                }
+            }
         }
     }
 

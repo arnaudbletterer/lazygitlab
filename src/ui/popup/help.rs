@@ -1,12 +1,12 @@
-use ratatui::{prelude::*, widgets::*};
 use crate::models::App;
 use crate::ui::widgets::centered_rect;
+use ratatui::{prelude::*, widgets::*};
 
 pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(65, 75, f.area());
     app.set_rect("popup_help", area);
     f.render_widget(Clear, area);
-    
+
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
@@ -14,7 +14,10 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         .border_style(Style::default().fg(app.theme.border));
     f.render_widget(block, area);
 
-    let inner = area.inner(Margin { horizontal: 2, vertical: 2 });
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 2,
+    });
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -28,8 +31,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .title(" Search Command ")
             .border_style(Style::default().fg(app.theme.highlight_bg));
-        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str())
-            .block(filter_block);
+        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str()).block(filter_block);
         f.render_widget(filter_paragraph, chunks[0]);
 
         f.set_cursor_position(Position::new(
@@ -38,12 +40,27 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         ));
     }
 
-    let items: Vec<ListItem> = app.filtered_help.iter()
+    let items: Vec<ListItem> = app
+        .filtered_help
+        .iter()
         .map(|h| {
             let line = Line::from(vec![
-                Span::styled(format!("{:<15}", h.shortcut), Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{:<35}", h.description), Style::default().fg(app.theme.shortcut_desc)),
-                Span::styled(format!("[{}]", h.category), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
+                Span::styled(
+                    format!("{:<15}", h.shortcut),
+                    Style::default()
+                        .fg(app.theme.shortcut_key)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{:<35}", h.description),
+                    Style::default().fg(app.theme.shortcut_desc),
+                ),
+                Span::styled(
+                    format!("[{}]", h.category),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                ),
             ]);
             ListItem::new(line)
         })
@@ -54,4 +71,3 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         .highlight_symbol(">> ");
     f.render_stateful_widget(list, chunks[1], &mut app.help_state);
 }
-

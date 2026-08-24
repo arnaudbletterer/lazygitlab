@@ -1641,6 +1641,7 @@ dependencies = [
  "dotenvy",
  "emojis",
  "gitlab",
+ "http",
  "insta",
  "mockito",
  "pulldown-cmark",

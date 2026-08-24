@@ -1,9 +1,9 @@
-use lazygitlab::models::App;
-use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
+use gitlab::GitlabBuilder;
+use lazygitlab::models::App;
 use std::env;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use std::time::{Instant, Duration};
 
 mod common;
 
@@ -48,7 +48,11 @@ async fn live_full_massive_mr_diff_automatic_fetch() {
             return;
         }
     };
-    let expected_files = ground.massive_mr.as_ref().map(|m| m.files_count).unwrap_or(0) as usize;
+    let expected_files = ground
+        .massive_mr
+        .as_ref()
+        .map(|m| m.files_count)
+        .unwrap_or(0) as usize;
 
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut app = App::new(client, tx.clone());
@@ -59,14 +63,18 @@ async fn live_full_massive_mr_diff_automatic_fetch() {
         .build()
         .unwrap();
     let mr: lazygitlab::models::MergeRequest =
-        gitlab::api::AsyncQuery::query_async(&endpoint, &app.gitlab).await.unwrap();
+        gitlab::api::AsyncQuery::query_async(&endpoint, &app.gitlab)
+            .await
+            .unwrap();
     app.selected_mr = Some(mr.clone());
 
     println!(
         "Fetching MR !{} diffs (project {}, expecting ~{} files)...",
         mr_iid, project_id, expected_files
     );
-    app.fetch_mr_diffs(project_id, mr_iid).await.expect("Failed to start fetch");
+    app.fetch_mr_diffs(project_id, mr_iid)
+        .await
+        .expect("Failed to start fetch");
 
     let start = Instant::now();
     let mut all_fetched = false;
@@ -95,7 +103,13 @@ async fn live_full_massive_mr_diff_automatic_fetch() {
 
     let last_file = app.mr_diffs.last().unwrap();
     assert!(!last_file.collapsed, "Last file should be uncollapsed");
-    assert!(last_file.display_lines.len() > 2, "Last file should have content");
+    assert!(
+        last_file.display_lines.len() > 2,
+        "Last file should have content"
+    );
 
-    println!("SUCCESS: All {} files were fetched automatically!", app.mr_diffs.len());
+    println!(
+        "SUCCESS: All {} files were fetched automatically!",
+        app.mr_diffs.len()
+    );
 }

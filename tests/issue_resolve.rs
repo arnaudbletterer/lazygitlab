@@ -2,7 +2,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use gitlab::GitlabBuilder;
-use lazygitlab::models::{App, DataUpdate, MenuSelection, Panel, Context, DetailSection};
+use lazygitlab::models::{App, Context, DataUpdate, DetailSection, MenuSelection, Panel};
 
 mod common;
 
@@ -37,10 +37,16 @@ async fn wait_for_loading_finish(app: &mut App, rx: &mut mpsc::UnboundedReceiver
 }
 
 fn make_issue_discussion(id: &str, resolved: bool) -> lazygitlab::models::Discussion {
-    use lazygitlab::models::{Discussion, Note, Author};
+    use lazygitlab::models::{Author, Discussion, Note};
     Discussion {
         id: id.to_string(),
-        notes: vec![Note { body: "Test note".into(), author: Author::new(1, "u".into()), system: false, position: None, context: None }],
+        notes: vec![Note {
+            body: "Test note".into(),
+            author: Author::new(1, "u".into()),
+            system: false,
+            position: None,
+            context: None,
+        }],
         individual_note: false,
         collapsed: false,
         resolved: Some(resolved),
@@ -50,10 +56,13 @@ fn make_issue_discussion(id: &str, resolved: bool) -> lazygitlab::models::Discus
 #[tokio::test]
 #[ignore = "live_full"]
 async fn live_full_issue_resolve_discussion_sends_correct_payload() {
-    if common::skip_if_live_unavailable("live_full_issue_resolve_discussion_sends_correct_payload") {
+    if common::skip_if_live_unavailable("live_full_issue_resolve_discussion_sends_correct_payload")
+    {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -102,9 +111,15 @@ async fn live_full_issue_resolve_discussion_sends_correct_payload() {
     // the call dispatches (the live call would actually fire).
     let _ = ground;
     let res = app.resolve_issue_discussion().await;
-    assert!(res.is_ok(), "resolve_issue_discussion should not error locally");
+    assert!(
+        res.is_ok(),
+        "resolve_issue_discussion should not error locally"
+    );
     let msg = app.status_message.as_deref().unwrap_or("");
-    assert!(msg.to_lowercase().contains("resolving") || msg.to_lowercase().contains("reopening"), "expected status to mention resolving/reopening, got {msg:?}");
+    assert!(
+        msg.to_lowercase().contains("resolving") || msg.to_lowercase().contains("reopening"),
+        "expected status to mention resolving/reopening, got {msg:?}"
+    );
     wait_for_loading_finish(&mut app, &mut rx).await;
 }
 
@@ -114,7 +129,9 @@ async fn live_full_issue_resolve_no_discussion_status_message() {
     if common::skip_if_live_unavailable("live_full_issue_resolve_no_discussion_status_message") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, mut _rx) = mpsc::unbounded_channel();
@@ -157,7 +174,10 @@ async fn live_full_issue_resolve_no_discussion_status_message() {
     let res = app.resolve_issue_discussion().await;
     assert!(res.is_ok());
     let msg = app.status_message.as_deref().unwrap_or("");
-    assert!(msg.to_lowercase().contains("no issue discussion"), "expected a 'no discussion' status, got {msg:?}");
+    assert!(
+        msg.to_lowercase().contains("no issue discussion"),
+        "expected a 'no discussion' status, got {msg:?}"
+    );
 }
 
 #[tokio::test]
@@ -166,7 +186,9 @@ async fn live_full_issue_s_key_dispatches_to_issue_resolve() {
     if common::skip_if_live_unavailable("live_full_issue_s_key_dispatches_to_issue_resolve") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -210,13 +232,24 @@ async fn live_full_issue_s_key_dispatches_to_issue_resolve() {
     app.discussions = vec![make_issue_discussion("d-1", false)];
     app.discussion_state.select(Some(0));
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     // Lowercase 's' (the resolve key)
-    app.handle_key(KeyEvent { code: KeyCode::Char('s'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE }).await;
+    app.handle_key(KeyEvent {
+        code: KeyCode::Char('s'),
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+    .await;
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     let msg = app.status_message.as_deref().unwrap_or("");
-    assert!(msg.to_lowercase().contains("resolving") || msg.to_lowercase().contains("reopening") || msg.to_lowercase().contains("issue discussion"), "expected issue-resolve status, got {msg:?}");
+    assert!(
+        msg.to_lowercase().contains("resolving")
+            || msg.to_lowercase().contains("reopening")
+            || msg.to_lowercase().contains("issue discussion"),
+        "expected issue-resolve status, got {msg:?}"
+    );
 }
 
 #[tokio::test]
@@ -225,7 +258,9 @@ async fn live_full_help_lists_resolve_shortcut_for_issues() {
     if common::skip_if_live_unavailable("live_full_help_lists_resolve_shortcut_for_issues") {
         return;
     }
-    let Some(client) = try_build_client().await else { return; };
+    let Some(client) = try_build_client().await else {
+        return;
+    };
     let ground = common::test_ground();
 
     let (tx, _rx) = mpsc::unbounded_channel();
@@ -269,6 +304,11 @@ async fn live_full_help_lists_resolve_shortcut_for_issues() {
     app.discussions = vec![make_issue_discussion("d-1", false)];
 
     let items = app.get_available_actions();
-    let has_resolve = items.iter().any(|i| i.category == "Discussion" && i.shortcut.contains("s"));
-    assert!(has_resolve, "help should list the s (resolve discussion) shortcut for issues with discussions");
+    let has_resolve = items
+        .iter()
+        .any(|i| i.category == "Discussion" && i.shortcut.contains("s"));
+    assert!(
+        has_resolve,
+        "help should list the s (resolve discussion) shortcut for issues with discussions"
+    );
 }

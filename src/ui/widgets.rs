@@ -1,6 +1,6 @@
-use ratatui::{prelude::*, widgets::*};
 use chrono::{DateTime, Utc};
-use chrono_humanize::{HumanTime, Accuracy, Tense};
+use chrono_humanize::{Accuracy, HumanTime, Tense};
+use ratatui::{prelude::*, widgets::*};
 
 pub fn format_duration(seconds: f64) -> String {
     let hours = (seconds / 3600.0).floor() as u64;
@@ -15,18 +15,25 @@ pub fn format_duration(seconds: f64) -> String {
 }
 
 pub fn get_elapsed_time(started_at: &str) -> String {
-    if started_at.is_empty() { return "00:00".to_string(); }
-    
+    if started_at.is_empty() {
+        return "00:00".to_string();
+    }
+
     let now = Utc::now();
     let dt_parsed = DateTime::parse_from_rfc3339(started_at)
         .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|_| DateTime::parse_from_str(started_at, "%Y-%m-%dT%H:%M:%S%.3fZ").map(|dt| dt.with_timezone(&Utc)));
+        .or_else(|_| {
+            DateTime::parse_from_str(started_at, "%Y-%m-%dT%H:%M:%S%.3fZ")
+                .map(|dt| dt.with_timezone(&Utc))
+        });
 
     match dt_parsed {
         Ok(dt_utc) => {
             let duration = now.signed_duration_since(dt_utc);
             let seconds = duration.num_seconds() as f64;
-            if seconds < 0.0 { return "00:00".to_string(); }
+            if seconds < 0.0 {
+                return "00:00".to_string();
+            }
             format_duration(seconds)
         }
         Err(_) => "??:??".to_string(),
@@ -34,23 +41,23 @@ pub fn get_elapsed_time(started_at: &str) -> String {
 }
 
 pub fn format_relative_time(datetime_str: &str) -> String {
-    if datetime_str.is_empty() { return "None".to_string(); }
-    
+    if datetime_str.is_empty() {
+        return "None".to_string();
+    }
+
     match DateTime::parse_from_rfc3339(datetime_str) {
         Ok(dt) => {
             let dt_utc: DateTime<Utc> = dt.with_timezone(&Utc);
             let ht = HumanTime::from(dt_utc);
             ht.to_text_en(Accuracy::Rough, Tense::Past)
         }
-        Err(_) => {
-            match DateTime::parse_from_str(datetime_str, "%Y-%m-%dT%H:%M:%S%.3fZ") {
-                Ok(dt) => {
-                    let ht = HumanTime::from(dt);
-                    ht.to_text_en(Accuracy::Rough, Tense::Past)
-                }
-                Err(_) => datetime_str.to_string(),
+        Err(_) => match DateTime::parse_from_str(datetime_str, "%Y-%m-%dT%H:%M:%S%.3fZ") {
+            Ok(dt) => {
+                let ht = HumanTime::from(dt);
+                ht.to_text_en(Accuracy::Rough, Tense::Past)
             }
-        }
+            Err(_) => datetime_str.to_string(),
+        },
     }
 }
 
@@ -120,7 +127,6 @@ impl Default for Theme {
 }
 
 impl Theme {
-
     pub fn load() -> Self {
         let config_path = "theme.toml";
         std::fs::read_to_string(config_path)
@@ -139,7 +145,9 @@ pub fn get_status_style(status: &str, theme: &Theme) -> Style {
         "failed" => Style::default().fg(theme.failed),
         "running" => Style::default().fg(theme.running),
         "pending" => Style::default().fg(theme.pending),
-        "canceled" | "skipped" | "manual" | "created" | "scheduled" => Style::default().fg(theme.dim),
+        "canceled" | "skipped" | "manual" | "created" | "scheduled" => {
+            Style::default().fg(theme.dim)
+        }
         _ => Style::default(),
     }
 }
@@ -152,7 +160,10 @@ pub fn render_shortcuts(f: &mut Frame, area: Rect, shortcuts: Vec<(&str, &str)>,
         }
         spans.push(Span::styled(*key, Style::default().fg(theme.shortcut_key)));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*desc, Style::default().fg(theme.shortcut_desc)));
+        spans.push(Span::styled(
+            *desc,
+            Style::default().fg(theme.shortcut_desc),
+        ));
     }
     let p = Paragraph::new(Line::from(spans));
     f.render_widget(p, area);
@@ -197,12 +208,26 @@ pub fn get_contrasting_text_color(bg_hex: &str) -> Color {
         let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32;
         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32;
         let luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-        if luminance > 0.5 { Color::Black } else { Color::White }
+        if luminance > 0.5 {
+            Color::Black
+        } else {
+            Color::White
+        }
     } else {
         Color::White
     }
 }
 
+pub fn truncate_str(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", cut)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,11 +290,4 @@ mod tests {
         assert_eq!(centered.x, 25);
         assert_eq!(centered.y, 25);
     }
-}
-
-pub fn truncate_str(s: &str, max: usize) -> String {
-    if max == 0 { return String::new(); }
-    if s.chars().count() <= max { return s.to_string(); }
-    let cut: String = s.chars().take(max.saturating_sub(1)).collect();
-    format!("{}…", cut)
 }

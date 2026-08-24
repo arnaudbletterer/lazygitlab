@@ -19,6 +19,7 @@ serde_json = "1.0.149"
 chrono = "0.4.44"
 emojis = "0.8.1"
 regex = "1.12.3"
+http = "1" # ETag conditional-GET polling (If-None-Match) via gitlab crate's rest_async
 ansi-to-tui = "8.0.1"
 chrono-humanize = "0.2.3"
 ratatui-textarea = "0.9.1"

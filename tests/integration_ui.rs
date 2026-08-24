@@ -1,10 +1,10 @@
+use gitlab::GitlabBuilder;
 use lazygitlab::models::*;
 use lazygitlab::ui::ui;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path};
-use gitlab::GitlabBuilder;
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 struct PathContains(&'static str);
 impl wiremock::Match for PathContains {
@@ -15,20 +15,42 @@ impl wiremock::Match for PathContains {
 
 async fn setup_app() -> (MockServer, App) {
     let server = MockServer::start().await;
-    
-    // Default success mocks
-    Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
-    Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({}))).mount(&server).await;
-    Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
 
-    let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+    // Default success mocks
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .mount(&server)
+        .await;
+    Mock::given(path("/api/v4/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
+        .mount(&server)
+        .await;
+
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+        .insecure()
+        .build_async()
+        .await
+        .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx);
     app.active_panel = Panel::MainDetail;
     app.active_context = Context::Project;
     app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests
     app.active_selection = MenuSelection::MergeRequests;
-    app.selected_project = Some(Project { id: 1, name: "p".into(), path_with_namespace: Some("n/p".into()), web_url: Some("u".into()), default_branch: None, namespace: None });
+    app.selected_project = Some(Project {
+        id: 1,
+        name: "p".into(),
+        path_with_namespace: Some("n/p".into()),
+        web_url: Some("u".into()),
+        default_branch: None,
+        namespace: None,
+    });
     app.show_project_popup = false;
     (server, app)
 }
@@ -42,10 +64,18 @@ fn assert_buffer_contains(terminal: &Terminal<TestBackend>, expected: &str) {
         }
         content.push('\n');
     }
-    assert!(content.contains(expected), "Buffer does not contain: '{}'\nBuffer content:\n{}", expected, content);
+    assert!(
+        content.contains(expected),
+        "Buffer does not contain: '{}'\nBuffer content:\n{}",
+        expected,
+        content
+    );
 }
 
-async fn wait_for_loading_finish(app: &mut App, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) {
+async fn wait_for_loading_finish(
+    app: &mut App,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
+) {
     let start = std::time::Instant::now();
     while std::time::Instant::now().duration_since(start) < std::time::Duration::from_secs(5) {
         app.process_updates(rx).await;
@@ -61,16 +91,33 @@ async fn test_mr_visual_completeness() {
     let (server, mut app) = setup_app().await;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.tx = tx;
-    
+
     let backend = TestBackend::new(150, 50);
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mr_json = r##"{"iid": 123, "project_id": 1, "title": "Implement Feature X", "description": "This is a detailed description.", "author": {"id": 1, "username": "alice"}, "web_url": "u", "state": "opened", "references": {"full": "n/p!123"}, "upvotes": 5, "downvotes": 0, "labels": [{"id":1,"name":"bug","color":"#ff0000","text_color":"#ffffff"}], "milestone": {"id":1,"title":"v1.0"}, "assignees": [{"id":2,"username":"bob"}], "created_at": "2026-04-25T12:00:00Z", "reactions": [], "draft": false}"##;
     let disc_json = r##"{"id": "1", "notes": [{"id":1,"body":"Please review this part.","author":{"id":2,"username":"bob"},"system":false,"created_at":"2026-04-25T12:30:00Z"}]}"##;
 
-    Mock::given(path("/api/v4/projects/1/merge_requests/123")).and(method("GET")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::from_str::<MergeRequest>(mr_json).unwrap())).mount(&server).await;
-    Mock::given(PathContains("award_emoji")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([{"emoji":"rocket"}]))).mount(&server).await;
-    Mock::given(PathContains("discussions")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([serde_json::from_str::<Discussion>(disc_json).unwrap()]))).mount(&server).await;
+    Mock::given(path("/api/v4/projects/1/merge_requests/123"))
+        .and(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::from_str::<MergeRequest>(mr_json).unwrap()),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(PathContains("award_emoji"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!([{"emoji":"rocket"}])),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(PathContains("discussions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            serde_json::from_str::<Discussion>(disc_json).unwrap()
+        ])))
+        .mount(&server)
+        .await;
 
     let mr: MergeRequest = serde_json::from_str(mr_json).unwrap();
     app.merge_requests = vec![mr.clone()];
@@ -78,21 +125,22 @@ async fn test_mr_visual_completeness() {
     app.mrs_state.select(Some(0));
     app.active_panel = Panel::MainDetail;
     app.active_selection = MenuSelection::MergeRequests;
-    
+
     app.fetch_discussions(1, 123).await.unwrap();
     wait_for_loading_finish(&mut app, &mut rx).await;
-    
+
     app.view_mode = ViewMode::List;
     app.discussion_state.select(Some(0));
-    
+
     // Simulate Space to expand
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     app.handle_key(KeyEvent {
         code: KeyCode::Char(' '),
         modifiers: KeyModifiers::NONE,
         kind: KeyEventKind::Press,
         state: KeyEventState::NONE,
-    }).await;
+    })
+    .await;
 
     app.detail_section = DetailSection::Metadata;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
@@ -116,8 +164,22 @@ async fn test_navigation_and_focus() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     app.projects = vec![
-        Project { id: 1, name: "Proj 1".into(), path_with_namespace: Some("n/p1".into()), web_url: Some("u".into()), default_branch: None, namespace: None },
-        Project { id: 2, name: "Proj 2".into(), path_with_namespace: Some("n/p2".into()), web_url: Some("u".into()), default_branch: None, namespace: None },
+        Project {
+            id: 1,
+            name: "Proj 1".into(),
+            path_with_namespace: Some("n/p1".into()),
+            web_url: Some("u".into()),
+            default_branch: None,
+            namespace: None,
+        },
+        Project {
+            id: 2,
+            name: "Proj 2".into(),
+            path_with_namespace: Some("n/p2".into()),
+            web_url: Some("u".into()),
+            default_branch: None,
+            namespace: None,
+        },
     ];
     app.show_project_popup = true;
     app.projects_state.select(Some(0));
@@ -126,17 +188,27 @@ async fn test_navigation_and_focus() {
     assert_buffer_contains(&terminal, "> Proj 1 (n/p1)");
 
     // Move down
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
-    let down = KeyEvent { code: KeyCode::Char('j'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    let down = KeyEvent {
+        code: KeyCode::Char('j'),
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
     app.handle_key(down).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     assert_buffer_contains(&terminal, "> Proj 2 (n/p2)");
 
     // Select and go to list
-    let enter = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    let enter = KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
     app.handle_key(enter).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    
+
     // We check for the project name in the sidebar title
     assert_buffer_contains(&terminal, "Project");
 
@@ -154,18 +226,23 @@ async fn test_navigation_and_focus() {
     assert_buffer_contains(&terminal, "> !1 MR 1");
 
     // Toggle focus to sidebar (cycles from Project -> Dashboard)
-    let tab = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    let tab = KeyEvent {
+        code: KeyCode::Tab,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
     app.handle_key(tab).await;
-    
+
     // Ensure we can see the sidebar panels by clearing selected item (to avoid show_item_details mode)
     app.selected_mr = None;
     app.selected_issue = None;
     app.selected_pipeline = None;
-    
+
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    // Dashboard: Todos is selected, but marked with "> " only if panel is focused. 
-    // Since we were in Main, Tab cycles Sidebar panels. 
-    assert_buffer_contains(&terminal, "  Todos"); 
+    // Dashboard: Todos is selected, but marked with "> " only if panel is focused.
+    // Since we were in Main, Tab cycles Sidebar panels.
+    assert_buffer_contains(&terminal, "  Todos");
 }
 
 #[tokio::test]
@@ -181,7 +258,7 @@ async fn test_pipeline_visual_completeness() {
     app.filtered_pipelines = vec![pipeline];
     app.pipelines_state.select(Some(0));
     app.active_selection = MenuSelection::Pipelines;
-    
+
     let job_json = r##"{"id": 1, "name": "build-job", "stage": "build", "status": "running", "created_at": "t", "started_at": "2026-04-25T12:00:00Z", "web_url": "u", "tag_list": ["docker"], "allow_failure": false}"##;
     app.jobs = vec![serde_json::from_str(job_json).unwrap()];
     app.view_mode = ViewMode::List;
@@ -241,13 +318,24 @@ async fn test_interaction_completeness() {
     assert_buffer_contains(&terminal, "New Amazing Title");
 
     // Mock successful save
-    Mock::given(method("PUT")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"title":"New Amazing Title"}))).mount(&server).await;
-    
+    Mock::given(method("PUT"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"title":"New Amazing Title"})),
+        )
+        .mount(&server)
+        .await;
+
     // Simulate Enter to save
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
-    let enter = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE };
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    let enter = KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
     app.handle_key(enter).await;
-    
+
     // Title in model should still be "Old Title" until refresh or manual update in mock environment
     // But our UI should have cleared input mode
     assert!(!app.input_mode);

@@ -7,6 +7,19 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- **Render-path caching** (perf P0): job-log view is now viewport-sliced (O(viewport) instead of O(document) per frame), file-viewer syntect highlighting is cached per blob, and markdown rendering is memoized across description/notes/diff comments.
+- **Dirty-flag rendering** (perf): the event loop no longer redraws at 10 Hz unconditionally; frames render only on input/updates/spinner cadence. Detail-fetch debounce stops rapid list navigation from firing a discussions fetch per keystroke (250 ms same-target debounce).
+- **Cross-project Pipelines dashboard tab** with project labels and `g p` fallback — cross-project failed-pipeline triage without switching projects.
+- **Epic drill-in**: `Enter` on an epic lists its child issues; `Enter` opens an issue, `Esc` backs out.
+- **Milestone grouping toggle** (`V` on Issues) with open/closed counts per milestone header; issue rows now show milestone chips and due dates (overdue in red).
+- **Pipeline schedules** (`S` on Pipelines): view cron/description/ref and run a schedule now (`Enter`).
+- **CI variable management** (`v` on Pipelines): create (`n`), edit value (`Enter`), delete (`d`) project CI variables from a popup.
+- **Real approvals** in the diff header and merge-confirmation popup (required/left + approver names), fetched alongside other MR metadata; gracefully absent on instances without the approvals API.
+- **Diff thread navigation across files**: `n`/`p` now sweep the whole MR instead of stopping at file boundaries.
+- **MR → head pipeline jump** (`P` on MR detail): straight to that pipeline's jobs panel.
+- **ETag conditional GET for Todos polling**: repeated polls send `If-None-Match` and treat `304 Not Modified` as a no-op, cutting payload work when nothing changed (`http` crate added to drive raw requests through the gitlab client).
+- **Branch delete confirmation** popup, matching merge/rebase safety.
+- **List polish**: MR rows show state colors; long titles truncate with ellipsis.
 - **MR filter segments `Review` and `Assigned`** (`[` / `]` or click): "Review" lists open MRs where you are a reviewer, "Assigned" those assigned to you — the reviewer's daily queue finally exists server-side via `assignee_id` / `reviewer_id` params on the MR listing (`src/api.rs::PagedMergeRequests`, `src/app/mrs/mod.rs`). Segments are now `Opened │ Review │ Assigned │ Merged │ Closed │ All`.
 - **Pipeline status segments** `All │ Running │ Failed │ Passed` (`[` / `]`) with client-side status filtering (`src/app/mod.rs::filter_lists`) — failed-pipeline triage no longer means scroll-hunting.
 - **Job-log search and navigation**: `/` opens a log-search prompt (Enter jumps to the next match, wrapping), `G`/`End` jump to the end, `Home` to the start, `PgUp`/`PgDn` page by viewport (`src/app/keymap.rs`, help entries added).

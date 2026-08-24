@@ -78,7 +78,11 @@ impl TestGround {
                 )
             });
             serde_json::from_str(&raw).unwrap_or_else(|e| {
-                panic!("Failed to parse test ground file at {}: {}", path.display(), e)
+                panic!(
+                    "Failed to parse test ground file at {}: {}",
+                    path.display(),
+                    e
+                )
             })
         })
     }

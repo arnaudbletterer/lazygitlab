@@ -1,9 +1,11 @@
-use lazygitlab::models::{App, MenuSelection, Project, Issue, GroupedItem, Panel, Context, Author, Todo, References};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use gitlab::GitlabBuilder;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
+use lazygitlab::models::{
+    App, Author, Context, GroupedItem, Issue, MenuSelection, Panel, Project, References, Todo,
+};
 use tokio::sync::mpsc;
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{path};
+use wiremock::matchers::path;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn dummy_project(id: u64, name: &str) -> Project {
     Project {
@@ -18,27 +20,62 @@ fn dummy_project(id: u64, name: &str) -> Project {
 
 fn dummy_issue(iid: u64, title: &str) -> Issue {
     Issue {
-        iid, project_id: 1, title: title.into(), description: None, author: Author::new(1, "u".into()),
-        assignees: vec![], state: "opened".into(), web_url: "u".into(), references: Some(References { full: "r".into() }),
-        issue_type: None, labels: vec![], milestone: None, due_date: None, start_date: None, weight: None,
-        task_completion_status: None, confidential: false, created_at: Some("t".into()),
-        upvotes: Some(0), downvotes: Some(0), reactions: vec![], participants: vec![]
+        iid,
+        project_id: 1,
+        title: title.into(),
+        description: None,
+        author: Author::new(1, "u".into()),
+        assignees: vec![],
+        state: "opened".into(),
+        web_url: "u".into(),
+        references: Some(References { full: "r".into() }),
+        issue_type: None,
+        labels: vec![],
+        milestone: None,
+        due_date: None,
+        start_date: None,
+        weight: None,
+        task_completion_status: None,
+        confidential: false,
+        created_at: Some("t".into()),
+        upvotes: Some(0),
+        downvotes: Some(0),
+        reactions: vec![],
+        participants: vec![],
     }
 }
 
 fn dummy_todo(id: u64, body: &str) -> Todo {
     Todo {
-        id, project: Some(dummy_project(1, "p")),
-        action_name: "assigned".into(), target_type: "Issue".into(),
-        target_url: "u".into(), body: body.into(), state: "pending".into(),
-        created_at: "t".into(), group: None,
+        id,
+        project: Some(dummy_project(1, "p")),
+        action_name: "assigned".into(),
+        target_type: "Issue".into(),
+        target_url: "u".into(),
+        body: body.into(),
+        state: "pending".into(),
+        created_at: "t".into(),
+        group: None,
     }
 }
 
-async fn setup_app() -> (MockServer, App, mpsc::UnboundedReceiver<lazygitlab::models::DataUpdate>) {
+async fn setup_app() -> (
+    MockServer,
+    App,
+    mpsc::UnboundedReceiver<lazygitlab::models::DataUpdate>,
+) {
     let server = MockServer::start().await;
-    Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-    let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+    Mock::given(path("/api/v4/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
+        .mount(&server)
+        .await;
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+        .insecure()
+        .build_async()
+        .await
+        .unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
     let app = App::new(client, tx);
     (server, app, rx)
@@ -49,7 +86,10 @@ async fn test_filtering_logic() {
     let (_server, mut app, _rx) = setup_app().await;
     app.projects = vec![dummy_project(1, "Alpha"), dummy_project(2, "Beta")];
     app.issues = vec![dummy_issue(1, "Bug fix"), dummy_issue(2, "New feature")];
-    app.todos = vec![dummy_todo(1, "Review MR"), dummy_todo(2, "Comment on Issue")];
+    app.todos = vec![
+        dummy_todo(1, "Review MR"),
+        dummy_todo(2, "Comment on Issue"),
+    ];
 
     app.filter_input = "alpha".into();
     app.filter_lists();
@@ -96,13 +136,15 @@ async fn test_context_switching() {
     app.selected_project = Some(dummy_project(1, "p"));
     app.active_panel = Panel::Dashboard;
     app.dashboard_menu_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .await;
     assert_eq!(app.active_context, Context::Dashboard);
     assert_eq!(app.active_panel, Panel::Main);
 
     app.active_panel = Panel::Project;
     app.project_menu_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .await;
     assert_eq!(app.active_context, Context::Project);
     assert_eq!(app.active_panel, Panel::Main);
 }
@@ -112,8 +154,10 @@ async fn test_project_popup_handling() {
     let (_server, mut app, _rx) = setup_app().await;
     app.projects = Vec::new();
     app.show_project_popup = true;
-    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)).await;
-    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).await;
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+        .await;
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+        .await;
     assert!(app.show_project_popup);
 }
 
@@ -148,34 +192,88 @@ async fn test_involved_filtering() {
 
     use lazygitlab::models::MergeRequest;
     let mr_1 = MergeRequest {
-        iid: 1, project_id: 1, title: "Authored by me".into(), description: None,
-        author: Author::new(1, "me".into()), web_url: "u".into(), state: "opened".into(),
-        draft: Some(false), references: None, upvotes: Some(0), downvotes: Some(0),
-        labels: vec![], milestone: None, assignees: vec![], reviewers: vec![],
-        squash: Some(false), created_at: Some("t".into()), diff_refs: None,
-        reactions: vec![], merge_status: None, detailed_merge_status: None,
-        has_conflicts: None, head_pipeline: None, source_branch: "".into(),
-        target_branch: "".into(), participants: vec![]
+        iid: 1,
+        project_id: 1,
+        title: "Authored by me".into(),
+        description: None,
+        author: Author::new(1, "me".into()),
+        web_url: "u".into(),
+        state: "opened".into(),
+        draft: Some(false),
+        references: None,
+        upvotes: Some(0),
+        downvotes: Some(0),
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        reviewers: vec![],
+        squash: Some(false),
+        created_at: Some("t".into()),
+        diff_refs: None,
+        reactions: vec![],
+        merge_status: None,
+        detailed_merge_status: None,
+        has_conflicts: None,
+        head_pipeline: None,
+        source_branch: "".into(),
+        target_branch: "".into(),
+        participants: vec![],
     };
     let mr_2 = MergeRequest {
-        iid: 2, project_id: 1, title: "Reviewed by me".into(), description: None,
-        author: Author::new(99, "other".into()), web_url: "u".into(), state: "opened".into(),
-        draft: Some(false), references: None, upvotes: Some(0), downvotes: Some(0),
-        labels: vec![], milestone: None, assignees: vec![], reviewers: vec![Author::new(1, "me".into())],
-        squash: Some(false), created_at: Some("t".into()), diff_refs: None,
-        reactions: vec![], merge_status: None, detailed_merge_status: None,
-        has_conflicts: None, head_pipeline: None, source_branch: "".into(),
-        target_branch: "".into(), participants: vec![]
+        iid: 2,
+        project_id: 1,
+        title: "Reviewed by me".into(),
+        description: None,
+        author: Author::new(99, "other".into()),
+        web_url: "u".into(),
+        state: "opened".into(),
+        draft: Some(false),
+        references: None,
+        upvotes: Some(0),
+        downvotes: Some(0),
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        reviewers: vec![Author::new(1, "me".into())],
+        squash: Some(false),
+        created_at: Some("t".into()),
+        diff_refs: None,
+        reactions: vec![],
+        merge_status: None,
+        detailed_merge_status: None,
+        has_conflicts: None,
+        head_pipeline: None,
+        source_branch: "".into(),
+        target_branch: "".into(),
+        participants: vec![],
     };
     let mr_3 = MergeRequest {
-        iid: 3, project_id: 1, title: "Not involved".into(), description: None,
-        author: Author::new(99, "other".into()), web_url: "u".into(), state: "opened".into(),
-        draft: Some(false), references: None, upvotes: Some(0), downvotes: Some(0),
-        labels: vec![], milestone: None, assignees: vec![], reviewers: vec![],
-        squash: Some(false), created_at: Some("t".into()), diff_refs: None,
-        reactions: vec![], merge_status: None, detailed_merge_status: None,
-        has_conflicts: None, head_pipeline: None, source_branch: "".into(),
-        target_branch: "".into(), participants: vec![]
+        iid: 3,
+        project_id: 1,
+        title: "Not involved".into(),
+        description: None,
+        author: Author::new(99, "other".into()),
+        web_url: "u".into(),
+        state: "opened".into(),
+        draft: Some(false),
+        references: None,
+        upvotes: Some(0),
+        downvotes: Some(0),
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        reviewers: vec![],
+        squash: Some(false),
+        created_at: Some("t".into()),
+        diff_refs: None,
+        reactions: vec![],
+        merge_status: None,
+        detailed_merge_status: None,
+        has_conflicts: None,
+        head_pipeline: None,
+        source_branch: "".into(),
+        target_branch: "".into(),
+        participants: vec![],
     };
 
     app.merge_requests = vec![mr_1, mr_2, mr_3];
@@ -193,7 +291,7 @@ async fn test_involved_filtering() {
 async fn test_dashboard_membership_filtering() {
     let (_server, mut app, _rx) = setup_app().await;
     app.active_context = Context::Dashboard;
-    
+
     app.membership_sync_attempted = true;
     app.member_project_ids = vec![1].into_iter().collect();
 

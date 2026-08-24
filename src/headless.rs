@@ -3,9 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::backend::TestBackend;
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 use crate::events::EventSource;
 
@@ -16,11 +18,15 @@ pub struct ScriptedEventSource {
 impl ScriptedEventSource {
     pub fn from_text(text: &str) -> Result<Self, String> {
         let events: VecDeque<Event> = parse_script(text)?.into();
-        Ok(Self { events: std::sync::Mutex::new(events) })
+        Ok(Self {
+            events: std::sync::Mutex::new(events),
+        })
     }
 
     pub fn empty() -> Self {
-        Self { events: std::sync::Mutex::new(VecDeque::new()) }
+        Self {
+            events: std::sync::Mutex::new(VecDeque::new()),
+        }
     }
 }
 
@@ -60,7 +66,12 @@ fn parse_event(line: &str) -> Result<Event, String> {
         };
         let col: u16 = parts[1].parse().map_err(|_| "invalid column")?;
         let row: u16 = parts[2].parse().map_err(|_| "invalid row")?;
-        return Ok(Event::Mouse(MouseEvent { kind, column: col, row, modifiers: KeyModifiers::NONE }));
+        return Ok(Event::Mouse(MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
     }
     if let Some(rest) = line.strip_prefix("key:") {
         let parts: Vec<&str> = rest.split(':').collect();
@@ -135,8 +146,10 @@ fn parse_key_code(s: &str) -> Result<KeyCode, String> {
             return Ok(*code);
         }
     }
-    if lower.starts_with('f') && lower.len() > 1
-        && let Ok(n) = lower[1..].parse::<u8>() {
+    if lower.starts_with('f')
+        && lower.len() > 1
+        && let Ok(n) = lower[1..].parse::<u8>()
+    {
         return Ok(KeyCode::F(n));
     }
     let mut chars = s.chars();
@@ -169,7 +182,10 @@ fn split_modifiers_and_code(tag: &str) -> (KeyModifiers, &str) {
             code_start = tag.len() - part.len();
             break;
         }
-        let recognized = matches!(part.to_ascii_uppercase().as_str(), "S" | "SHIFT" | "C" | "CTRL" | "CONTROL" | "A" | "ALT");
+        let recognized = matches!(
+            part.to_ascii_uppercase().as_str(),
+            "S" | "SHIFT" | "C" | "CTRL" | "CONTROL" | "A" | "ALT"
+        );
         if recognized {
             mods |= parse_modifiers(part);
         } else {
@@ -190,11 +206,19 @@ impl FrameCapture {
     pub fn new(dir: impl Into<PathBuf>) -> std::io::Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
-        Ok(Self { dir, tick: 0, last_frame: None })
+        Ok(Self {
+            dir,
+            tick: 0,
+            last_frame: None,
+        })
     }
 
     pub fn disabled() -> Self {
-        Self { dir: PathBuf::new(), tick: 0, last_frame: None }
+        Self {
+            dir: PathBuf::new(),
+            tick: 0,
+            last_frame: None,
+        }
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -250,22 +274,39 @@ pub struct HeadlessOptions {
 }
 
 pub fn parse_options(args: &[String]) -> Result<HeadlessOptions, String> {
-    let mut opts = HeadlessOptions { width: 120, height: 40, script_path: None, frames_dir: None };
+    let mut opts = HeadlessOptions {
+        width: 120,
+        height: 40,
+        script_path: None,
+        frames_dir: None,
+    };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--headless" => {}
             "--width" => {
-                opts.width = iter.next().ok_or("--width requires an argument")?.parse().map_err(|_| "invalid width")?;
+                opts.width = iter
+                    .next()
+                    .ok_or("--width requires an argument")?
+                    .parse()
+                    .map_err(|_| "invalid width")?;
             }
             "--height" => {
-                opts.height = iter.next().ok_or("--height requires an argument")?.parse().map_err(|_| "invalid height")?;
+                opts.height = iter
+                    .next()
+                    .ok_or("--height requires an argument")?
+                    .parse()
+                    .map_err(|_| "invalid height")?;
             }
             "--script" => {
-                opts.script_path = Some(PathBuf::from(iter.next().ok_or("--script requires a path")?));
+                opts.script_path = Some(PathBuf::from(
+                    iter.next().ok_or("--script requires a path")?,
+                ));
             }
             "--frames-dir" => {
-                opts.frames_dir = Some(PathBuf::from(iter.next().ok_or("--frames-dir requires a path")?));
+                opts.frames_dir = Some(PathBuf::from(
+                    iter.next().ok_or("--frames-dir requires a path")?,
+                ));
             }
             other => return Err(format!("unknown argument: {other}")),
         }

@@ -1,6 +1,6 @@
-use lazygitlab::models::{App, DataUpdate};
-use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
+use gitlab::GitlabBuilder;
+use lazygitlab::models::{App, DataUpdate};
 use std::env;
 use tokio::sync::mpsc;
 
@@ -30,7 +30,10 @@ async fn try_build_client() -> Option<gitlab::AsyncGitlab> {
     {
         Ok(c) => Some(c),
         Err(e) => {
-            eprintln!("Skipping test: Failed to create GitLab client (likely invalid token): {}", e);
+            eprintln!(
+                "Skipping test: Failed to create GitLab client (likely invalid token): {}",
+                e
+            );
             None
         }
     }
@@ -57,17 +60,25 @@ async fn live_full_remote_validation_and_isolation() {
         panic!("Background error during initial setup: {}", err);
     }
 
-    assert!(!app.projects.is_empty(), "Should fetch projects (found 0). Make sure membership projects exist on the account.");
+    assert!(
+        !app.projects.is_empty(),
+        "Should fetch projects (found 0). Make sure membership projects exist on the account."
+    );
     println!("Fetched {} projects globally", app.projects.len());
 
     let target_proj = app
         .projects
         .iter()
-        .find(|p| p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str()))
+        .find(|p| {
+            p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str())
+        })
         .cloned();
 
     if let Some(project) = target_proj {
-        println!("Found project: {}", project.path_with_namespace.as_deref().unwrap_or(""));
+        println!(
+            "Found project: {}",
+            project.path_with_namespace.as_deref().unwrap_or("")
+        );
         app.selected_project = Some(project.clone());
         app.active_context = lazygitlab::models::Context::Project;
         app.active_panel = lazygitlab::models::Panel::Project;
@@ -80,7 +91,11 @@ async fn live_full_remote_validation_and_isolation() {
         app.filter_lists();
         for item in &app.filtered_mrs {
             if let lazygitlab::models::GroupedItem::Item(mr) = item {
-                assert_eq!(mr.project_id, project.id, "MR {} does not belong to selected project", mr.iid);
+                assert_eq!(
+                    mr.project_id, project.id,
+                    "MR {} does not belong to selected project",
+                    mr.iid
+                );
             }
         }
         println!(
@@ -97,7 +112,11 @@ async fn live_full_remote_validation_and_isolation() {
         app.filter_lists();
         for item in &app.filtered_issues {
             if let lazygitlab::models::GroupedItem::Item(issue) = item {
-                assert_eq!(issue.project_id, project.id, "Issue {} does not belong to selected project", issue.iid);
+                assert_eq!(
+                    issue.project_id, project.id,
+                    "Issue {} does not belong to selected project",
+                    issue.iid
+                );
             }
         }
         println!(
@@ -112,9 +131,12 @@ async fn live_full_remote_validation_and_isolation() {
             app.issues.len()
         );
 
-        if let Some(lazygitlab::models::GroupedItem::Item(first_issue)) = app.filtered_issues.first() {
+        if let Some(lazygitlab::models::GroupedItem::Item(first_issue)) =
+            app.filtered_issues.first()
+        {
             assert!(
-                first_issue.title.contains("Stress Issue") || first_issue.title.contains("Issue for workflow"),
+                first_issue.title.contains("Stress Issue")
+                    || first_issue.title.contains("Issue for workflow"),
                 "Issue title format mismatch: {}",
                 first_issue.title
             );
@@ -147,7 +169,9 @@ async fn live_smoke_real_updates_on_test_ground() {
     let project = app
         .projects
         .iter()
-        .find(|p| p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str()))
+        .find(|p| {
+            p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str())
+        })
         .cloned();
 
     let Some(project) = project else {
@@ -157,7 +181,10 @@ async fn live_smoke_real_updates_on_test_ground() {
         );
         return;
     };
-    println!("Found project: {}", project.path_with_namespace.as_deref().unwrap_or(""));
+    println!(
+        "Found project: {}",
+        project.path_with_namespace.as_deref().unwrap_or("")
+    );
     app.selected_project = Some(project.clone());
     app.active_context = lazygitlab::models::Context::Project;
     app.active_panel = lazygitlab::models::Panel::Project;
@@ -168,7 +195,8 @@ async fn live_smoke_real_updates_on_test_ground() {
     wait_for_loading_finish(&mut app, &mut rx).await;
     app.filter_lists();
 
-    if let Some(lazygitlab::models::GroupedItem::Item(issue)) = app.filtered_issues.first().cloned() {
+    if let Some(lazygitlab::models::GroupedItem::Item(issue)) = app.filtered_issues.first().cloned()
+    {
         app.active_panel = lazygitlab::models::Panel::MainDetail;
         app.selected_issue = Some(issue.clone());
         let original_desc = issue.description.unwrap_or_default();
@@ -176,10 +204,15 @@ async fn live_smoke_real_updates_on_test_ground() {
 
         app.input_target = lazygitlab::models::InputTarget::EditDescription;
         app.textarea = ratatui_textarea::TextArea::from(new_desc.lines());
-        app.update_issue().await.expect("Failed to trigger update_issue");
+        app.update_issue()
+            .await
+            .expect("Failed to trigger update_issue");
         wait_for_loading_finish(&mut app, &mut rx).await;
 
-        let updated_issue = app.selected_issue.as_ref().expect("Should have selected issue");
+        let updated_issue = app
+            .selected_issue
+            .as_ref()
+            .expect("Should have selected issue");
         assert_eq!(
             updated_issue.description.as_deref().unwrap_or(""),
             new_desc,
@@ -188,10 +221,15 @@ async fn live_smoke_real_updates_on_test_ground() {
 
         app.input_target = lazygitlab::models::InputTarget::EditDescription;
         app.textarea = ratatui_textarea::TextArea::from(original_desc.lines());
-        app.update_issue().await.expect("Failed to revert update_issue");
+        app.update_issue()
+            .await
+            .expect("Failed to revert update_issue");
         wait_for_loading_finish(&mut app, &mut rx).await;
 
-        let reverted_issue = app.selected_issue.as_ref().expect("Should have selected issue");
+        let reverted_issue = app
+            .selected_issue
+            .as_ref()
+            .expect("Should have selected issue");
         assert_eq!(
             reverted_issue.description.as_deref().unwrap_or(""),
             original_desc,
@@ -217,7 +255,10 @@ async fn live_smoke_real_updates_on_test_ground() {
         wait_for_loading_finish(&mut app, &mut rx).await;
 
         let updated_mr = app.selected_mr.as_ref().expect("Should have selected mr");
-        assert_eq!(updated_mr.title, new_title, "MR title did not update optimistically/via API detail response!");
+        assert_eq!(
+            updated_mr.title, new_title,
+            "MR title did not update optimistically/via API detail response!"
+        );
 
         app.input_target = lazygitlab::models::InputTarget::EditTitle;
         app.textarea = ratatui_textarea::TextArea::from(original_title.lines());
@@ -225,20 +266,33 @@ async fn live_smoke_real_updates_on_test_ground() {
         wait_for_loading_finish(&mut app, &mut rx).await;
 
         let reverted_mr = app.selected_mr.as_ref().expect("Should have selected mr");
-        assert_eq!(reverted_mr.title, original_title, "MR title did not revert!");
+        assert_eq!(
+            reverted_mr.title, original_title,
+            "MR title did not revert!"
+        );
 
         let original_draft = reverted_mr.draft;
-        app.toggle_mr_draft().await.expect("Failed to toggle mr draft");
+        app.toggle_mr_draft()
+            .await
+            .expect("Failed to toggle mr draft");
         wait_for_loading_finish(&mut app, &mut rx).await;
 
         let toggled_mr = app.selected_mr.as_ref().expect("Should have selected mr");
-        assert_ne!(toggled_mr.draft, original_draft, "MR draft state did not toggle!");
+        assert_ne!(
+            toggled_mr.draft, original_draft,
+            "MR draft state did not toggle!"
+        );
 
-        app.toggle_mr_draft().await.expect("Failed to revert mr draft toggle");
+        app.toggle_mr_draft()
+            .await
+            .expect("Failed to revert mr draft toggle");
         wait_for_loading_finish(&mut app, &mut rx).await;
 
         let reverted_draft_mr = app.selected_mr.as_ref().expect("Should have selected mr");
-        assert_eq!(reverted_draft_mr.draft, original_draft, "MR draft state did not revert!");
+        assert_eq!(
+            reverted_draft_mr.draft, original_draft,
+            "MR draft state did not revert!"
+        );
     }
 }
 
@@ -262,7 +316,9 @@ async fn live_smoke_collaboration_on_test_ground() {
     let project = app
         .projects
         .iter()
-        .find(|p| p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str()))
+        .find(|p| {
+            p.path_with_namespace.as_deref() == Some(ground.project.path_with_namespace.as_str())
+        })
         .cloned();
 
     let Some(project) = project else {
@@ -272,7 +328,10 @@ async fn live_smoke_collaboration_on_test_ground() {
         );
         return;
     };
-    println!("Found project: {}", project.path_with_namespace.as_deref().unwrap_or(""));
+    println!(
+        "Found project: {}",
+        project.path_with_namespace.as_deref().unwrap_or("")
+    );
     app.selected_project = Some(project.clone());
     app.active_context = lazygitlab::models::Context::Project;
     app.active_panel = lazygitlab::models::Panel::Project;
@@ -282,7 +341,8 @@ async fn live_smoke_collaboration_on_test_ground() {
     wait_for_loading_finish(&mut app, &mut rx).await;
     app.filter_lists();
 
-    if let Some(lazygitlab::models::GroupedItem::Item(issue)) = app.filtered_issues.first().cloned() {
+    if let Some(lazygitlab::models::GroupedItem::Item(issue)) = app.filtered_issues.first().cloned()
+    {
         app.active_panel = lazygitlab::models::Panel::MainDetail;
         app.detail_section = lazygitlab::models::DetailSection::Metadata;
         app.selected_metadata_field = lazygitlab::models::MetadataField::Labels;
@@ -290,7 +350,10 @@ async fn live_smoke_collaboration_on_test_ground() {
 
         app.enter_detail_action().await;
         assert!(app.show_label_popup, "Label popup did not open");
-        assert!(!app.selected_label_ids.is_empty(), "Existing label IDs not populated in popup state");
+        assert!(
+            !app.selected_label_ids.is_empty(),
+            "Existing label IDs not populated in popup state"
+        );
 
         let test_label_id = app.selected_label_ids[0];
         app.selected_label_ids.retain(|&id| id != test_label_id);
@@ -322,19 +385,29 @@ async fn live_smoke_collaboration_on_test_ground() {
 
             let poll_start = std::time::Instant::now();
             let mut found = false;
-            while std::time::Instant::now().duration_since(poll_start) < std::time::Duration::from_secs(15) {
+            while std::time::Instant::now().duration_since(poll_start)
+                < std::time::Duration::from_secs(15)
+            {
                 app.process_updates(&mut rx).await;
-                found = app.discussions.iter().any(|d| d.notes.iter().any(|n| n.body.contains(&test_reply)));
+                found = app
+                    .discussions
+                    .iter()
+                    .any(|d| d.notes.iter().any(|n| n.body.contains(&test_reply)));
                 if found {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            assert!(found, "Reply was not found in discussions after posting (timed out)!");
+            assert!(
+                found,
+                "Reply was not found in discussions after posting (timed out)!"
+            );
         } else {
-            println!("No replyable threaded discussions found in MR !{}. Skipping reply test.", mr.iid);
+            println!(
+                "No replyable threaded discussions found in MR !{}. Skipping reply test.",
+                mr.iid
+            );
         }
     }
 }
-

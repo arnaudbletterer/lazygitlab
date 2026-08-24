@@ -1,5 +1,5 @@
-use tracing_subscriber::{self, fmt, prelude::*, Registry};
 use tracing_appender;
+use tracing_subscriber::{self, Registry, fmt, prelude::*};
 
 pub fn init() -> tracing_appender::non_blocking::WorkerGuard {
     let file_appender = tracing_appender::rolling::never(".", "lazygitlab.log");

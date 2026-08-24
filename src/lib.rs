@@ -1,14 +1,14 @@
-pub mod models;
-pub mod app;
-pub mod ui;
 pub mod api;
-pub mod logger;
-pub mod headless;
+pub mod app;
 pub mod events;
+pub mod headless;
+pub mod logger;
+pub mod models;
 pub mod runner;
+pub mod ui;
 
-pub use models::*;
-pub use app::*;
 pub use api::*;
+pub use app::*;
 pub use events::EventSource;
+pub use models::*;
 pub use runner::run_app;

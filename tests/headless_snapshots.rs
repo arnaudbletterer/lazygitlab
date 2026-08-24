@@ -3,18 +3,19 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use gitlab::GitlabBuilder;
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use lazygitlab::headless::{render_to_string, ScriptedEventSource};
+use lazygitlab::headless::{ScriptedEventSource, render_to_string};
 use lazygitlab::models::{App, DataUpdate};
 use lazygitlab::run_app;
 
 fn sanitize(frame: String) -> String {
     let re = regex::Regex::new(r"v\d+\.\d+\.\d+ \([0-9a-f]+(-DIRTY)?\)").unwrap();
-    frame.lines()
+    frame
+        .lines()
         .map(|line| match re.find(line) {
             Some(m) => line[..m.start()].trim_end().to_string(),
             None => line.to_string(),
@@ -38,7 +39,9 @@ async fn wait_for_loading_finish(app: &mut App, rx: &mut mpsc::UnboundedReceiver
 async fn test_headless_dashboard_initial() {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 1, "username": "u"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 1, "username": "u"})),
+        )
         .mount(&server)
         .await;
 
@@ -56,11 +59,22 @@ async fn test_headless_dashboard_initial() {
     let event_source = ScriptedEventSource::from_text("q").unwrap();
     let frames: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let frames_for_capture = Arc::clone(&frames);
-    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = Some(Box::new(move |t| {
-        frames_for_capture.lock().unwrap().push(sanitize(render_to_string(t)));
-    }));
+    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> =
+        Some(Box::new(move |t| {
+            frames_for_capture
+                .lock()
+                .unwrap()
+                .push(sanitize(render_to_string(t)));
+        }));
 
-    let _ = run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut capture).await;
+    let _ = run_app(
+        &mut terminal,
+        &mut app,
+        &event_source,
+        &mut rx,
+        &mut capture,
+    )
+    .await;
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     let frames = frames.lock().unwrap();
@@ -73,7 +87,9 @@ async fn test_headless_dashboard_initial() {
 async fn test_headless_dashboard_after_navigation() {
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 1, "username": "u"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 1, "username": "u"})),
+        )
         .mount(&server)
         .await;
 
@@ -91,11 +107,22 @@ async fn test_headless_dashboard_after_navigation() {
     let event_source = ScriptedEventSource::from_text("g\nm\nq").unwrap();
     let frames: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let frames_for_capture = Arc::clone(&frames);
-    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = Some(Box::new(move |t| {
-        frames_for_capture.lock().unwrap().push(sanitize(render_to_string(t)));
-    }));
+    let mut capture: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> =
+        Some(Box::new(move |t| {
+            frames_for_capture
+                .lock()
+                .unwrap()
+                .push(sanitize(render_to_string(t)));
+        }));
 
-    let _ = run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut capture).await;
+    let _ = run_app(
+        &mut terminal,
+        &mut app,
+        &event_source,
+        &mut rx,
+        &mut capture,
+    )
+    .await;
 
     let frames = frames.lock().unwrap();
     assert!(!frames.is_empty(), "expected at least one captured frame");

@@ -1,16 +1,23 @@
-use lazygitlab::models::*;
-use wiremock::{MockServer, Mock, ResponseTemplate};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use gitlab::GitlabBuilder;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers, KeyEventKind, KeyEventState};
+use lazygitlab::models::*;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+    KeyEvent {
+        code,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    }
 }
 
 async fn setup_app() -> App {
     let server = MockServer::start().await;
     Mock::given(wiremock::matchers::path("/api/v4/user"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
         .mount(&server)
         .await;
     let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
@@ -23,13 +30,24 @@ async fn setup_app() -> App {
 }
 
 fn log_line(content: &str) -> LogLine {
-    LogLine { timestamp: String::new(), content: content.into(), section: None, is_section_start: false, is_section_end: false }
+    LogLine {
+        timestamp: String::new(),
+        content: content.into(),
+        section: None,
+        is_section_start: false,
+        is_section_end: false,
+    }
 }
 
 #[tokio::test]
 async fn test_search_jumps_to_next_match_and_wraps() {
     let mut app = setup_app().await;
-    app.job_log_lines = vec![log_line("start"), log_line("ERROR boom"), log_line("ok"), log_line("ERROR again")];
+    app.job_log_lines = vec![
+        log_line("start"),
+        log_line("ERROR boom"),
+        log_line("ok"),
+        log_line("ERROR again"),
+    ];
     app.job_log_cursor = 0;
     app.job_log_viewport_height = 10;
 
@@ -59,7 +77,11 @@ async fn test_search_no_match_sets_status() {
 async fn test_slash_opens_input_and_enter_jumps() {
     let mut app = setup_app().await;
     app.view_mode = ViewMode::JobLog;
-    app.job_log_lines = vec![log_line("fine"), log_line("panic: exploded"), log_line("done")];
+    app.job_log_lines = vec![
+        log_line("fine"),
+        log_line("panic: exploded"),
+        log_line("done"),
+    ];
     app.job_log_cursor = 0;
     app.job_log_viewport_height = 10;
 

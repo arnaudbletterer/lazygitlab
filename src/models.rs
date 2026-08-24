@@ -1,7 +1,7 @@
-﻿use serde::{Deserialize, Serialize};
-use ratatui::widgets::ListState;
 use crate::ui::Theme;
 use gitlab::AsyncGitlab;
+use ratatui::widgets::ListState;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum TodoFilter {
@@ -226,7 +226,6 @@ impl Author {
     }
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Group {
     pub id: u64,
@@ -338,10 +337,21 @@ impl<'de> serde::Deserialize<'de> for Label {
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a string or a label object")
             }
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: serde::de::Error {
-                Ok(Label { id: 0, name: v.to_string(), color: "#808080".to_string(), text_color: None })
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Label {
+                    id: 0,
+                    name: v.to_string(),
+                    color: "#808080".to_string(),
+                    text_color: None,
+                })
             }
-            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error> where M: serde::de::MapAccess<'de> {
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: serde::de::MapAccess<'de>,
+            {
                 let mut id = 0;
                 let mut name = String::new();
                 let mut color = "#808080".to_string();
@@ -352,10 +362,17 @@ impl<'de> serde::Deserialize<'de> for Label {
                         "name" => name = map.next_value()?,
                         "color" => color = map.next_value()?,
                         "text_color" => text_color = Some(map.next_value()?),
-                        _ => { let _: serde::de::IgnoredAny = map.next_value()?; }
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
                     }
                 }
-                Ok(Label { id, name, color, text_color })
+                Ok(Label {
+                    id,
+                    name,
+                    color,
+                    text_color,
+                })
             }
         }
         deserializer.deserialize_any(LabelVisitor)
@@ -379,7 +396,6 @@ impl Label {
         self.text_color.as_deref().unwrap_or("#ffffff")
     }
 }
-
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Milestone {
@@ -441,13 +457,19 @@ impl Eq for Job {}
 
 impl Pipeline {
     pub fn is_finished(&self) -> bool {
-        matches!(self.status.as_str(), "success" | "failed" | "canceled" | "skipped")
+        matches!(
+            self.status.as_str(),
+            "success" | "failed" | "canceled" | "skipped"
+        )
     }
 }
 
 impl Job {
     pub fn is_finished(&self) -> bool {
-        matches!(self.status.as_str(), "success" | "failed" | "canceled" | "skipped")
+        matches!(
+            self.status.as_str(),
+            "success" | "failed" | "canceled" | "skipped"
+        )
     }
 }
 
@@ -494,8 +516,6 @@ pub struct Issue {
     #[serde(default)]
     pub participants: Vec<Author>,
 }
-
-
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputTarget {
@@ -691,62 +711,267 @@ pub struct ProjectVariable {
     pub environment_scope: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PipelineSchedule {
+    pub id: u64,
+    #[serde(default)]
+    pub description: String,
+    #[serde(rename = "ref", default)]
+    pub ref_name: String,
+    #[serde(default)]
+    pub cron: String,
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub next_run_at: Option<String>,
+    #[serde(default)]
+    pub last_pipeline: Option<PipelineMin>,
+    #[serde(default)]
+    pub owner: Option<Author>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ApprovalInfo {
+    #[serde(default, alias = "approvals_required")]
+    pub approvals_required: Option<u64>,
+    #[serde(default, alias = "approvals_left")]
+    pub approvals_left: Option<u64>,
+    #[serde(default)]
+    pub approved_by: Vec<ApprovalUser>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApprovalUser {
+    #[serde(default)]
+    pub user: Option<Author>,
+}
+
 #[derive(Debug)]
 pub enum DataUpdate {
-    Todos { data: Vec<Todo>, page: u64, has_more: bool },
+    Todos {
+        data: Vec<Todo>,
+        page: u64,
+        has_more: bool,
+    },
     AppendTodos(Vec<Todo>),
-    Projects { data: Vec<Project>, page: u64, has_more: bool },
+    Projects {
+        data: Vec<Project>,
+        page: u64,
+        has_more: bool,
+    },
     AppendProjects(Vec<Project>),
-    Groups { data: Vec<Group>, page: u64, has_more: bool },
+    Groups {
+        data: Vec<Group>,
+        page: u64,
+        has_more: bool,
+    },
     AppendGroups(Vec<Group>),
-    GlobalMRs { data: Vec<MergeRequest>, page: u64, has_more: bool },
+    GlobalMRs {
+        data: Vec<MergeRequest>,
+        page: u64,
+        has_more: bool,
+    },
     ClearGlobalMRs,
-    AppendGlobalMRs { data: Vec<MergeRequest>, has_more: bool },
-    GlobalIssues { data: Vec<Issue>, page: u64, has_more: bool },
+    AppendGlobalMRs {
+        data: Vec<MergeRequest>,
+        has_more: bool,
+    },
+    GlobalIssues {
+        data: Vec<Issue>,
+        page: u64,
+        has_more: bool,
+    },
     ClearGlobalIssues,
-    AppendGlobalIssues { data: Vec<Issue>, has_more: bool },
-    ProjectMRs { project_id: u64, data: Vec<MergeRequest>, page: u64, has_more: bool },
-    AppendProjectMRs { project_id: u64, data: Vec<MergeRequest> },
-    ProjectIssues { project_id: u64, data: Vec<Issue>, page: u64, has_more: bool },
-    AppendProjectIssues { project_id: u64, data: Vec<Issue> },
-    ProjectPipelines { project_id: u64, data: Vec<Pipeline>, page: u64, has_more: bool },
-    GlobalPipelines { data: Vec<Pipeline>, page: u64, has_more: bool },
-    AppendProjectPipelines { project_id: u64, data: Vec<Pipeline> },
-    Discussions { project_id: u64, iid: u64, data: Vec<Discussion> },
-    IssueDiscussions { project_id: u64, iid: u64, data: Vec<Discussion> },
-    Jobs { project_id: u64, pipeline_id: u64, data: Vec<Job> },
-    ProjectVariables { project_id: u64, data: Vec<ProjectVariable> },
-    Log { project_id: u64, job_id: u64, data: String },
+    AppendGlobalIssues {
+        data: Vec<Issue>,
+        has_more: bool,
+    },
+    ProjectMRs {
+        project_id: u64,
+        data: Vec<MergeRequest>,
+        page: u64,
+        has_more: bool,
+    },
+    AppendProjectMRs {
+        project_id: u64,
+        data: Vec<MergeRequest>,
+    },
+    ProjectIssues {
+        project_id: u64,
+        data: Vec<Issue>,
+        page: u64,
+        has_more: bool,
+    },
+    AppendProjectIssues {
+        project_id: u64,
+        data: Vec<Issue>,
+    },
+    ProjectPipelines {
+        project_id: u64,
+        data: Vec<Pipeline>,
+        page: u64,
+        has_more: bool,
+    },
+    GlobalPipelines {
+        data: Vec<Pipeline>,
+        page: u64,
+        has_more: bool,
+    },
+    AppendProjectPipelines {
+        project_id: u64,
+        data: Vec<Pipeline>,
+    },
+    Discussions {
+        project_id: u64,
+        iid: u64,
+        data: Vec<Discussion>,
+    },
+    IssueDiscussions {
+        project_id: u64,
+        iid: u64,
+        data: Vec<Discussion>,
+    },
+    Jobs {
+        project_id: u64,
+        pipeline_id: u64,
+        data: Vec<Job>,
+    },
+    ProjectVariables {
+        project_id: u64,
+        data: Vec<ProjectVariable>,
+    },
+    PipelineSchedules {
+        project_id: u64,
+        data: Vec<PipelineSchedule>,
+    },
+    StatusMessage(String),
+    ApprovalInfo {
+        project_id: u64,
+        iid: u64,
+        info: ApprovalInfo,
+    },
+    VariableDeleted {
+        key: String,
+    },
+    VariableSaved {
+        key: String,
+        value: String,
+    },
+    Log {
+        project_id: u64,
+        job_id: u64,
+        data: String,
+    },
     TerminalEscape(String),
-    Diffs { project_id: u64, iid: u64, data: Vec<MRDiff> },
-    SingleDiffFetched { project_id: u64, iid: u64, old_path: String, new_path: String, diff: String },
-    Metadata { project_id: u64, labels: Vec<Label>, milestones: Vec<Milestone>, members: Vec<Author> },
+    Diffs {
+        project_id: u64,
+        iid: u64,
+        data: Vec<MRDiff>,
+    },
+    SingleDiffFetched {
+        project_id: u64,
+        iid: u64,
+        old_path: String,
+        new_path: String,
+        diff: String,
+    },
+    Metadata {
+        project_id: u64,
+        labels: Vec<Label>,
+        milestones: Vec<Milestone>,
+        members: Vec<Author>,
+    },
     MemberProjectIds(std::collections::HashSet<u64>),
     MRDetail(MergeRequest),
     IssueDetail(Issue),
-    RelatedMRs { project_id: u64, iid: u64, data: Vec<MergeRequest> },
-    MRClosesIssues { project_id: u64, iid: u64, data: Vec<Issue> },
-    IssueLinks { project_id: u64, iid: u64, data: Vec<Issue> },
-    IssueClosedBy { project_id: u64, iid: u64, data: Vec<MergeRequest> },
+    RelatedMRs {
+        project_id: u64,
+        iid: u64,
+        data: Vec<MergeRequest>,
+    },
+    MRClosesIssues {
+        project_id: u64,
+        iid: u64,
+        data: Vec<Issue>,
+    },
+    IssueLinks {
+        project_id: u64,
+        iid: u64,
+        data: Vec<Issue>,
+    },
+    IssueClosedBy {
+        project_id: u64,
+        iid: u64,
+        data: Vec<MergeRequest>,
+    },
     CurrentUser(Author),
-    RepositoryTree { project_id: u64, data: Vec<RepositoryTreeItem> },
-    RepositoryFile { project_id: u64, file_path: String, data: RepositoryFile },
-    Branches { project_id: u64, data: Vec<Branch>, page: u64, has_more: bool },
-    Commits { project_id: u64, data: Vec<Commit>, page: u64, has_more: bool },
-    AppendCommits { project_id: u64, data: Vec<Commit> },
-    Boards { project_id: u64, data: Vec<Board> },
-    BoardLists { project_id: u64, board_id: u64, data: Vec<BoardList> },
-    BoardIssues { project_id: u64, board_id: u64, list_id: u64, data: Vec<Issue> },
-    Epics { group_id: u64, data: Vec<Epic> },
-    EpicIssues { group_id: u64, epic_iid: u64, data: Vec<Issue> },
-    SearchResults { data: Vec<SearchResult>, search_id: u64 },
-    AppendSearchResults { data: Vec<SearchResult>, search_id: u64 },
+    RepositoryTree {
+        project_id: u64,
+        data: Vec<RepositoryTreeItem>,
+    },
+    RepositoryFile {
+        project_id: u64,
+        file_path: String,
+        data: RepositoryFile,
+    },
+    Branches {
+        project_id: u64,
+        data: Vec<Branch>,
+        page: u64,
+        has_more: bool,
+    },
+    Commits {
+        project_id: u64,
+        data: Vec<Commit>,
+        page: u64,
+        has_more: bool,
+    },
+    AppendCommits {
+        project_id: u64,
+        data: Vec<Commit>,
+    },
+    Boards {
+        project_id: u64,
+        data: Vec<Board>,
+    },
+    BoardLists {
+        project_id: u64,
+        board_id: u64,
+        data: Vec<BoardList>,
+    },
+    BoardIssues {
+        project_id: u64,
+        board_id: u64,
+        list_id: u64,
+        data: Vec<Issue>,
+    },
+    Epics {
+        group_id: u64,
+        data: Vec<Epic>,
+    },
+    EpicIssues {
+        group_id: u64,
+        epic_iid: u64,
+        data: Vec<Issue>,
+    },
+    SearchResults {
+        data: Vec<SearchResult>,
+        search_id: u64,
+    },
+    AppendSearchResults {
+        data: Vec<SearchResult>,
+        search_id: u64,
+    },
     TriggerSearch(u64),
     Loading(bool),
     Error(String),
     TriggerRefresh,
-    RemovePendingIssue { iid: u64 },
-    RemovePendingMR { iid: u64 },
+    RemovePendingIssue {
+        iid: u64,
+    },
+    RemovePendingMR {
+        iid: u64,
+    },
     CheckPagination,
 }
 
@@ -799,7 +1024,9 @@ pub struct App {
     pub file_highlight_cache: Option<(String, String, Vec<ratatui::text::Line<'static>>)>,
     pub job_log_epoch: u64,
     pub job_log_display_cache: (u64, usize),
-    pub markdown_cache: std::cell::RefCell<std::collections::HashMap<u64, std::sync::Arc<Vec<ratatui::text::Line<'static>>>>>,
+    pub markdown_cache: std::cell::RefCell<
+        std::collections::HashMap<u64, std::sync::Arc<Vec<ratatui::text::Line<'static>>>>,
+    >,
     pub discussions: Vec<Discussion>,
     pub discussion_state: ListState,
     pub input_mode: bool,
@@ -817,11 +1044,19 @@ pub struct App {
     pub project_label_cache: std::collections::HashMap<u64, Vec<Label>>,
     pub project_milestone_cache: std::collections::HashMap<u64, Vec<Milestone>>,
     pub project_member_cache: std::collections::HashMap<u64, Vec<Author>>,
-    pub project_metadata_fetches_in_progress: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
+    pub project_metadata_fetches_in_progress:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
     pub project_variable_cache: std::collections::HashMap<u64, Vec<ProjectVariable>>,
     pub project_milestones: Vec<Milestone>,
     pub project_members: Vec<Author>,
     pub project_variables: Vec<ProjectVariable>,
+    pub show_schedules_popup: bool,
+    pub pipeline_schedules: Vec<PipelineSchedule>,
+    pub schedules_state: ListState,
+    pub show_ci_vars_popup: bool,
+    pub ci_vars_state: ListState,
+    pub ci_var_editing: Option<String>,
+    pub approvals: Option<ApprovalInfo>,
     pub collapsed_groups: std::collections::HashSet<String>,
 
     // Popups
@@ -917,10 +1152,11 @@ pub struct App {
     pub filtered_todos: Vec<GroupedItem<Todo>>,
     pub todos_page: u64,
     pub todos_has_more: bool,
+    pub todos_etag: Option<String>,
     pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
     pub filtered_issues: Vec<GroupedItem<Issue>>,
     pub filtered_pipelines: Vec<Pipeline>,
-    
+
     pub todo_filter: TodoFilter,
     pub issue_filter: IssueFilter,
     pub mr_filter: MergeRequestFilter,

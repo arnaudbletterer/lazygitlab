@@ -1,15 +1,19 @@
+use crate::models::{App, DetailSection, InputTarget, LineType};
+use crate::ui::list::{render_discussions_panel, render_metadata_panel};
 use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, InputTarget, DetailSection, LineType};
-use crate::ui::list::{render_metadata_panel, render_discussions_panel};
 
 pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     let is_detail_focused = app.active_panel == crate::models::Panel::MainDetail;
-    
+
     // Outer block containing the detail area
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Details ")
-        .border_style(if is_detail_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+        .border_style(if is_detail_focused {
+            Style::default().fg(app.theme.border)
+        } else {
+            Style::default().fg(app.theme.dim)
+        });
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -48,7 +52,11 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
         .select(active_tab_idx)
         .divider(Span::styled(" │ ", Style::default().fg(app.theme.dim)))
         .style(Style::default().fg(app.theme.dim))
-        .highlight_style(Style::default().fg(app.theme.border).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(app.theme.border)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(tabs, detail_chunks[0]);
     app.set_rect("detail_tabs", detail_chunks[0]);
 
@@ -65,11 +73,19 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     match active_tab_idx {
         0 => {
             // TAB 0: Description & Metadata
-            let is_editing_desc = app.input_mode && app.input_target == InputTarget::EditDescription;
-            let is_desc_focused = is_detail_focused && app.detail_section == DetailSection::Description;
-            
+            let is_editing_desc =
+                app.input_mode && app.input_target == InputTarget::EditDescription;
+            let is_desc_focused =
+                is_detail_focused && app.detail_section == DetailSection::Description;
+
             // Split content vertically: Metadata (rows + borders) and Description Preview (Min(0))
-            let meta_rows: u16 = if app.selected_mr.is_some() { 12 } else if app.selected_issue.is_some() { 11 } else { 3 };
+            let meta_rows: u16 = if app.selected_mr.is_some() {
+                12
+            } else if app.selected_issue.is_some() {
+                11
+            } else {
+                3
+            };
             let desc_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -86,7 +102,11 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             let desc_block = Block::default()
                 .borders(Borders::ALL)
                 .title(" Description / Preview ")
-                .border_style(if is_editing_desc || is_desc_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+                .border_style(if is_editing_desc || is_desc_focused {
+                    Style::default().fg(app.theme.border)
+                } else {
+                    Style::default().fg(app.theme.dim)
+                });
             let desc_inner = desc_block.inner(desc_chunks[1]);
             f.render_widget(desc_block, desc_chunks[1]);
             app.set_rect("detail_view", desc_chunks[1]);
@@ -96,22 +116,33 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 let mut content = Vec::new();
                 let description_body: String = if let Some(mr) = &app.selected_mr {
-                    mr.description.as_deref().unwrap_or("No description provided.").to_string()
+                    mr.description
+                        .as_deref()
+                        .unwrap_or("No description provided.")
+                        .to_string()
                 } else if let Some(issue) = &app.selected_issue {
-                    issue.description.as_deref().unwrap_or("No description provided.").to_string()
+                    issue
+                        .description
+                        .as_deref()
+                        .unwrap_or("No description provided.")
+                        .to_string()
                 } else {
                     " No item selected.".to_string()
                 };
                 for line in app.markdown_cached(&description_body).iter() {
                     content.push(line.clone());
                 }
-                f.render_widget(Paragraph::new(content).wrap(Wrap { trim: false }), desc_inner);
+                f.render_widget(
+                    Paragraph::new(content).wrap(Wrap { trim: false }),
+                    desc_inner,
+                );
             }
         }
         1 => {
             // TAB 1: Discussions (Thread list at top, selected comments at bottom)
-            let is_disc_focused = is_detail_focused && app.detail_section == DetailSection::Discussions;
-            
+            let is_disc_focused =
+                is_detail_focused && app.detail_section == DetailSection::Discussions;
+
             let disc_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -128,7 +159,11 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             let comments_block = Block::default()
                 .borders(Borders::ALL)
                 .title(" Discussion Thread ")
-                .border_style(if is_disc_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+                .border_style(if is_disc_focused {
+                    Style::default().fg(app.theme.border)
+                } else {
+                    Style::default().fg(app.theme.dim)
+                });
             let comments_inner = comments_block.inner(disc_chunks[1]);
             f.render_widget(comments_block, disc_chunks[1]);
 
@@ -151,15 +186,39 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                         let is_resolved = !is_activity && disc.resolved.unwrap_or(false);
 
                         let (prefix, prefix_style, author_style, _content_style) = if is_activity {
-                            ("[ACTIVITY] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                            (
+                                "[ACTIVITY] ",
+                                Style::default().fg(app.theme.dim),
+                                Style::default().fg(app.theme.dim),
+                                Style::default().fg(app.theme.dim),
+                            )
                         } else if let Some(resolved) = disc.resolved {
                             if resolved {
-                                ("[RESOLVED] ", Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim), Style::default().fg(app.theme.dim))
+                                (
+                                    "[RESOLVED] ",
+                                    Style::default().fg(app.theme.dim),
+                                    Style::default().fg(app.theme.dim),
+                                    Style::default().fg(app.theme.dim),
+                                )
                             } else {
-                                ("[UNRESOLVED] ", Style::default().fg(app.theme.pending), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                                (
+                                    "[UNRESOLVED] ",
+                                    Style::default().fg(app.theme.pending),
+                                    Style::default()
+                                        .fg(app.theme.author)
+                                        .add_modifier(Modifier::BOLD),
+                                    Style::default(),
+                                )
                             }
                         } else {
-                            ("", Style::default(), Style::default().fg(app.theme.author).add_modifier(Modifier::BOLD), Style::default())
+                            (
+                                "",
+                                Style::default(),
+                                Style::default()
+                                    .fg(app.theme.author)
+                                    .add_modifier(Modifier::BOLD),
+                                Style::default(),
+                            )
                         };
 
                         let header = vec![
@@ -182,22 +241,25 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                         }
                         content.push(Line::from(""));
                     }
-                    if disc.notes.is_empty() { content.push(Line::from(" No notes in this discussion.")); }
+                    if disc.notes.is_empty() {
+                        content.push(Line::from(" No notes in this discussion."));
+                    }
                 }
             } else {
-                content.push(Line::from(" Select a discussion thread to view full conversation."));
+                content.push(Line::from(
+                    " Select a discussion thread to view full conversation.",
+                ));
             }
 
             let final_notes_inner = if let Some((context, position_opt)) = excerpt_data {
-                let needed_height = (context.len() as u16 + 2).min(disc_chunks[1].height.saturating_sub(4)).max(3);
+                let needed_height = (context.len() as u16 + 2)
+                    .min(disc_chunks[1].height.saturating_sub(4))
+                    .max(3);
                 let split = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(needed_height),
-                        Constraint::Min(0),
-                    ])
+                    .constraints([Constraint::Length(needed_height), Constraint::Min(0)])
                     .split(comments_inner);
-                
+
                 let file_name = position_opt
                     .as_ref()
                     .and_then(|pos| pos.new_path.as_deref().or(pos.old_path.as_deref()))
@@ -218,10 +280,19 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                         LineType::Unchanged => Style::default(),
                     };
                     if *is_target {
-                        line_style = line_style.bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD);
+                        line_style = line_style
+                            .bg(app.theme.highlight_bg)
+                            .add_modifier(Modifier::BOLD);
                     }
                     excerpt_lines.push(Line::from(vec![
-                        Span::styled(format!("{:4} │ ", ln), if *is_target { line_style } else { Style::default().fg(app.theme.dim) }),
+                        Span::styled(
+                            format!("{:4} │ ", ln),
+                            if *is_target {
+                                line_style
+                            } else {
+                                Style::default().fg(app.theme.dim)
+                            },
+                        ),
                         Span::styled(line_text.clone(), line_style),
                     ]));
                 }
@@ -231,40 +302,71 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 comments_inner
             };
 
-            f.render_widget(Paragraph::new(content).wrap(Wrap { trim: false }), final_notes_inner);
+            f.render_widget(
+                Paragraph::new(content).wrap(Wrap { trim: false }),
+                final_notes_inner,
+            );
         }
         _ => {
             // TAB 2: Changes / Files
-            let is_changes_focused = is_detail_focused && app.detail_section == DetailSection::Changes;
-            
+            let is_changes_focused =
+                is_detail_focused && app.detail_section == DetailSection::Changes;
+
             let changes_block = Block::default()
                 .borders(Borders::ALL)
                 .title(" Changes / Files ")
-                .border_style(if is_changes_focused { Style::default().fg(app.theme.border) } else { Style::default().fg(app.theme.dim) });
+                .border_style(if is_changes_focused {
+                    Style::default().fg(app.theme.border)
+                } else {
+                    Style::default().fg(app.theme.dim)
+                });
             let changes_inner = changes_block.inner(content_area);
             f.render_widget(changes_block, content_area);
             app.set_rect("changes_panel", changes_inner);
 
             if app.mr_diffs.is_empty() {
-                f.render_widget(Paragraph::new(" No changes found or still loading...").fg(app.theme.dim), changes_inner);
+                f.render_widget(
+                    Paragraph::new(" No changes found or still loading...").fg(app.theme.dim),
+                    changes_inner,
+                );
             } else {
-                let files: Vec<ListItem> = app.mr_diffs.iter().map(|d| {
-                    ListItem::new(Line::from(vec![
-                        Span::styled(" ● ", Style::default().fg(app.theme.border)),
-                        Span::raw(format!(" {} -> {}", d.old_path, d.new_path)),
-                    ]))
-                }).collect();
+                let files: Vec<ListItem> = app
+                    .mr_diffs
+                    .iter()
+                    .map(|d| {
+                        ListItem::new(Line::from(vec![
+                            Span::styled(" ● ", Style::default().fg(app.theme.border)),
+                            Span::raw(format!(" {} -> {}", d.old_path, d.new_path)),
+                        ]))
+                    })
+                    .collect();
                 f.render_stateful_widget(
                     List::new(files)
-                        .highlight_style(if is_changes_focused { Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD) } else { Style::default() })
-                        .highlight_symbol(if is_changes_focused { "> " } else { "  " }), 
+                        .highlight_style(if is_changes_focused {
+                            Style::default()
+                                .bg(app.theme.highlight_bg)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        })
+                        .highlight_symbol(if is_changes_focused { "> " } else { "  " }),
                     changes_inner,
-                    &mut app.mr_diff_state
+                    &mut app.mr_diff_state,
                 );
-                
+
                 // Helpful hint at the bottom
-                let hint_area = Rect::new(changes_inner.x, changes_inner.y + changes_inner.height.saturating_sub(1), changes_inner.width, 1);
-                f.render_widget(Paragraph::new(" Press [Enter] or [v] to view full diff ").fg(app.theme.dim).alignment(Alignment::Right), hint_area);
+                let hint_area = Rect::new(
+                    changes_inner.x,
+                    changes_inner.y + changes_inner.height.saturating_sub(1),
+                    changes_inner.width,
+                    1,
+                );
+                f.render_widget(
+                    Paragraph::new(" Press [Enter] or [v] to view full diff ")
+                        .fg(app.theme.dim)
+                        .alignment(Alignment::Right),
+                    hint_area,
+                );
             }
         }
     }

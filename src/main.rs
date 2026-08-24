@@ -1,14 +1,14 @@
-use std::{io, time::Duration};
 use crossterm::{
     event::{self, Event},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::prelude::*;
-use gitlab::GitlabBuilder;
 use dotenvy::dotenv;
-use lazygitlab::*;
+use gitlab::GitlabBuilder;
 use lazygitlab::headless::{self, HeadlessOptions};
+use lazygitlab::*;
+use ratatui::prelude::*;
+use std::{io, time::Duration};
 
 #[cfg(not(tarpaulin_include))]
 fn is_headless_requested() -> bool {
@@ -31,7 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if is_headless_requested() {
         let args: Vec<String> = std::env::args().skip(1).collect();
-        let opts = headless::parse_options(&args).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        let opts = headless::parse_options(&args)
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
         run_headless(&mut app, &mut rx, opts).await
     } else {
         run_with_terminal(&mut app, &mut rx).await
@@ -44,8 +45,8 @@ pub async fn run_headless(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
     opts: HeadlessOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use lazygitlab::headless::{FrameCapture, ScriptedEventSource, headless_terminal, load_script};
     use ratatui::backend::TestBackend;
-    use lazygitlab::headless::{headless_terminal, FrameCapture, ScriptedEventSource, load_script};
 
     let mut terminal: ratatui::Terminal<TestBackend> = headless_terminal(opts.width, opts.height);
     let capture = match &opts.frames_dir {
@@ -58,21 +59,26 @@ pub async fn run_headless(
         None => ScriptedEventSource::empty(),
     };
 
-    let mut capture_opt: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = if capture.is_enabled() {
-        let mut cap = capture;
-        Some(Box::new(move |t: &ratatui::Terminal<TestBackend>| {
-            let _ = cap.record(t);
-        }))
-    } else {
-        None
-    };
+    let mut capture_opt: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> =
+        if capture.is_enabled() {
+            let mut cap = capture;
+            Some(Box::new(move |t: &ratatui::Terminal<TestBackend>| {
+                let _ = cap.record(t);
+            }))
+        } else {
+            None
+        };
 
     run_app(&mut terminal, app, &event_source, rx, &mut capture_opt).await?;
 
     Ok(())
 }
 
-struct Config { url: String, token: String, insecure: bool }
+struct Config {
+    url: String,
+    token: String,
+    insecure: bool,
+}
 impl Config {
     fn from_env() -> Self {
         let mut url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
@@ -83,7 +89,7 @@ impl Config {
         } else if url.starts_with("https://") {
             url = url.strip_prefix("https://").unwrap().to_string();
         }
-        
+
         while url.ends_with('/') {
             url.pop();
         }
@@ -92,7 +98,11 @@ impl Config {
         if token.is_empty() {
             panic!("GITLAB_TOKEN must be set");
         }
-        Self { url, token, insecure }
+        Self {
+            url,
+            token,
+            insecure,
+        }
     }
 }
 
@@ -113,10 +123,18 @@ impl EventSource for RealEventSource {
 }
 
 #[cfg(not(tarpaulin_include))]
-pub async fn run_with_terminal(app: &mut App, rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_with_terminal(
+    app: &mut App,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
+) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, event::EnableMouseCapture, event::EnableFocusChange)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        event::EnableMouseCapture,
+        event::EnableFocusChange
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -124,9 +142,16 @@ pub async fn run_with_terminal(app: &mut App, rx: &mut tokio::sync::mpsc::Unboun
     let res = run_app(&mut terminal, app, &event_source, rx, &mut None).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, event::DisableMouseCapture, event::DisableFocusChange)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        event::DisableMouseCapture,
+        event::DisableFocusChange
+    )?;
     terminal.show_cursor()?;
-    if let Err(err) = res { eprintln!("Application Error: {err}"); }
+    if let Err(err) = res {
+        eprintln!("Application Error: {err}");
+    }
     Ok(())
 }
 
@@ -137,8 +162,8 @@ async fn run_app<B, E>(
     event_source: &E,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
     frame_capture: &mut Option<Box<dyn for<'a> FnMut(&'a Terminal<B>)>>,
-) -> Result<(), Box<dyn std::error::Error>> 
-where 
+) -> Result<(), Box<dyn std::error::Error>>
+where
     B: Backend,
     B::Error: 'static,
     E: EventSource,
@@ -151,8 +176,8 @@ mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
     use std::sync::Mutex;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::path;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     struct MockEventSource {
         events: Mutex<Vec<Event>>,
@@ -173,50 +198,84 @@ mod tests {
     #[tokio::test]
     async fn test_run_app_full() {
         let server = MockServer::start().await;
-        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-        
-        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        Mock::given(path("/api/v4/user"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"id":1,"username":"u"})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+            .insecure()
+            .build_async()
+            .await
+            .unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(client, tx);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
         let event_source = MockEventSource {
-            events: Mutex::new(vec![
-                Event::Key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('q'), crossterm::event::KeyModifiers::NONE)),
-            ]),
+            events: Mutex::new(vec![Event::Key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char('q'),
+                crossterm::event::KeyModifiers::NONE,
+            ))]),
         };
 
         let mut noop: Option<lazygitlab::runner::FrameCaptureFn<TestBackend>> = None;
-        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut noop).await.is_ok());
+        assert!(
+            run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut noop)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
     async fn test_run_app_mouse_and_refresh() {
         let server = MockServer::start().await;
-        Mock::given(path("/api/v4/user")).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"}))).mount(&server).await;
-        
-        let client = GitlabBuilder::new(server.uri().replace("http://",""), "t").insecure().build_async().await.unwrap();
+        Mock::given(path("/api/v4/user"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"id":1,"username":"u"})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+            .insecure()
+            .build_async()
+            .await
+            .unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(client, tx);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
         // Trigger a quick refresh interval
-        app.view_mode = ViewMode::JobLog; 
+        app.view_mode = ViewMode::JobLog;
         app.last_refresh = std::time::Instant::now() - Duration::from_secs(5);
 
         let event_source = MockEventSource {
             events: Mutex::new(vec![
                 Event::Mouse(crossterm::event::MouseEvent {
                     kind: crossterm::event::MouseEventKind::ScrollDown,
-                    column: 0, row: 0, modifiers: crossterm::event::KeyModifiers::NONE,
+                    column: 0,
+                    row: 0,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
                 }),
-                Event::Key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('q'), crossterm::event::KeyModifiers::NONE)),
+                Event::Key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char('q'),
+                    crossterm::event::KeyModifiers::NONE,
+                )),
             ]),
         };
 
-        assert!(run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut None).await.is_ok());
+        assert!(
+            run_app(&mut terminal, &mut app, &event_source, &mut rx, &mut None)
+                .await
+                .is_ok()
+        );
     }
 
     static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -225,7 +284,9 @@ mod tests {
     #[should_panic(expected = "GITLAB_TOKEN must be set")]
     fn test_config_from_env_panic() {
         let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe { std::env::remove_var("GITLAB_TOKEN"); }
+        unsafe {
+            std::env::remove_var("GITLAB_TOKEN");
+        }
         Config::from_env();
     }
 
