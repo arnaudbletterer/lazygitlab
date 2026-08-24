@@ -1,0 +1,45 @@
+---
+source: tests/headless_snapshots.rs
+assertion_line: 102
+expression: last_frame
+---
+┌ Status ──────────────┐┌ Merge Requests ──────────────────────────────────────────────────────────────────────────────┐
+│ No Project Selected  ││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
+└──────────────────────┘│No merge requests match this view or filter.                                                  │
+┌ Dashboard ───────────┐│                                                                                              │
+│    Todos             ││                                                                                              │
+│    Merge Requests    ││                                                                                              │
+│    Issues            ││                                                                                              │
+└──────────────────────┘│                                                                                              │
+┌ Explore ─────────────┐│                                                                                              │
+│    Projects          ││                                                                                              │
+│    Groups            ││                                                                                              │
+└──────────────────────┘│                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        └──────────────────────────────────────────────────────────────────────────────────────────────┘
+? help  q quit    Fetching Merge Requests...                                                     xxxxxxxxxxxxxxxxxxxxxxx

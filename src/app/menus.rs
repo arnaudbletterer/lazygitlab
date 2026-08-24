@@ -56,7 +56,12 @@ impl App {
                     MenuSelection::Branches => if !self.project_branches.is_empty() { let i = (self.branches_state.selected().unwrap_or(0) + 1) % self.project_branches.len(); self.branches_state.select(Some(i)); }
                     MenuSelection::Commits => if !self.commits.is_empty() { let i = (self.commits_state.selected().unwrap_or(0) + 1) % self.commits.len(); self.commits_state.select(Some(i)); }
                     MenuSelection::Boards => if !self.project_boards.is_empty() { let i = (self.project_boards_state.selected().unwrap_or(0) + 1) % self.project_boards.len(); self.project_boards_state.select(Some(i)); }
-                    MenuSelection::Epics => if !self.epics.is_empty() { let i = (self.epics_state.selected().unwrap_or(0) + 1) % self.epics.len(); self.epics_state.select(Some(i)); }
+                    MenuSelection::Epics => {
+                        if self.selected_epic.is_some() && !self.filtered_epic_issues.is_empty() {
+                            let i = (self.epic_issues_state.selected().unwrap_or(0) + 1) % self.filtered_epic_issues.len();
+                            self.epic_issues_state.select(Some(i));
+                        } else if !self.epics.is_empty() { let i = (self.epics_state.selected().unwrap_or(0) + 1) % self.epics.len(); self.epics_state.select(Some(i)); }
+                    }
                 }
                 let _ = self.tx.send(DataUpdate::CheckPagination);
             }
@@ -167,7 +172,12 @@ impl App {
                     MenuSelection::Branches => if !self.project_branches.is_empty() { let i = if self.branches_state.selected().unwrap_or(0) == 0 { self.project_branches.len() - 1 } else { self.branches_state.selected().unwrap() - 1 }; self.branches_state.select(Some(i)); }
                     MenuSelection::Commits => if !self.commits.is_empty() { let i = if self.commits_state.selected().unwrap_or(0) == 0 { self.commits.len() - 1 } else { self.commits_state.selected().unwrap() - 1 }; self.commits_state.select(Some(i)); }
                     MenuSelection::Boards => if !self.project_boards.is_empty() { let i = if self.project_boards_state.selected().unwrap_or(0) == 0 { self.project_boards.len() - 1 } else { self.project_boards_state.selected().unwrap() - 1 }; self.project_boards_state.select(Some(i)); }
-                    MenuSelection::Epics => if !self.epics.is_empty() { let i = if self.epics_state.selected().unwrap_or(0) == 0 { self.epics.len() - 1 } else { self.epics_state.selected().unwrap() - 1 }; self.epics_state.select(Some(i)); }
+                    MenuSelection::Epics => {
+                        if self.selected_epic.is_some() && !self.filtered_epic_issues.is_empty() {
+                            let i = if self.epic_issues_state.selected().unwrap_or(0) == 0 { self.filtered_epic_issues.len() - 1 } else { self.epic_issues_state.selected().unwrap() - 1 };
+                            self.epic_issues_state.select(Some(i));
+                        } else if !self.epics.is_empty() { let i = if self.epics_state.selected().unwrap_or(0) == 0 { self.epics.len() - 1 } else { self.epics_state.selected().unwrap() - 1 }; self.epics_state.select(Some(i)); }
+                    }
                 }
             }
             Panel::MainDetail => {
@@ -326,6 +336,25 @@ impl App {
                             }
                         }
                     }
+                    MenuSelection::Epics => {
+                        if self.selected_epic.is_none() {
+                            if let Some(epic) = self.epics_state.selected().and_then(|i| self.epics.get(i)).cloned() {
+                                let (group_id, iid) = (epic.group_id, epic.iid);
+                                self.selected_epic = Some(epic);
+                                self.epic_issues.clear();
+                                self.epic_issues_state.select(None);
+                                if let Some(gid) = group_id {
+                                    let _ = self.fetch_epic_issues(gid, iid).await;
+                                }
+                            }
+                        } else if let Some(issue) = self.epic_issues_state.selected().and_then(|i| self.filtered_epic_issues.get(i)).cloned() {
+                            self.selected_issue = Some(issue);
+                            self.selected_mr = None;
+                            self.discussions.clear();
+                            self.active_panel = Panel::MainDetail;
+                            self.detail_section = DetailSection::Metadata;
+                        }
+                    }
                     MenuSelection::Boards => {
                         if let Some(board) = self.project_boards_state.selected().and_then(|i| self.project_boards.get(i)).cloned() {
                             self.selected_board = Some(board.clone());
@@ -393,6 +422,11 @@ impl App {
                 self.active_panel = Panel::Main;
             }
             Panel::Main => {
+                if self.active_selection == MenuSelection::Epics && self.selected_epic.is_some() {
+                    self.selected_epic = None;
+                    self.epic_issues.clear();
+                    return;
+                }
                 self.active_panel = match self.active_context {
                     Context::Dashboard => Panel::Dashboard,
                     Context::Explore => Panel::Explore,

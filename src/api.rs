@@ -940,6 +940,14 @@ impl Endpoint for GroupEpics {
 impl Pageable for GroupEpics {}
 
 #[derive(Debug, Clone)]
+pub struct GroupEpicIssues { pub group: u64, pub epic_iid: u64 }
+impl Endpoint for GroupEpicIssues {
+    fn method(&self) -> Method { Method::GET }
+    fn endpoint(&self) -> Cow<'static, str> { format!("groups/{}/epics/{}/issues", self.group, self.epic_iid).into() }
+}
+impl Pageable for GroupEpicIssues {}
+
+#[derive(Debug, Clone)]
 pub struct IssueParticipants { pub project: u64, pub issue: u64 }
 impl Endpoint for IssueParticipants {
     fn method(&self) -> Method { Method::GET }

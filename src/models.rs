@@ -738,6 +738,7 @@ pub enum DataUpdate {
     BoardLists { project_id: u64, board_id: u64, data: Vec<BoardList> },
     BoardIssues { project_id: u64, board_id: u64, list_id: u64, data: Vec<Issue> },
     Epics { group_id: u64, data: Vec<Epic> },
+    EpicIssues { group_id: u64, epic_iid: u64, data: Vec<Issue> },
     SearchResults { data: Vec<SearchResult>, search_id: u64 },
     AppendSearchResults { data: Vec<SearchResult>, search_id: u64 },
     TriggerSearch(u64),
@@ -975,6 +976,10 @@ pub struct App {
     pub board_issue_states: std::collections::HashMap<u64, ListState>,
     pub epics: Vec<Epic>,
     pub epics_state: ListState,
+    pub selected_epic: Option<Epic>,
+    pub epic_issues: Vec<Issue>,
+    pub filtered_epic_issues: Vec<Issue>,
+    pub epic_issues_state: ListState,
 
     // Search
     pub show_search: bool,

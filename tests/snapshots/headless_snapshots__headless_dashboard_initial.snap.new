@@ -1,0 +1,45 @@
+---
+source: tests/headless_snapshots.rs
+assertion_line: 68
+expression: frame
+---
+┌ Status ──────────────┐┌ To-Do List ──────────────────────────────────────────────────────────────────────────────────┐
+│ No Project Selected  ││ Pending  │  Snoozed  │  Done                                                                 │
+└──────────────────────┘│No todos match this view or filter.                                                           │
+┌ Dashboard ───────────┐│                                                                                              │
+│>   Todos             ││                                                                                              │
+│    Merge Requests    ││                                                                                              │
+│    Issues            ││                                                                                              │
+└──────────────────────┘│                                                                                              │
+┌ Explore ─────────────┐│                                                                                              │
+│    Projects          ││                                                                                              │
+│    Groups            ││                                                                                              │
+└──────────────────────┘│                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        │                                                                                              │
+                        └──────────────────────────────────────────────────────────────────────────────────────────────┘
+? help  q quit    Fetching Todos...                                                              xxxxxxxxxxxxxxxxxxxxxxx

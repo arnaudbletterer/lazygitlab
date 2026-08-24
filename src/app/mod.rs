@@ -212,6 +212,10 @@ impl App {
             board_issue_states: std::collections::HashMap::new(),
             epics: Vec::new(),
             epics_state: ListState::default(),
+            selected_epic: None,
+            epic_issues: Vec::new(),
+            filtered_epic_issues: Vec::new(),
+            epic_issues_state: ListState::default(),
             show_search: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -671,6 +675,13 @@ impl App {
             }
             DataUpdate::BoardIssues { project_id, board_id: _, list_id, data } => { if self.selected_project.as_ref().is_some_and(|p| p.id == project_id) { self.board_issues.insert(list_id, data); } }
             DataUpdate::Epics { group_id: _, data } => { self.epics = data; self.epics_state.select(if self.epics.is_empty() { None } else { Some(0) }); }
+            DataUpdate::EpicIssues { group_id, epic_iid, data } => {
+                if self.selected_epic.as_ref().is_some_and(|e| e.group_id == Some(group_id) && e.iid == epic_iid) {
+                    self.epic_issues = data;
+                    self.epic_issues_state.select(if self.epic_issues.is_empty() { None } else { Some(0) });
+                    self.filter_lists();
+                }
+            }
             DataUpdate::TerminalEscape(_) => {} // Handled in main loop
         }
     }
@@ -1633,6 +1644,9 @@ impl App {
                 .cloned().collect();
         }
         self.filtered_branches = self.project_branches.iter().filter(|b| b.name.to_lowercase().contains(&filter)).cloned().collect();
+        self.filtered_epic_issues = self.epic_issues.iter()
+            .filter(|i| i.title.to_lowercase().contains(&filter))
+            .cloned().collect();
         
         // Filter Board Issues
         self.filtered_board_issues.clear();
@@ -1686,6 +1700,7 @@ impl App {
         clamp(&mut self.jobs_state, self.jobs.len(), self.active_panel == Panel::MainDetail && active_sel == MenuSelection::Pipelines);
         clamp(&mut self.discussion_state, self.discussions.len(), self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Discussions);
         clamp(&mut self.epics_state, self.epics.len(), active_sel == MenuSelection::Epics);
+        clamp(&mut self.epic_issues_state, self.filtered_epic_issues.len(), active_sel == MenuSelection::Epics && self.selected_epic.is_some());
         clamp(&mut self.project_boards_state, self.project_boards.len(), active_sel == MenuSelection::Boards);
         clamp(&mut self.search_state, self.search_results.len(), self.show_search);
         clamp(&mut self.mr_diff_state, self.mr_diffs.len(), self.active_panel == Panel::MainDetail && self.detail_section == DetailSection::Changes);

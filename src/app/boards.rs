@@ -104,6 +104,23 @@ impl App {
         Ok(())
     }
 
+    pub async fn fetch_epic_issues(&mut self, group_id: u64, epic_iid: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let ep = GroupEpicIssues { group: group_id, epic_iid };
+            let res: Result<Result<Vec<Issue>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(30), paged(ep, gitlab::api::Pagination::All).query_async(&client)).await;
+            match res {
+                Ok(Ok(data)) => { let _ = tx.send(DataUpdate::EpicIssues { group_id, epic_iid, data }); }
+                Ok(Err(e)) => { let _ = tx.send(DataUpdate::Error(e.to_string())); }
+                Err(_) => { let _ = tx.send(DataUpdate::Error("Epic issues fetch timed out".into())); }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
+        Ok(())
+    }
+
     pub async fn fetch_epics(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             if let Some(namespace) = &project.namespace {

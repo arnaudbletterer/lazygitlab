@@ -131,7 +131,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         MenuSelection::Branches => " Branches ".to_string(),
         MenuSelection::Commits => " Commits ".to_string(),
         MenuSelection::Boards => " Boards ".to_string(),
-        MenuSelection::Epics => " Epics ".to_string(),
+        MenuSelection::Epics => match &app.selected_epic {
+            Some(epic) => format!(" Epic: {} ", crate::ui::widgets::truncate_str(&epic.title, 40)),
+            None => " Epics ".to_string(),
+        },
     };
     let list_block = Block::default()
         .borders(Borders::ALL)
@@ -352,13 +355,26 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.project_boards_state);
         }
         MenuSelection::Epics => {
-            let items: Vec<ListItem> = app.epics.iter().map(|e| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!("&{} ", e.iid), Style::default().fg(app.theme.dim)),
-                    Span::styled(e.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
-                ]))
-            }).collect();
-            f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
+            if let Some(epic) = &app.selected_epic {
+                let items: Vec<ListItem> = app.filtered_epic_issues.iter().map(|i| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!(" {} ", i.state), crate::ui::widgets::get_status_style(&i.state, &app.theme)),
+                        Span::raw(format!("#{} ", i.iid)),
+                        Span::styled(crate::ui::widgets::truncate_str(&i.title, (area.width as usize).saturating_sub(24).max(16)), Style::default().add_modifier(Modifier::BOLD)),
+                    ]))
+                }).collect();
+                if items.is_empty() { f.render_widget(Paragraph::new("No issues linked to this epic.").style(Style::default().fg(app.theme.dim)), list_chunks[1]); } else {
+                f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epic_issues_state); }
+            } else {
+                let items: Vec<ListItem> = app.epics.iter().map(|e| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("&{} ", e.iid), Style::default().fg(app.theme.dim)),
+                        Span::styled(e.title.clone(), Style::default().add_modifier(Modifier::BOLD)),
+                        Span::styled(format!(" [{}]", e.state), crate::ui::widgets::get_status_style(&e.state, &app.theme)),
+                    ]))
+                }).collect();
+                f.render_stateful_widget(List::new(items).highlight_style(if is_main_focused { highlight_style } else { no_highlight }).highlight_symbol(if is_main_focused { "> " } else { "  " }), list_chunks[1], &mut app.epics_state);
+            }
         }
     }
 }
