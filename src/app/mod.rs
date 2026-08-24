@@ -1813,7 +1813,7 @@ impl App {
                     if y == r.y + 1 {
                         let rel_x = x.saturating_sub(r.x).saturating_sub(1);
                         let titles = match self.active_selection {
-                            MenuSelection::MergeRequests => vec!["Opened", "Merged", "Closed", "All"],
+                            MenuSelection::MergeRequests => vec!["Opened", "Review", "Assigned", "Merged", "Closed", "All"],
                             MenuSelection::Issues => vec!["Opened", "Closed", "All"],
                             MenuSelection::Todos => vec!["Pending", "Snoozed", "Done"],
                             _ => vec!["List"],
@@ -1825,7 +1825,7 @@ impl App {
                             if (rel_x as usize) >= current_x && (rel_x as usize) < next_x {
                                 match self.active_selection {
                                     MenuSelection::MergeRequests => {
-                                        self.mr_filter = match idx { 0 => MergeRequestFilter::Opened, 1 => MergeRequestFilter::Merged, 2 => MergeRequestFilter::Closed, _ => MergeRequestFilter::All };
+                                        self.mr_filter = match idx { 0 => MergeRequestFilter::Opened, 1 => MergeRequestFilter::Review, 2 => MergeRequestFilter::Assigned, 3 => MergeRequestFilter::Merged, 4 => MergeRequestFilter::Closed, _ => MergeRequestFilter::All };
                                     }
                                     MenuSelection::Issues => {
                                         self.issue_filter = match idx { 0 => IssueFilter::Opened, 1 => IssueFilter::Closed, _ => IssueFilter::All };

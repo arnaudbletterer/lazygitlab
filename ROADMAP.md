@@ -119,9 +119,9 @@ Rebuilt from the five-persona expert review round (DevOps / MR-reviewer / PM / U
 
 ### P0 — Reviewer & triage gaps
 - [ ] **Render-path caching** — cache syntect-highlighted file lines, job-log `Vec<Line>`, and markdown output on `App`, invalidated on data change; render path becomes O(viewport) instead of O(document) per frame (`src/ui/mod.rs:237-387`, `src/ui/markdown.rs` callers). Biggest perf win.
-- [ ] **"Assigned to me / awaiting my review" MR filter** — `scope=assigned-to-me` + `reviewer_id` on the existing global MR endpoint (`src/api.rs:512`, `src/models.rs:923`); today `I` mixes in every participant.
-- [ ] **Failed-pipeline filter** — pass `status=` to `ProjectPipelines` (`src/api.rs:380`) and add a `[`/`]` segment for Pipelines.
-- [ ] **Job-log search + G/gg/PageUp/PageDown** — reuse the filter input to jump `job_log_cursor` to the next match (`src/app/keymap.rs:234-298`).
+- [x] **"Assigned to me / awaiting my review" MR filter** — new `Review` / `Assigned` segments using `reviewer_id` / `assignee_id` on the MR listing (`src/api.rs::PagedMergeRequests`).
+- [x] **Failed-pipeline filter** — `[`/`]` segments `All │ Running │ Failed │ Passed` filtering client-side (`src/app/mod.rs::filter_lists`).
+- [x] **Job-log search + G/Home/PageUp/PageDown** — `/` searches the log, Enter jumps to the next match (`src/app/keymap.rs`).
 
 ### P1 — Workflow depth
 - [ ] **Cross-project pipeline overview** on the dashboard (failed-first sort) — DevOps' primary daily view is missing entirely (`src/app/pipelines.rs:7`).

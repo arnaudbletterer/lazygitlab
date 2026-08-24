@@ -132,6 +132,8 @@ async fn live_full_data_update_round_trip_project_mrs() {
         order_by: None,
         sort: None,
         with_labels_details: Some(true),
+        assignee_id: None,
+        reviewer_id: None,
     };
     let raw = fetch_json(&client, endpoint).await;
     let arr = raw.as_array().expect("mrs response must be array");

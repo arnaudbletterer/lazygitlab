@@ -18,14 +18,16 @@ impl App {
             self.status_message = Some("Fetching Merge Requests...".into());
 
             let state_str = match self.mr_filter {
-                MergeRequestFilter::Opened => Some("opened".to_string()),
+                MergeRequestFilter::Opened | MergeRequestFilter::Review | MergeRequestFilter::Assigned => Some("opened".to_string()),
                 MergeRequestFilter::Merged => Some("merged".to_string()),
                 MergeRequestFilter::Closed => Some("closed".to_string()),
                 MergeRequestFilter::All => None,
             };
+            let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned { self.current_user.as_ref().map(|u| u.id) } else { None };
+            let reviewer_id = if self.mr_filter == MergeRequestFilter::Review { self.current_user.as_ref().map(|u| u.id) } else { None };
 
             tokio::spawn(async move {
-                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+                let ep = PagedMergeRequests { project: pid, page: 1, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true), assignee_id, reviewer_id };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { 
@@ -49,14 +51,17 @@ impl App {
             let tx = self.tx.clone();
             let next_page = self.mrs_page + 1;
             self.mrs_page = next_page;
-            let _ = tx.send(DataUpdate::Loading(true));            let state_str = match self.mr_filter {
-                MergeRequestFilter::Opened => Some("opened".to_string()),
+            let _ = tx.send(DataUpdate::Loading(true));
+            let state_str = match self.mr_filter {
+                MergeRequestFilter::Opened | MergeRequestFilter::Review | MergeRequestFilter::Assigned => Some("opened".to_string()),
                 MergeRequestFilter::Merged => Some("merged".to_string()),
                 MergeRequestFilter::Closed => Some("closed".to_string()),
                 MergeRequestFilter::All => None,
             };
+            let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned { self.current_user.as_ref().map(|u| u.id) } else { None };
+            let reviewer_id = if self.mr_filter == MergeRequestFilter::Review { self.current_user.as_ref().map(|u| u.id) } else { None };
             tokio::spawn(async move {
-                let ep = PagedMergeRequests { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true) };
+                let ep = PagedMergeRequests { project: pid, page: next_page, per_page: 50, state: state_str, order_by: Some("updated_at".into()), sort: Some("desc".into()), with_labels_details: Some(true), assignee_id, reviewer_id };
                 let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&client)).await;
                 match res {
                     Ok(Ok(data)) => { if !data.is_empty() { let _ = tx.send(DataUpdate::AppendProjectMRs { project_id: pid, data }); } }
@@ -73,11 +78,13 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let state_str = match self.mr_filter {
-            MergeRequestFilter::Opened => "opened".to_string(),
+            MergeRequestFilter::Opened | MergeRequestFilter::Review | MergeRequestFilter::Assigned => "opened".to_string(),
             MergeRequestFilter::Merged => "merged".to_string(),
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
+        let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned { self.current_user.as_ref().map(|u| u.id) } else { None };
+        let reviewer_id = if self.mr_filter == MergeRequestFilter::Review { self.current_user.as_ref().map(|u| u.id) } else { None };
 
         let _ = tx.send(DataUpdate::Loading(true));
         self.status_message = Some("Fetching Merge Requests...".into());
@@ -97,6 +104,8 @@ impl App {
             for pid in project_ids {
                 let c = client.clone();
                 let state = state_str.clone();
+                let assignee_id = assignee_id;
+                let reviewer_id = reviewer_id;
                 let handle = tokio::spawn(async move {
                     let ep = PagedMergeRequests {
                         project: pid,
@@ -106,6 +115,8 @@ impl App {
                         order_by: Some("created_at".into()),
                         sort: Some("desc".into()),
                         with_labels_details: Some(true),
+                        assignee_id,
+                        reviewer_id,
                     };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c)).await;
                     match res {
@@ -140,11 +151,13 @@ impl App {
         let next_page = self.mrs_page + 1;
         self.mrs_page = next_page;
         let state_str = match self.mr_filter {
-            MergeRequestFilter::Opened => "opened".to_string(),
+            MergeRequestFilter::Opened | MergeRequestFilter::Review | MergeRequestFilter::Assigned => "opened".to_string(),
             MergeRequestFilter::Merged => "merged".to_string(),
             MergeRequestFilter::Closed => "closed".to_string(),
             MergeRequestFilter::All => "all".to_string(),
         };
+        let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned { self.current_user.as_ref().map(|u| u.id) } else { None };
+        let reviewer_id = if self.mr_filter == MergeRequestFilter::Review { self.current_user.as_ref().map(|u| u.id) } else { None };
 
         let _ = tx.send(DataUpdate::Loading(true));
 
@@ -162,6 +175,8 @@ impl App {
             for pid in project_ids {
                 let c = client.clone();
                 let state = state_str.clone();
+                let assignee_id = assignee_id;
+                let reviewer_id = reviewer_id;
                 let handle = tokio::spawn(async move {
                     let ep = PagedMergeRequests {
                         project: pid,
@@ -171,6 +186,8 @@ impl App {
                         order_by: Some("created_at".into()),
                         sort: Some("desc".into()),
                         with_labels_details: Some(true),
+                        assignee_id,
+                        reviewer_id,
                     };
                     let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(std::time::Duration::from_secs(60), ep.query_async(&c)).await;
                     match res {

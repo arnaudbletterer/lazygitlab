@@ -3,7 +3,7 @@ source: tests/headless_snapshots.rs
 expression: last_frame
 ---
 ┌ Status ──────────────┐┌ Merge Requests ──────────────────────────────────────────────────────────────────────────────┐
-│ No Project Selected  ││ Opened  │  Merged  │  Closed  │  All                                                         │
+│ No Project Selected  ││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
 └──────────────────────┘│No merge requests match this view or filter.                                                  │
 ┌ Dashboard ───────────┐│                                                                                              │
 │    Todos             ││                                                                                              │

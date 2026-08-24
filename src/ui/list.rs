@@ -143,7 +143,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
 
     let (titles, selected) = match app.active_selection {
         MenuSelection::Todos => (vec!["Pending", "Snoozed", "Done"], Some(match app.todo_filter { TodoFilter::Pending => 0, TodoFilter::Snoozed => 1, TodoFilter::Done => 2 })),
-        MenuSelection::MergeRequests => (vec!["Opened", "Merged", "Closed", "All"], Some(match app.mr_filter { MergeRequestFilter::Opened => 0, MergeRequestFilter::Merged => 1, MergeRequestFilter::Closed => 2, MergeRequestFilter::All => 3 })),
+        MenuSelection::MergeRequests => (vec!["Opened", "Review", "Assigned", "Merged", "Closed", "All"], Some(match app.mr_filter { MergeRequestFilter::Opened => 0, MergeRequestFilter::Review => 1, MergeRequestFilter::Assigned => 2, MergeRequestFilter::Merged => 3, MergeRequestFilter::Closed => 4, MergeRequestFilter::All => 5 })),
         MenuSelection::Issues => (vec!["Opened", "Closed", "All"], Some(match app.issue_filter { IssueFilter::Opened => 0, IssueFilter::Closed => 1, IssueFilter::All => 2 })),
         MenuSelection::Pipelines => (vec!["All", "Running", "Failed", "Passed"], Some(match app.pipeline_filter { PipelineFilter::All => 0, PipelineFilter::Running => 1, PipelineFilter::Failed => 2, PipelineFilter::Passed => 3 })),
         _ => (vec![], None),

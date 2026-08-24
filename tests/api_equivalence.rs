@@ -129,6 +129,8 @@ async fn live_full_api_equivalence_merge_request() {
         order_by: None,
         sort: None,
         with_labels_details: Some(true),
+        assignee_id: None,
+        reviewer_id: None,
     };
     let raw = fetch_json(&client, endpoint).await;
     let arr = raw.as_array().expect("mrs response must be array");
@@ -328,6 +330,8 @@ async fn live_full_api_equivalence_discussion() {
         order_by: None,
         sort: None,
         with_labels_details: Some(false),
+        assignee_id: None,
+        reviewer_id: None,
     };
     let mrs = fetch_json(&client, mr_endpoint).await;
     let mrs_arr = mrs.as_array().expect("mrs response must be array");
@@ -417,6 +421,8 @@ async fn live_full_api_equivalence_merge_request_notes() {
         order_by: None,
         sort: None,
         with_labels_details: Some(false),
+        assignee_id: None,
+        reviewer_id: None,
     };
     let mrs = fetch_json(&client, mr_endpoint).await;
     let mrs_arr = mrs.as_array().expect("mrs response must be array");

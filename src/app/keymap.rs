@@ -887,7 +887,7 @@ impl App {
                 } else {
                     match self.active_selection {
                         MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Done, TodoFilter::Snoozed => TodoFilter::Pending, TodoFilter::Done => TodoFilter::Snoozed },
-                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::All, MergeRequestFilter::Merged => MergeRequestFilter::Opened, MergeRequestFilter::Closed => MergeRequestFilter::Merged, MergeRequestFilter::All => MergeRequestFilter::Closed },
+                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Assigned, MergeRequestFilter::Assigned => MergeRequestFilter::Review, MergeRequestFilter::Review => MergeRequestFilter::Opened },
                         MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::All, IssueFilter::Closed => IssueFilter::Opened, IssueFilter::All => IssueFilter::Closed },
                         MenuSelection::Pipelines => { self.pipeline_filter = match self.pipeline_filter { PipelineFilter::All => PipelineFilter::Passed, PipelineFilter::Passed => PipelineFilter::Failed, PipelineFilter::Failed => PipelineFilter::Running, PipelineFilter::Running => PipelineFilter::All }; self.filter_lists(); }
                         _ => {}
@@ -904,7 +904,7 @@ impl App {
                 } else {
                     match self.active_selection {
                         MenuSelection::Todos => self.todo_filter = match self.todo_filter { TodoFilter::Pending => TodoFilter::Snoozed, TodoFilter::Snoozed => TodoFilter::Done, TodoFilter::Done => TodoFilter::Pending },
-                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Opened },
+                        MenuSelection::MergeRequests => self.mr_filter = match self.mr_filter { MergeRequestFilter::Opened => MergeRequestFilter::Review, MergeRequestFilter::Review => MergeRequestFilter::Assigned, MergeRequestFilter::Assigned => MergeRequestFilter::Merged, MergeRequestFilter::Merged => MergeRequestFilter::Closed, MergeRequestFilter::Closed => MergeRequestFilter::All, MergeRequestFilter::All => MergeRequestFilter::Opened },
                         MenuSelection::Issues => self.issue_filter = match self.issue_filter { IssueFilter::Opened => IssueFilter::Closed, IssueFilter::Closed => IssueFilter::All, IssueFilter::All => IssueFilter::Opened },
                         MenuSelection::Pipelines => { self.pipeline_filter = match self.pipeline_filter { PipelineFilter::All => PipelineFilter::Running, PipelineFilter::Running => PipelineFilter::Failed, PipelineFilter::Failed => PipelineFilter::Passed, PipelineFilter::Passed => PipelineFilter::All }; self.filter_lists(); }
                         _ => {}

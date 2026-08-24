@@ -410,7 +410,7 @@ impl Endpoint for PagedIssues {
 impl Pageable for PagedIssues {}
 
 #[derive(Debug, Clone)]
-pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String>, pub order_by: Option<String>, pub sort: Option<String>, pub with_labels_details: Option<bool> }
+pub struct PagedMergeRequests { pub project: u64, pub page: u64, pub per_page: u64, pub state: Option<String>, pub order_by: Option<String>, pub sort: Option<String>, pub with_labels_details: Option<bool>, pub assignee_id: Option<u64>, pub reviewer_id: Option<u64> }
 impl Endpoint for PagedMergeRequests {
     fn method(&self) -> Method { Method::GET }
     fn endpoint(&self) -> Cow<'static, str> { format!("projects/{}/merge_requests", self.project).into() }
@@ -423,6 +423,8 @@ impl Endpoint for PagedMergeRequests {
         if let Some(s) = &self.sort { params.push("sort", s); }
         if let Some(w) = self.with_labels_details { params.push("with_labels_details", w); }
         else { params.push("with_labels_details", true); }
+        if let Some(id) = self.assignee_id { params.push("assignee_id", id); }
+        if let Some(id) = self.reviewer_id { params.push("reviewer_id", id); }
         params
     }
 }
@@ -1107,7 +1109,7 @@ mod tests {
         assert_eq!(group_projs.method(), Method::GET);
         let _ = group_projs.parameters();
 
-        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1, state: Some("opened".into()), order_by: None, sort: None, with_labels_details: None };
+        let p_mrs = PagedMergeRequests { project: 1, page: 1, per_page: 1, state: Some("opened".into()), order_by: None, sort: None, with_labels_details: None, assignee_id: None, reviewer_id: None };
         assert_eq!(p_mrs.method(), Method::GET);
         let _ = p_mrs.parameters();
 

@@ -20,6 +20,8 @@ pub enum IssueFilter {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum MergeRequestFilter {
     Opened,
+    Review,
+    Assigned,
     Merged,
     Closed,
     All,
