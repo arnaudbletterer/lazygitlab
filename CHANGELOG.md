@@ -6,6 +6,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-24
+
 ### Added
 - **Render-path caching** (perf P0): job-log view is now viewport-sliced (O(viewport) instead of O(document) per frame), file-viewer syntect highlighting is cached per blob, and markdown rendering is memoized across description/notes/diff comments.
 - **Dirty-flag rendering** (perf): the event loop no longer redraws at 10 Hz unconditionally; frames render only on input/updates/spinner cadence. Detail-fetch debounce stops rapid list navigation from firing a discussions fetch per keystroke (250 ms same-target debounce).
