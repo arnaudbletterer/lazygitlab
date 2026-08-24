@@ -64,56 +64,61 @@ Lifted from the existing codebase; enforced loosely.
 ### Style
 - **No new top-level dependencies without justification.** The current set is deliberately small. If a new crate is needed, add a one-line rationale to the PR description.
 - **No comments unless asked.** Code should be self-documenting via naming. Use `tracing` for runtime explanations.
-- **Async via `tokio::spawn` + `mpsc`.** Long-running API calls live in `src/app/*.rs` and post results back through `DataUpdate`. See `src/main.rs:75-164` for the event loop and `src/app/mod.rs:197-603` for the dispatcher.
+- **Async via `tokio::spawn` + `mpsc`.** Long-running API calls live in `src/app/*.rs` and post results back through `DataUpdate`. See `src/runner.rs` for the event loop and `src/app/mod.rs::process_update_single` for the dispatcher.
 - **Errors: `Result<_, Box<dyn std::error::Error>>` for fallible helpers, `tracing` for background tasks, `DataUpdate::Error` for user-facing failures.**
-- **API endpoints are hand-written in `src/api.rs`.** ~65 types implementing `gitlab::api::Endpoint`. New endpoint = new struct there + a fetcher in the relevant `src/app/*.rs` file.
+- **API endpoints are hand-written in `src/api.rs`.** ~70 types implementing `gitlab::api::Endpoint`. New endpoint = new struct there + a fetcher in the relevant `src/app/*.rs` file.
 
 ### UI
 - **Test with `ratatui::backend::TestBackend`.** See `tests/integration_ui.rs` and `tests/ui_exhaustive.rs` for patterns.
-- **Popups live in `src/ui/popup.rs` and are gated by `App` boolean flags** (`show_*_popup`). Add the flag to `App::new` (`src/models.rs`) and to the popup switch in `src/ui/mod.rs:93-108`.
+- **Popups live in `src/ui/popup/` (one file per popup type) and are gated by `App` boolean flags** (`show_*_popup`). Add the flag to the `App` struct (`src/models.rs`) + its init in `App::new` (`src/app/mod.rs`), key handling in `src/app/popups.rs`, renderer in `src/ui/popup/<type>.rs`, and wire it into the popup switch in `src/ui/mod.rs::ui`.
 - **No `unwrap` in user-facing paths.** Background tasks may `unwrap` on the inner `send` or semaphore — those are the only acceptable cases.
 
 ### State
-- **`App` is a single struct in `src/models.rs`.** All new UI state goes there with `#[serde(skip)]` if it must round-trip through serialization. Consider whether the state really belongs to `App` before adding another field — the struct is already ~3,700 lines and is a known refactor target (see `ROADMAP.md` P3).
+- **`App` is a single struct in `src/models.rs`.** All new UI state goes there with `#[serde(skip)]` if it must round-trip through serialization. Consider whether the state really belongs to `App` before adding another field — the struct is already large and is a known refactor target (see `ROADMAP.md`).
 
 ### Testing
 - Integration tests in `tests/` use `wiremock` for API mocking and `ratatui::TestBackend` for UI assertions. Prefer adding a test file over mutating an existing one when introducing a new domain.
 - New public API = new `src/api.rs` type = new test in `tests/`.
-- New keybinding = entry in the `HelpItem` list in `src/app/mod.rs:1607-1646` and ideally a test in `tests/shortcuts.rs`.
+- New keybinding = entry in the `HelpItem` list in `src/app/keymap.rs::get_available_actions` and ideally a test in `tests/shortcuts.rs`.
 
 ## Project Structure (Quick Ref)
 
 ```
 src/
-  main.rs         # event loop, terminal setup
+  main.rs         # binary entry, terminal setup
+  runner.rs       # event loop (run_app), adaptive refresh
   app/            # stateful App logic
-    mod.rs        # App impl: state, keymap, dispatcher
-    mrs.rs        # Merge requests, diffs, discussions
+    mod.rs        # App impl: dispatcher (process_update_single), refresh
+    keymap.rs     # handle_key + help/action catalog
+    menus.rs      # menu navigation & drill-in flows
+    popups.rs     # popup keyboard handling
+    mrs/          # Merge requests: mod.rs, diffs.rs, meta.rs, review.rs
     issues.rs     # Issues, discussions
     pipelines.rs  # CI/CD
-    global.rs     # Projects, groups, todos, repo
+    global.rs     # Projects, groups, todos, repo tree/branches
     boards.rs     # Kanban, epics
     search.rs     # Global search hybrid
   ui/             # ratatui renderers
-    mod.rs        # top-level frame, popups, job log, file viewer
-    list.rs       # list/detail/diff rendering
-    detail.rs     # MR/issue metadata panel
+    mod.rs        # top-level frame, popup switch, job log, file viewer
+    list.rs       # list/metadata rendering
+    detail.rs     # MR/issue tabbed detail panel
+    diff.rs       # diff view
     boards.rs     # Kanban
-    popup.rs      # All modal popups
-    markdown.rs   # pulldown-cmark wrapper
+    popup/        # one file per popup type (+ tree.rs branch picker)
+    markdown.rs   # pulldown-cmark + syntect wrapper
     widgets.rs    # Theme, status styles, helpers
   api.rs          # GitLab REST endpoint types
   models.rs       # DTOs + the App struct definition
   logger.rs       # tracing setup
 tests/            # wiremock + TestBackend integration tests
-scripts/          # bump_version.py, populate_stress_test.py
+scripts/          # bump_version.py, populate_test_ground.py
 ```
 
 ## Common Tasks
 
-- **Add a new MR action** (e.g. "lock discussion"): add API struct in `src/api.rs` → add `pub async fn` in `src/app/mrs.rs` → wire key in `src/app/mod.rs::handle_key` → add `HelpItem` → add test in `tests/mr_actions.rs`.
+- **Add a new MR action** (e.g. "lock discussion"): add API struct in `src/api.rs` → add `pub async fn` in `src/app/mrs/review.rs` → wire key in `src/app/keymap.rs::handle_key` → add `HelpItem` → add test in `tests/mr_actions.rs`.
 - **Add a new dashboard tab**: extend `MenuSelection` (`src/models.rs`) → add a `DataUpdate::*` variant → add a fetcher in `src/app/<area>.rs` → extend `process_update_single` → add a render branch in `src/ui/list.rs` → add a `g <letter>` jump shortcut.
-- **Add a new popup**: add a `show_*_popup: bool` field on `App` → handler in the relevant `src/app/*.rs` file → renderer in `src/ui/popup.rs` → branch in `src/ui/mod.rs:93-108` → set/clear the flag from the keymap.
+- **Add a new popup**: add a `show_*_popup: bool` field on `App` → handler in `src/app/popups.rs` → renderer in `src/ui/popup/<type>.rs` → branch in the popup switch in `src/ui/mod.rs::ui` → set/clear the flag from the keymap.
 
 ## Things To Avoid
 

@@ -9,20 +9,22 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 ### Dashboard & Navigation
 - **Personal dashboard** with tabs for Todos, Merge Requests, Issues, Projects, Groups (`src/app/mod.rs:1`)
 - **Membership-scoped listing** so you only see projects you belong to (`src/app/mod.rs:266`, fixed in 0.14.4)
-- **Jump shortcuts** (`g t` / `g m` / `g i` / `g p`) and contextual sidebar/list/detail focus (`1`/`2`/`3` / `Tab`)
+- **Jump shortcuts** (`g t` / `g m` / `g i` / `g p` / `g r`) and contextual sidebar/list/detail focus (`1`/`2`/`3` / `Tab`)
 - **Global search** with a dual-strategy (Elasticsearch + scoped) hybrid (`src/app/search.rs:6`, shortcut `f`)
 - **Filter-as-you-type** per list (`/`)
 
 ### Merge Request review
-- **Diff view with inline comments** scoped to a specific line or line range (`src/app/mrs.rs:316`, shortcut `c` in diff)
-- **Approve / Unapprove / Merge / Rebase / Squash / Draft toggle / Open-Close** (`A` / `R` / `M` / `E` / `S` / `D` / `c` in detail) — see `src/app/mrs.rs:439-870`
+- **Diff view with inline comments** scoped to a specific line or line range (`src/app/mrs/review.rs`, shortcut `c` in diff)
+- **Approve / Unapprove / Merge / Rebase / Squash / Draft toggle / Open-Close** (`A` / `R` / `M` / `E` / `S` / `D` / `c` in detail) — see `src/app/mrs/review.rs`
+- **Related MRs & closing issues** shown in the metadata panel (lazy-fetched)
 - **Edit metadata in place**: title, description, labels, assignees, reviewers, milestone, target branch
-- **Local diff fallback** for GitLab-collapsed diffs and throttled concurrent fetching (`src/app/mrs.rs:249`)
+- **Local diff fallback** for GitLab-collapsed diffs and throttled concurrent fetching (`src/app/mrs/diffs.rs`)
 
 ### Issues
 - **Create / edit / state toggle** (`src/app/issues.rs:449`)
 - **Label, assignee, milestone, due/start date, weight** editing
 - **Confidentiality toggle** (`src/app/issues.rs:417`)
+- **Discussion resolution** (`s` on a thread) and **linked issues / closing MRs** in the metadata panel
 
 ### CI/CD
 - **Pipelines list** with retry/cancel (`src/app/pipelines.rs`)
@@ -30,16 +32,20 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 - **Run new pipeline** with ref + custom variables (`src/app/pipelines.rs:152`)
 
 ### Project view
-- **Repository tree** with file content viewer (`src/app/global.rs:168`, `src/ui/mod.rs:315`)
+- **Repository tree** with file content viewer and **branch browsing** — press `b` in the file viewer to switch refs (`src/app/global.rs`, `src/ui/popup/tree.rs`)
+- **File viewer** with syntect syntax highlighting and independent scroll state (`src/ui/mod.rs:315`)
+- **Create / delete branches** from the Branches list (`n` / `D`)
 - **Commits history** with pagination (`src/app/global.rs:210`)
 - **Branches** list (`src/app/global.rs:250`)
 - **Kanban boards** with horizontal scroll, multi-column filter, drag issues between columns with `H` / `L` (`src/app/mod.rs:3456`, `src/ui/boards.rs`)
 - **Epics** list per group (`src/app/boards.rs:107`)
 
 ### Quality of life
-- **Adaptive refresh**: 2s live / 5s active / 30s idle back-off (`src/main.rs:126`)
+- **Adaptive refresh**: 2s live / 5s active / 30s idle back-off (`src/runner.rs`)
 - **Clipboard**: local `arboard` + OSC 52 sequence for remote/tmux sessions (`src/app/mod.rs:3527`)
 - **Mouse support** throughout, including scroll-aware list navigation
+- **GFM markdown rendering**: aligned tables, task lists, blockquotes, code highlighting (`src/ui/markdown.rs`)
+- **Self-expiring footer feedback**: status messages and errors auto-clear
 - **Themable** via `theme.toml` (see `theme.toml.example`)
 - **Persistent logging** to `lazygitlab.log` (`src/logger.rs`)
 - **Command palette via `?`** — searchable help popup with category grouping
@@ -85,7 +91,7 @@ Press `?` in the app for the full keybinding list. The most common starting poin
 | Key | Action |
 | --- | --- |
 | `?` | Help / command palette |
-| `g t` / `g m` / `g i` / `g p` | Jump to Todos / MRs / Issues / Pipelines |
+| `g t` / `g m` / `g i` / `g p` / `g r` | Jump to Todos / MRs / Issues / Pipelines / Repository |
 | `/` | Filter current list |
 | `f` | Global search |
 | `Enter` | Open detail / select |
@@ -110,29 +116,35 @@ Pipelines & job log:
 
 ```
 src/
-  main.rs         # tokio event loop, terminal setup
-  app/            # stateful App logic (one file per domain)
-    mod.rs        # App struct, state transitions, keymap (~3700 LOC)
-    mrs.rs        # Merge requests, diffs, discussions
+  main.rs         # binary entry, terminal setup
+  runner.rs       # tokio event loop (run_app), adaptive refresh cadence
+  app/            # stateful App logic (one module per domain)
+    mod.rs        # App struct impl: dispatcher, refresh, shared helpers
+    keymap.rs     # handle_key + help/action catalog
+    menus.rs      # menu navigation & drill-in flows
+    popups.rs     # popup keyboard handling
+    mrs/          # merge requests: mod.rs (listing/discussions),
+                  # diffs.rs, meta.rs, review.rs
     issues.rs     # Issues, discussions
     pipelines.rs  # CI/CD
-    global.rs     # Projects, groups, todos, repo
+    global.rs     # Projects, groups, todos, repo tree/branches
     boards.rs     # Kanban, epics
     search.rs     # Global search hybrid
   ui/             # ratatui renderers
     mod.rs        # top-level frame, popups, job log, file viewer
-    list.rs       # list/detail/diff rendering
-    detail.rs     # MR/issue metadata panel
+    list.rs       # list/detail/metadata rendering
+    detail.rs     # tabbed detail panel
+    diff.rs       # diff view
     boards.rs     # Kanban
-    popup.rs      # All modal popups
-    markdown.rs   # pulldown-cmark wrapper
+    popup/        # one file per popup type (+ tree.rs branch picker)
+    markdown.rs   # pulldown-cmark + syntect renderer
     widgets.rs    # Theme, status styles, helpers
   api.rs          # ~65 hand-rolled GitLab REST endpoint types
   models.rs       # DTOs + the App struct definition
   logger.rs       # tracing setup
 ```
 
-The `App` is a single large struct that owns all UI state. Background API work runs in `tokio::spawn`ed tasks and pushes results back through a `tokio::sync::mpsc::UnboundedSender<DataUpdate>` channel. The main loop drains the channel each frame and triggers a redraw. See `src/main.rs:75-164` for the event loop and `src/app/mod.rs:197-603` for the update dispatcher.
+The `App` is a single large struct that owns all UI state. Background API work runs in `tokio::spawn`ed tasks and pushes results back through a `tokio::sync::mpsc::UnboundedSender<DataUpdate>` channel. The event loop (`src/runner.rs`) drains the channel each frame and triggers a redraw.
 
 ## Testing
 

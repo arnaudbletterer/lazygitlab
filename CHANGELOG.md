@@ -6,6 +6,34 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **Repository-tree branch browsing**: press `b` in the Repository view (file viewer) to open a branch picker; selecting a branch re-fetches the tree and subsequent file opens are scoped to that ref. The Repository list title shows the active ref (`Repository [<branch>]`). (`src/app/global.rs::select_repository_ref`, `src/ui/popup/tree.rs`, keybinding in `src/app/keymap.rs`)
+- **Related items in the detail metadata panel**: MR detail now shows related merge requests (`related_merge_requests`) and the issues it closes (`closes_issues`); issue detail shows linked issues (`links`) and closing MRs (`closed_by`). All four are lazy-fetched on selection via background tasks and guarded against stale application. New endpoint types `RelatedMergeRequests`, `MRClosesIssues`, `IssueLinks`, `IssueClosedBy` in `src/api.rs`; fetcher `App::fetch_related_items` in `src/app/mrs/mod.rs`.
+- **Metadata panel no longer clips its bottom rows**: the fixed 11-row block was already cutting off Status/Participants before this release; height is now computed from the rendered rows.
+- **Five-persona expert review round** (DevOps, developer/MR-reviewer, project manager, UX/UI designer, Rust performance) — quick wins implemented:
+  - Filter input no longer swallows `j`/`k` — they type into the filter; arrow keys navigate (`src/app/keymap.rs`).
+  - Create-branch popup now actually renders as a titled two-field form with an existing-branches dropdown; previously only an anonymous generic input box appeared (`src/ui/popup/forms.rs::render_create_branch_popup`).
+  - Diff header relabeled `Approvals:` → `Reactions:` — it counted upvotes, not approvals (misleading pre-merge info).
+  - `Y` on a selected MR copies its source branch name for local checkout; help entry added.
+  - Related/closing items in the metadata panel show title and colored state, not bare `#iid`.
+  - Overdue issue due dates render bold red with an `(overdue)` suffix.
+  - Main lists (Todos/MRs/Issues/Pipelines) show an explanatory empty-state line instead of a blank pane.
+  - Footer status messages are color-coded by outcome (success green / failure red / in-progress orange).
+  - Startup failures surface in the footer error banner instead of being swallowed (`src/runner.rs`).
+- `tests/tree_branch_select.rs` (4 wiremock tests), `tests/related_items.rs` (4 wiremock/render tests), `tests/status_expiry.rs` (3 unit-style tests).
+
+### Fixed
+- **Transient footer messages never expired.** Confirmations like "Copied to clipboard!", "Pipeline #N cancelled" or "Browsing tree at 'x'" stayed on screen until overwritten by another message. Non-progress status messages now expire after 6 s (`App::tick_status`, driven from the event loop).
+- **API errors were sticky.** A single failed request stained the footer red ("Error: ...") until restart. Errors now expire after 15 s.
+- Removed leftover confused comments from the `g i` jump-shortcut handler (behavior unchanged).
+
+### Changed
+- CI: added push-only live-smoke tier (`test:live-smoke:push`) so every branch push gets smoke coverage; the existing `test:live-smoke` job now covers MR pipelines and manual runs only, avoiding duplicate runs on default-branch pushes.
+- Refactored `src/app/mrs.rs` (1,160 LOC) into a module directory: `mrs/mod.rs` (listing/discussions), `mrs/diffs.rs`, `mrs/meta.rs`, `mrs/review.rs`. No behavior change.
+- Headless snapshot tests sanitize the version/git-hash footer so snapshots don't break on every version bump or dirty-tree build.
+- Performance: `[profile.release]` gains `lto = "thin"` + `codegen-units = 1`; per-call `Regex::new` on hot paths (job-log parsing, ANSI stripping, todo URL extraction) hoisted to `LazyLock` statics.
+- P4 investigation closed: GitLab offers no public streaming API for entities and webhooks need an inbound server a TUI cannot host; keeping adaptive polling, with ETag conditional GET noted as the future optimization path (see ROADMAP).
+
 ## [0.15.0] - 2026-07-06
 
 ### Added
