@@ -923,6 +923,7 @@ pub struct App {
     pub todo_filter: TodoFilter,
     pub issue_filter: IssueFilter,
     pub mr_filter: MergeRequestFilter,
+    pub issue_group_by_milestone: bool,
     pub pipeline_filter: PipelineFilter,
 
     pub last_error: Option<String>,

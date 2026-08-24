@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
-use crate::models::{App, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, PipelineFilter, DetailSection};
+use crate::models::{App, Context, Panel, GroupedItem, MenuSelection, TodoFilter, IssueFilter, MergeRequestFilter, PipelineFilter, DetailSection};
 use crate::ui::detail::render_detail_view;
 use crate::ui::Theme;
 

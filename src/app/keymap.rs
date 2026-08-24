@@ -65,6 +65,9 @@ impl App {
             }
         }
         items.push(HelpItem { shortcut: "I".into(), description: "Toggle show involved-only items".into(), action: HelpAction::ToggleInvolvedOnly, category: "Filter".into() });
+        if self.active_selection == MenuSelection::Issues {
+            items.push(HelpItem { shortcut: "V".into(), description: "Group issues by milestone / project".into(), action: HelpAction::None, category: "Filter".into() });
+        }
         items.push(HelpItem { shortcut: "f".into(), description: "Global Search".into(), action: HelpAction::Search, category: "Global".into() });
         items.push(HelpItem { shortcut: "1/2/3".into(), description: "Focus Sidebar/List/Detail".into(), action: HelpAction::None, category: "Navigation".into() });
         items.push(HelpItem { shortcut: "h/l (Left/Right)".into(), description: "Move focus between columns".into(), action: HelpAction::None, category: "Navigation".into() });
@@ -959,6 +962,13 @@ impl App {
             }
             KeyCode::Char('c') => { if self.selected_issue.is_some() { let _ = self.toggle_issue_state().await; } else if self.selected_mr.is_some() { let _ = self.toggle_mr_state().await; } }
             KeyCode::Char('I') => { self.execute_help_action(HelpAction::ToggleInvolvedOnly).await; }
+            KeyCode::Char('V') => {
+                if self.active_selection == MenuSelection::Issues {
+                    self.issue_group_by_milestone = !self.issue_group_by_milestone;
+                    self.status_message = Some(if self.issue_group_by_milestone { "Grouping issues by milestone".into() } else { "Grouping issues by project".into() });
+                    let _ = self.filter_lists();
+                }
+            }
             KeyCode::Char('A') => { if self.selected_mr.is_some() { let _ = self.approve_mr().await; } }
             KeyCode::Char('M') => { if self.selected_mr.is_some() { self.show_confirm_merge_popup = true; } }
             KeyCode::Char('C') => {

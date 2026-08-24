@@ -162,6 +162,7 @@ impl App {
             filtered_pipelines: Vec::new(),
             todo_filter: TodoFilter::Pending,
             issue_filter: IssueFilter::Opened,
+            issue_group_by_milestone: false,
             mr_filter: MergeRequestFilter::Opened,
             pipeline_filter: PipelineFilter::All,
             last_error: None,
@@ -1572,7 +1573,19 @@ impl App {
 
         // 3. Group Issues
         let mut grouped_issues = Vec::new();
-        if self.active_context == Context::Dashboard {
+        if self.issue_group_by_milestone {
+            let mut issues_by_milestone: std::collections::BTreeMap<String, Vec<Issue>> = std::collections::BTreeMap::new();
+            for i in self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter) && is_issue_involved(i) && is_issue_member(i)) {
+                let m_name = i.milestone.as_ref().map(|m| m.title.clone()).unwrap_or_else(|| "No milestone".to_string());
+                issues_by_milestone.entry(m_name).or_default().push(i.clone());
+            }
+            for (m_name, items) in issues_by_milestone {
+                let open = items.iter().filter(|i| i.state == "opened").count();
+                let closed = items.iter().filter(|i| i.state == "closed").count();
+                grouped_issues.push(GroupedItem::Header(format!("{} ({} open / {} closed)", m_name, open, closed)));
+                for item in items { grouped_issues.push(GroupedItem::Item(item)); }
+            }
+        } else if self.active_context == Context::Dashboard {
             let mut issues_by_project: std::collections::BTreeMap<String, Vec<Issue>> = std::collections::BTreeMap::new();
             for i in self.issues.iter().filter(|i| i.title.to_lowercase().contains(&filter) && is_issue_involved(i) && is_issue_member(i)) {
                 let p_name = self.project_cache.get(&i.project_id)
