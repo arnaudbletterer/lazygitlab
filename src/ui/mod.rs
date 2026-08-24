@@ -124,6 +124,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if app.show_help_popup { render_help_popup(f, app); }
     if app.show_confirm_merge_popup { render_confirm_merge_popup(f, app); }
     if app.show_confirm_rebase_popup { render_confirm_rebase_popup(f, app); }
+    if app.show_confirm_delete_branch_popup { render_confirm_delete_branch_popup(f, app); }
 
     let is_complex_popup_visible = app.show_pipeline_popup || 
                                    app.show_create_issue_popup ||
@@ -142,7 +143,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                                    app.show_target_branch_popup ||
                                    app.show_tree_branch_popup ||
                                    app.show_confirm_merge_popup ||
-                                   app.show_confirm_rebase_popup;
+                                   app.show_confirm_rebase_popup ||
+                                   app.show_confirm_delete_branch_popup;
 
     if app.input_mode && !is_complex_popup_visible && !matches!(app.input_target, crate::models::InputTarget::Filter | crate::models::InputTarget::Search | crate::models::InputTarget::JobLogSearch) {
         let title = match app.input_target {
@@ -252,17 +254,40 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 
     app.set_rect("job_log", chunks[1]);
 
-    let mut log_lines = Vec::new();
-    for (idx, line) in app.job_log_lines.iter().enumerate() {
+    let inner_height = chunks[1].height.saturating_sub(2);
+    app.job_log_viewport_height = inner_height;
+
+    let is_visible = |app: &App, line: &crate::models::LogLine| -> bool {
         let is_collapsed = line.section.as_ref().map(|s| app.collapsed_sections.contains(s)).unwrap_or(false);
-        
-        if is_collapsed && !line.is_section_start {
+        if is_collapsed && !line.is_section_start { return false; }
+        if line.is_section_end && line.content.trim().is_empty() { return false; }
+        true
+    };
+
+    let epoch = app.job_log_epoch;
+    if app.job_log_display_cache.0 != epoch {
+        let count = app.job_log_lines.iter().filter(|l| is_visible(app, l)).count();
+        app.job_log_display_cache = (epoch, count);
+    }
+    let display_count = app.job_log_display_cache.1;
+
+    if app.follow_log {
+        app.job_log_scroll = (display_count as u16).saturating_sub(inner_height);
+    }
+
+    let scroll = app.job_log_scroll as usize;
+    let cursor_line_idx = app.job_log_cursor;
+    let selection_range = app.job_log_selection_start.map(|start| if start <= app.job_log_cursor { (start, app.job_log_cursor) } else { (app.job_log_cursor, start) });
+
+    let mut log_lines = Vec::new();
+    let mut display_idx = 0usize;
+    for (idx, line) in app.job_log_lines.iter().enumerate() {
+        if !is_visible(app, line) { continue; }
+        if display_idx < scroll {
+            display_idx += 1;
             continue;
         }
-
-        if line.is_section_end && line.content.trim().is_empty() {
-             continue;
-        }
+        if log_lines.len() >= inner_height as usize { break; }
 
         let mut spans = vec![
             Span::styled(format!("{:4} ", idx + 1), Style::default().fg(app.theme.dim)),
@@ -273,24 +298,18 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         }
 
         if line.is_section_start {
-            let symbol = if is_collapsed { "[+] " } else { "[-] " };
+            let symbol = if line.section.as_ref().map(|s| app.collapsed_sections.contains(s)).unwrap_or(false) { "[+] " } else { "[-] " };
             spans.push(Span::styled(symbol, Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
         } else if line.section.is_some() {
             spans.push(Span::raw("    "));
         }
 
         let mut line_style = Style::default();
-        let is_selected = if let Some(start) = app.job_log_selection_start {
-            let (s, e) = if start <= app.job_log_cursor { (start, app.job_log_cursor) } else { (app.job_log_cursor, start) };
-            idx >= s && idx <= e
-        } else {
-            false
-        };
-
+        let is_selected = selection_range.map(|(s, e)| idx >= s && idx <= e).unwrap_or(false);
         if is_selected {
             line_style = line_style.bg(app.theme.highlight_bg);
         }
-        if idx == app.job_log_cursor {
+        if idx == cursor_line_idx {
             line_style = line_style.add_modifier(Modifier::UNDERLINED);
         }
 
@@ -303,9 +322,10 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             }
             log_lines.push(Line::from(final_spans));
         }
+        display_idx += 1;
     }
 
-    if app.selected_job.as_ref().is_some_and(|j| j.status == "running") {
+    if app.selected_job.as_ref().is_some_and(|j| j.status == "running") && display_count <= scroll + (inner_height as usize) {
         let dots = match (chrono::Utc::now().timestamp_millis() / 500) % 4 {
             1 => ".",
             2 => "..",
@@ -318,17 +338,10 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         ]));
     }
 
-    let inner_height = chunks[1].height.saturating_sub(2);
-    app.job_log_viewport_height = inner_height;
-
-    if app.follow_log {
-        app.job_log_scroll = (log_lines.len() as u16).saturating_sub(inner_height);
-    }
-
     let log_title = if app.follow_log { " Log Output [FOLLOWING] " } else { " Log Output " };
     let log = Paragraph::new(log_lines)
         .block(Block::default().borders(Borders::ALL).title(log_title))
-        .scroll((app.job_log_scroll, 0));
+        .scroll((0, 0));
     f.render_widget(log, chunks[1]);
 }
 
@@ -340,20 +353,28 @@ fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
         .border_style(Style::default().fg(app.theme.border));
 
     if let Some(file) = &app.selected_file_content {
-        use base64::{Engine as _, engine::general_purpose};
-        let clean_content = file.content.replace("\n", "").replace("\r", "");
-        if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
-            if let Ok(text) = String::from_utf8(decoded) {
-                let lines = highlight_and_render(&app.syntax_set, &app.theme_set, file.file_path.as_str(), &text, app.theme.dim);
-                let p = Paragraph::new(lines).block(block).scroll((app.file_scroll, 0));
+        let cached_hit = app.file_highlight_cache.as_ref()
+            .map(|(path, blob, _)| path == &file.file_path && blob == &file.blob_id)
+            .unwrap_or(false);
+        if !cached_hit {
+            use base64::{Engine as _, engine::general_purpose};
+            let clean_content = file.content.replace("\n", "").replace("\r", "");
+            if let Ok(decoded) = general_purpose::STANDARD.decode(&clean_content) {
+                if let Ok(text) = String::from_utf8(decoded) {
+                    let lines = highlight_and_render(&app.syntax_set, &app.theme_set, file.file_path.as_str(), &text, app.theme.dim);
+                    app.file_highlight_cache = Some((file.file_path.clone(), file.blob_id.clone(), lines));
+                }
+            }
+        }
+        match &app.file_highlight_cache {
+            Some((_, _, lines)) => {
+                let p = Paragraph::new(lines.clone()).block(block).scroll((app.file_scroll, 0));
                 f.render_widget(p, area);
-            } else {
+            }
+            None => {
                 let p = Paragraph::new("Binary or non-UTF8 content").block(block);
                 f.render_widget(p, area);
             }
-        } else {
-            let p = Paragraph::new("Failed to decode base64").block(block);
-            f.render_widget(p, area);
         }
     } else {
         let p = Paragraph::new("Loading...").block(block);

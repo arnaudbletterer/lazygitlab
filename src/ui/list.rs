@@ -204,7 +204,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         if involved {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
-                        spans.push(Span::raw(format!("!{} {}", mr.iid, mr.title)));
+                        let max_title = (area.width as usize).saturating_sub(24).max(16);
+                        spans.push(Span::raw(format!("!{} {}", mr.iid, crate::ui::widgets::truncate_str(&mr.title, max_title))));
+                        spans.push(Span::styled(format!(" [{}]", mr.state), crate::ui::widgets::get_status_style(&mr.state, &app.theme)));
                         spans.push(Span::raw(" "));
                         for label in &mr.labels {
                             let bg = hex_to_color(label.color());
@@ -242,8 +244,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         if involved {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
-                        spans.push(Span::raw(format!("#{} {}", i.iid, i.title)));
+                        let max_title = (area.width as usize).saturating_sub(32).max(16);
+                        spans.push(Span::raw(format!("#{} {}", i.iid, crate::ui::widgets::truncate_str(&i.title, max_title))));
                         spans.push(Span::raw(" "));
+                        if let Some(m) = &i.milestone {
+                            spans.push(Span::styled(format!(" {} ", m.title), Style::default().fg(app.theme.project).add_modifier(Modifier::BOLD)));
+                            spans.push(Span::raw(" "));
+                        }
+                        if let Some(due) = &i.due_date {
+                            let overdue = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d").map(|d| d < chrono::Local::now().date_naive()).unwrap_or(false);
+                            let due_style = if overdue { Style::default().fg(app.theme.failed).add_modifier(Modifier::BOLD) } else { Style::default().fg(app.theme.dim) };
+                            spans.push(Span::styled(format!("due {}", due), due_style));
+                            spans.push(Span::raw(" "));
+                        }
                         for label in &i.labels {
                             let bg = hex_to_color(label.color());
                             let fg = get_contrasting_text_color(label.color());

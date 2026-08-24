@@ -240,11 +240,13 @@ impl App {
         }
 
         // 1.6 Confirmation Popups
-        if self.show_confirm_merge_popup || self.show_confirm_rebase_popup {
+        if self.show_confirm_merge_popup || self.show_confirm_rebase_popup || self.show_confirm_delete_branch_popup {
             match processed_key.code {
                 KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
                     self.show_confirm_merge_popup = false;
                     self.show_confirm_rebase_popup = false;
+                    self.show_confirm_delete_branch_popup = false;
+                    self.pending_delete_branch = None;
                 }
                 KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                     if self.show_confirm_merge_popup {
@@ -253,6 +255,11 @@ impl App {
                     } else if self.show_confirm_rebase_popup {
                         self.show_confirm_rebase_popup = false;
                         let _ = self.rebase_mr().await;
+                    } else if self.show_confirm_delete_branch_popup {
+                        self.show_confirm_delete_branch_popup = false;
+                        if let Some((pid, name)) = self.pending_delete_branch.take() {
+                            let _ = self.delete_branch_sync(pid, name).await;
+                        }
                     }
                 }
                 _ => {}

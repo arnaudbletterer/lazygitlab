@@ -791,6 +791,10 @@ pub struct App {
     pub follow_log: bool,
     pub file_scroll: u16,
     pub file_viewport_height: u16,
+    pub file_highlight_cache: Option<(String, String, Vec<ratatui::text::Line<'static>>)>,
+    pub job_log_epoch: u64,
+    pub job_log_display_cache: (u64, usize),
+    pub markdown_cache: std::cell::RefCell<std::collections::HashMap<u64, std::sync::Arc<Vec<ratatui::text::Line<'static>>>>>,
     pub discussions: Vec<Discussion>,
     pub discussion_state: ListState,
     pub input_mode: bool,
@@ -879,6 +883,8 @@ pub struct App {
 
     pub show_confirm_merge_popup: bool,
     pub show_confirm_rebase_popup: bool,
+    pub show_confirm_delete_branch_popup: bool,
+    pub pending_delete_branch: Option<(u64, String)>,
 
     pub show_create_mr_popup: bool,
     pub create_mr_title: String,
@@ -979,6 +985,7 @@ pub struct App {
     pub syntax_set: syntect::parsing::SyntaxSet,
     pub theme_set: syntect::highlighting::ThemeSet,
     pub pending_g_prefix: bool,
+    pub last_detail_fetch: Option<(u64, u64, std::time::Instant)>,
 
     pub last_rendered_rects: std::collections::HashMap<String, ratatui::layout::Rect>,
 }

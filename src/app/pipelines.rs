@@ -533,6 +533,7 @@ impl App {
             } else {
                 self.collapsed_sections.insert(section.clone());
             }
+            self.bump_job_log_epoch();
         }
     }
 

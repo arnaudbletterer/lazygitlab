@@ -1,6 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, InputTarget, DetailSection, LineType};
-use crate::ui::markdown::render_markdown;
 use crate::ui::list::{render_metadata_panel, render_discussions_panel};
 
 pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
@@ -96,12 +95,15 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 f.render_widget(&app.textarea, desc_inner);
             } else {
                 let mut content = Vec::new();
-                if let Some(mr) = &app.selected_mr {
-                    content.extend(render_markdown(mr.description.as_deref().unwrap_or("No description provided."), &app.theme, &app.syntax_set, &app.theme_set));
+                let description_body: String = if let Some(mr) = &app.selected_mr {
+                    mr.description.as_deref().unwrap_or("No description provided.").to_string()
                 } else if let Some(issue) = &app.selected_issue {
-                    content.extend(render_markdown(issue.description.as_deref().unwrap_or("No description provided."), &app.theme, &app.syntax_set, &app.theme_set));
+                    issue.description.as_deref().unwrap_or("No description provided.").to_string()
                 } else {
-                    content.push(Line::from(" No item selected."));
+                    " No item selected.".to_string()
+                };
+                for line in app.markdown_cached(&description_body).iter() {
+                    content.push(line.clone());
                 }
                 f.render_widget(Paragraph::new(content).wrap(Wrap { trim: false }), desc_inner);
             }
@@ -166,11 +168,11 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                         ];
                         content.push(Line::from(header));
 
-                        let markdown_lines = render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set);
-                        for line in markdown_lines {
+                        let markdown_lines = app.markdown_cached(&note.body);
+                        for line in markdown_lines.iter() {
                             let mut line_spans = Vec::new();
-                            for span in line.spans {
-                                let mut s = span;
+                            for span in &line.spans {
+                                let mut s = span.clone();
                                 if is_resolved || is_activity {
                                     s.style = s.style.patch(Style::default().fg(app.theme.dim));
                                 }

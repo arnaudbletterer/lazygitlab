@@ -124,6 +124,8 @@ impl App {
             pipelines_page: 1, pipelines_has_more: true,
             show_confirm_merge_popup: false,
             show_confirm_rebase_popup: false,
+            show_confirm_delete_branch_popup: false,
+            pending_delete_branch: None,
             show_help_popup: false,
             help_state: ListState::default(),
             help_filter_input: String::new(),
@@ -188,6 +190,10 @@ impl App {
             issue_closing_mrs: Vec::new(),
             file_scroll: 0,
             file_viewport_height: 0,
+            file_highlight_cache: None,
+            job_log_epoch: 0,
+            job_log_display_cache: (0, 0),
+            markdown_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             commits: Vec::new(),
             commits_state: ListState::default(),
             commits_page: 1,
@@ -214,6 +220,7 @@ impl App {
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
             theme_set: syntect::highlighting::ThemeSet::load_defaults(),
             pending_g_prefix: false,
+            last_detail_fetch: None,
             last_rendered_rects: std::collections::HashMap::new(),
         }
     }
@@ -455,6 +462,7 @@ impl App {
                 {
                     self.job_log = data;
                     self.parse_job_log();
+                    self.bump_job_log_epoch();
                 }
             }
             DataUpdate::SingleDiffFetched { project_id, iid, old_path, new_path, diff } => {
@@ -592,6 +600,8 @@ impl App {
                 if self.selected_project.as_ref().is_some_and(|p| p.id == project_id)
                     && self.repository_tree_state.selected().last().is_some_and(|selected_path| selected_path == &file_path)
                 {
+                    self.file_highlight_cache = None;
+                    self.file_scroll = 0;
                     self.selected_file_content = Some(data);
                 }
             }
@@ -1115,6 +1125,39 @@ impl App {
         }
     }
 
+    pub fn bump_job_log_epoch(&mut self) {
+        self.job_log_epoch += 1;
+    }
+
+    fn should_fetch_detail(&mut self, pid: u64, iid: u64) -> bool {
+        let now = std::time::Instant::now();
+        if let Some((p, i, at)) = self.last_detail_fetch
+            && p == pid
+            && i == iid
+            && now.duration_since(at) < std::time::Duration::from_millis(250)
+        {
+            return false;
+        }
+        self.last_detail_fetch = Some((pid, iid, now));
+        true
+    }
+
+    pub fn markdown_cached(&self, body: &str) -> std::sync::Arc<Vec<ratatui::text::Line<'static>>> {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        body.hash(&mut hasher);
+        let key = hasher.finish();
+        if let Some(cached) = self.markdown_cache.borrow().get(&key) {
+            return cached.clone();
+        }
+        if self.markdown_cache.borrow().len() > 256 {
+            self.markdown_cache.borrow_mut().clear();
+        }
+        let rendered = std::sync::Arc::new(crate::ui::markdown::render_markdown(body, &self.theme, &self.syntax_set, &self.theme_set));
+        self.markdown_cache.borrow_mut().insert(key, rendered.clone());
+        rendered
+    }
+
     pub fn job_log_search_next(&mut self) {
         if self.job_log_lines.is_empty() || self.job_log_search.is_empty() { return; }
         let needle = self.job_log_search.to_lowercase();
@@ -1220,7 +1263,7 @@ impl App {
                             {
                                 self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
                                 self.selected_mr = Some(MergeRequest { iid, project_id, title, author: Author::new(0, "".into()), web_url: target_url, state: "opened".into(), reactions: Vec::new(), description: None, references: None, upvotes: None, downvotes: None, labels: Vec::new(), milestone: None, assignees: Vec::new(), reviewers: Vec::new(), squash: Some(false), created_at: Some("".into()), draft: Some(false), diff_refs: None, merge_status: None, detailed_merge_status: None, has_conflicts: None, head_pipeline: None, source_branch: "".into(), target_branch: "".into(), participants: Vec::new() });
-                                let _ = self.fetch_discussions(project_id, iid).await;
+                                if self.should_fetch_detail(project_id, iid) { let _ = self.fetch_discussions(project_id, iid).await; }
                                 if self.active_panel == Panel::MainDetail {
                                    self.trigger_project_metadata_fetch(project_id);
                                 }
@@ -1229,7 +1272,7 @@ impl App {
                             {
                                 self.selected_mr = None; self.discussions.clear();
                                 self.selected_issue = Some(Issue { iid, project_id, title, description: None, author: Author::new(0, "".into()), assignees: Vec::new(), state: "opened".into(), web_url: target_url, references: None, issue_type: None, labels: Vec::new(), milestone: None, due_date: None, start_date: None, weight: None, task_completion_status: None, confidential: false, created_at: Some("".into()), upvotes: None, downvotes: None, reactions: Vec::new(), participants: Vec::new() });
-                                let _ = self.fetch_issue_discussions(project_id, iid).await;
+                                if self.should_fetch_detail(project_id, iid) { let _ = self.fetch_issue_discussions(project_id, iid).await; }
                                 if self.active_panel == Panel::MainDetail {
                                    self.trigger_project_metadata_fetch(project_id);
                                 }
@@ -1249,7 +1292,7 @@ impl App {
                             let iid = mr.iid;
                             self.selected_mr = Some(mr_clone); self.selected_issue = None; self.discussions.clear(); self.mr_diffs.clear(); self.is_fetching_diffs = false;
                             self.clear_related_items();
-                            let _ = self.fetch_discussions(pid, iid).await;
+                            if self.should_fetch_detail(pid, iid) { let _ = self.fetch_discussions(pid, iid).await; }
                             if self.active_panel == Panel::MainDetail {
                                 self.trigger_project_metadata_fetch(pid);
                             }
@@ -1270,7 +1313,7 @@ impl App {
                             let iid = issue.iid;
                             self.selected_issue = Some(issue_clone); self.selected_mr = None; self.discussions.clear();
                             self.clear_related_items();
-                            let _ = self.fetch_issue_discussions(pid, iid).await;
+                            if self.should_fetch_detail(pid, iid) { let _ = self.fetch_issue_discussions(pid, iid).await; }
                             if self.active_panel == Panel::MainDetail {
                                 self.trigger_project_metadata_fetch(pid);
                             }

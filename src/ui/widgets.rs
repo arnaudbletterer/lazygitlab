@@ -266,3 +266,10 @@ mod tests {
         assert_eq!(centered.y, 25);
     }
 }
+
+pub fn truncate_str(s: &str, max: usize) -> String {
+    if max == 0 { return String::new(); }
+    if s.chars().count() <= max { return s.to_string(); }
+    let cut: String = s.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", cut)
+}

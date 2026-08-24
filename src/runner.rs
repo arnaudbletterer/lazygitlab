@@ -30,8 +30,16 @@ where
     }
     app.refresh().await;
 
+    let mut needs_draw = true;
+    let mut last_draw = std::time::Instant::now();
+
     while !app.should_quit {
+        let status_before = app.status_message.clone();
         app.tick_status();
+        if status_before != app.status_message {
+            needs_draw = true;
+        }
+
         let mut got_update = false;
         while let Ok(update) = rx.try_recv() {
             got_update = true;
@@ -46,11 +54,18 @@ where
         }
         if got_update {
             app.update_preview().await;
+            needs_draw = true;
         }
 
-        terminal.draw(|f| ui(f, app))?;
-        if let Some(capture) = frame_capture.as_deref_mut() {
-            capture(terminal);
+        // Redraw only when something changed, or at spinner cadence while loading.
+        let animate = app.is_loading && last_draw.elapsed() >= Duration::from_millis(150);
+        if needs_draw || animate {
+            terminal.draw(|f| ui(f, app))?;
+            if let Some(capture) = frame_capture.as_deref_mut() {
+                capture(terminal);
+            }
+            needs_draw = false;
+            last_draw = std::time::Instant::now();
         }
 
         let is_live_view = (app.view_mode == crate::models::ViewMode::List
@@ -81,10 +96,12 @@ where
                 crossterm::event::Event::Key(key) => {
                     if key.kind == crossterm::event::KeyEventKind::Press {
                         app.handle_key(key).await;
+                        needs_draw = true;
                     }
                 }
                 crossterm::event::Event::Mouse(mouse) => {
                     app.handle_mouse(mouse).await;
+                    needs_draw = true;
                 }
                 _ => {}
             }

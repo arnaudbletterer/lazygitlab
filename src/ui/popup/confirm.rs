@@ -145,3 +145,34 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(paragraph, inner);
 }
 
+
+pub fn render_confirm_delete_branch_popup(f: &mut Frame, app: &mut App) {
+    let area = centered_rect(50, 25, f.area());
+    app.set_rect("popup_confirm_delete_branch", area);
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .bg(Color::Black)
+        .borders(Borders::ALL)
+        .title(" Confirm Delete Branch ")
+        .border_style(Style::default().fg(app.theme.failed));
+
+    f.render_widget(block.clone(), area);
+
+    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+
+    let mut lines = Vec::new();
+    lines.push(Line::from("Are you sure you want to DELETE this branch?"));
+    lines.push(Line::from(""));
+    if let Some((_, name)) = &app.pending_delete_branch {
+        lines.push(Line::from(vec![
+            Span::raw("Branch: "),
+            Span::styled(name.clone(), Style::default().fg(app.theme.failed).add_modifier(Modifier::BOLD)),
+        ]));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("y / Enter = delete   n / Esc = cancel", Style::default().fg(app.theme.dim))));
+
+    let para = Paragraph::new(lines).block(Block::default());
+    f.render_widget(para, inner);
+}

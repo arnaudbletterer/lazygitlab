@@ -1,6 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::models::{App, DiffDisplayLine};
-use crate::ui::markdown::render_markdown;
 
 pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -181,11 +180,11 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                                 ]));
                                 
                                 // Render markdown body with indentation
-                                let markdown_lines = render_markdown(&note.body, &app.theme, &app.syntax_set, &app.theme_set);
-                                for line in markdown_lines {
+                                let markdown_lines = app.markdown_cached(&note.body);
+                                for line in markdown_lines.iter() {
                                     let mut line_spans = vec![Span::styled(format!("{}  ", indent), note_content_style)];
-                                    for span in line.spans {
-                                        let mut s = span;
+                                    for span in &line.spans {
+                                        let mut s = span.clone();
                                         if note_is_resolved || note_is_activity {
                                             s.style = s.style.patch(Style::default().fg(app.theme.dim));
                                         }

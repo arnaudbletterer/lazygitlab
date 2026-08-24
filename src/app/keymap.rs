@@ -1,7 +1,7 @@
 use crate::models::{
     App, HelpItem, HelpAction, Context, MenuSelection, Panel, ViewMode,
     DetailSection, InputTarget, TodoFilter, MergeRequestFilter, IssueFilter, PipelineFilter,
-    DiffDisplayLine
+    DiffDisplayLine, Pipeline
 };
 use super::is_selectable_diff_line;
 
@@ -22,6 +22,9 @@ impl App {
         }
         if self.selected_mr.is_some() {
             items.push(HelpItem { shortcut: "Y".into(), description: "Copy source branch name".into(), action: HelpAction::None, category: "Merge Request".into() });
+            if self.selected_mr.as_ref().is_some_and(|m| m.head_pipeline.is_some()) {
+                items.push(HelpItem { shortcut: "P".into(), description: "Open head pipeline jobs".into(), action: HelpAction::None, category: "Merge Request".into() });
+            }
             items.push(HelpItem { shortcut: "A".into(), description: "Approve Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "R".into(), description: "Unapprove Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
             items.push(HelpItem { shortcut: "M".into(), description: "Merge Merge Request".into(), action: HelpAction::None, category: "Merge Request".into() });
@@ -608,25 +611,35 @@ impl App {
                         }
                     }
                     KeyCode::Char('n') => {
-                        if let Some(mr_diff) = self.mr_diff_state.selected().and_then(|idx| self.mr_diffs.get(idx)) {
+                        if let Some(file_idx) = self.mr_diff_state.selected() {
                             let current = self.diff_line_state.selected().unwrap_or(0);
-                            for i in (current + 1)..mr_diff.display_lines.len() {
-                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
-                                    self.diff_line_state.select(Some(i));
-                                    let _ = self.update_preview().await;
-                                    return;
+                            for fi in file_idx..self.mr_diffs.len() {
+                                let start = if fi == file_idx { current + 1 } else { 0 };
+                                let lines = &self.mr_diffs[fi].display_lines;
+                                for i in start..lines.len() {
+                                    if let DiffDisplayLine::Discussion(_) = &lines[i] {
+                                        self.mr_diff_state.select(Some(fi));
+                                        self.diff_line_state.select(Some(i));
+                                        let _ = self.update_preview().await;
+                                        return;
+                                    }
                                 }
                             }
                         }
                     }
                     KeyCode::Char('p') => {
-                        if let Some(mr_diff) = self.mr_diff_state.selected().and_then(|idx| self.mr_diffs.get(idx)) {
+                        if let Some(file_idx) = self.mr_diff_state.selected() {
                             let current = self.diff_line_state.selected().unwrap_or(0);
-                            for i in (0..current).rev() {
-                                if let DiffDisplayLine::Discussion(_) = &mr_diff.display_lines[i] {
-                                    self.diff_line_state.select(Some(i));
-                                    let _ = self.update_preview().await;
-                                    return;
+                            for fi in (0..=file_idx).rev() {
+                                let lines = &self.mr_diffs[fi].display_lines;
+                                let start = if fi == file_idx && current > 0 { current - 1 } else { lines.len().saturating_sub(1) };
+                                for i in (0..=start.min(lines.len().saturating_sub(1))).rev() {
+                                    if let DiffDisplayLine::Discussion(_) = &lines[i] {
+                                        self.mr_diff_state.select(Some(fi));
+                                        self.diff_line_state.select(Some(i));
+                                        let _ = self.update_preview().await;
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -827,6 +840,36 @@ impl App {
                 }
             }
             KeyCode::Char('y') => { self.copy_url(); }
+            KeyCode::Char('P') => {
+                let head = self.selected_mr.as_ref().and_then(|mr| mr.head_pipeline.clone());
+                if let Some(head) = head {
+                    let pid = self.selected_mr.as_ref().map(|mr| mr.project_id).unwrap_or(0);
+                    let source_branch = self.selected_mr.as_ref().map(|mr| mr.source_branch.clone()).unwrap_or_default();
+                    self.selected_issue = None;
+                    self.selected_mr = None;
+                    self.clear_related_items();
+                    self.discussions.clear();
+                    self.selected_pipeline = Some(Pipeline {
+                        id: head.id,
+                        project_id: pid,
+                        status: head.status,
+                        source: String::new(),
+                        ref_name: source_branch,
+                        web_url: String::new(),
+                        created_at: String::new(),
+                        started_at: None,
+                        duration: None,
+                    });
+                    let pipeline_id = self.selected_pipeline.as_ref().map(|p| p.id).unwrap_or(0);
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Pipelines;
+                    self.project_menu_state.select(Some(2));
+                    self.active_panel = Panel::MainDetail;
+                    self.detail_section = DetailSection::Metadata;
+                    self.view_mode = ViewMode::List;
+                    let _ = self.fetch_jobs(pid, pipeline_id).await;
+                }
+            }
             KeyCode::Char('Y') => {
                 if let Some(mr) = &self.selected_mr {
                     let branch = mr.source_branch.clone();
@@ -943,9 +986,8 @@ impl App {
             KeyCode::Char('D') => {
                 if self.active_selection == MenuSelection::Branches && !self.project_branches.is_empty() {
                     if let (Some(p), Some(branch)) = (&self.selected_project, self.branches_state.selected().and_then(|i| self.project_branches.get(i))) {
-                        let name = branch.name.clone();
-                        let pid = p.id;
-                        let _ = self.delete_branch_sync(pid, name).await;
+                        self.pending_delete_branch = Some((p.id, branch.name.clone()));
+                        self.show_confirm_delete_branch_popup = true;
                     } else {
                         self.status_message = Some("No branch selected".into());
                     }
