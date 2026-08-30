@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+Master documentation build & asset generation pipeline for lazygitlab.
+
+Usage:
+    python scripts/build_docs.py              # Generate assets & build static site
+    python scripts/build_docs.py --serve      # Generate assets & run local dev server
+    python scripts/build_docs.py --skip-assets # Build without regenerating SVGs/PDF
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+# Ensure UTF-8 output on Windows consoles
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DOCS_DIR = ROOT_DIR / "docs"
+ASSETS_DIR = DOCS_DIR / "assets"
+SCREENSHOTS_DIR = ASSETS_DIR / "screenshots"
+
+
+def get_git_version():
+    """Extracts git tag, commit sha, and dirty status."""
+    is_dirty = False
+    commit_sha = "unknown"
+    tag_name = None
+    describe_str = "dev"
+
+    try:
+        status_out = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=ROOT_DIR, text=True
+        ).strip()
+        is_dirty = len(status_out) > 0
+    except Exception:
+        pass
+
+    try:
+        commit_sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+    except Exception:
+        pass
+
+    try:
+        tag_name = subprocess.check_output(
+            ["git", "describe", "--tags", "--exact-match"],
+            cwd=ROOT_DIR,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        tag_name = None
+
+    try:
+        describe_str = subprocess.check_output(
+            ["git", "describe", "--tags", "--always"], cwd=ROOT_DIR, text=True
+        ).strip()
+    except Exception:
+        describe_str = commit_sha
+
+    if tag_name:
+        display_version = tag_name
+        version_type = "release"
+    else:
+        display_version = describe_str
+        version_type = "development"
+
+    status_tag = "dirty" if is_dirty else "clean"
+    full_version_string = f"{display_version} ({commit_sha}{'-dirty' if is_dirty else ''})"
+
+    return {
+        "tag": tag_name,
+        "commit": commit_sha,
+        "describe": describe_str,
+        "is_dirty": is_dirty,
+        "status": status_tag,
+        "version_type": version_type,
+        "display": display_version,
+        "full": full_version_string,
+        "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+    }
+
+
+def inject_version_metadata(version_info):
+    """Writes docs/assets/version.json with the resolved version."""
+    print(f"📌 Resolving documentation version: {version_info['full']}")
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    version_file = ASSETS_DIR / "version.json"
+    version_file.write_text(json.dumps(version_info, indent=2), encoding="utf-8")
+
+
+def generate_assets():
+    """Runs screenshot, PDF cheatsheet, and preview generators."""
+    print("🎨 Generating vector screenshots (dark & light) & cheatsheet markdown...")
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    subprocess.check_call(["cargo", "run", "--example", "generate_docs_screenshots"], cwd=ROOT_DIR)
+
+    print("📄 Generating printable 1-page PDF cheatsheet...")
+    subprocess.check_call([sys.executable, str(ROOT_DIR / "scripts" / "generate_cheatsheet_pdf.py")], cwd=ROOT_DIR)
+
+    print("🖼️ Generating cheatsheet preview thumbnail...")
+    try:
+        import fitz  # PyMuPDF
+        pdf_path = ASSETS_DIR / "lazygitlab-cheatsheet.pdf"
+        out_png = ASSETS_DIR / "lazygitlab-cheatsheet-preview.png"
+        doc = fitz.open(str(pdf_path))
+        pix = doc[0].get_pixmap(dpi=150)
+        pix.save(str(out_png))
+        print(f"Thumbnail saved to {out_png}")
+    except ImportError:
+        print("PyMuPDF not installed, skipping thumbnail generation.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Build lazygitlab documentation suite.")
+    parser.add_argument("--serve", action="store_true", help="Start local development server.")
+    parser.add_argument("--skip-assets", action="store_true", help="Skip SVG/PDF asset generation.")
+    parser.add_argument("--port", default="8000", help="Port for local dev server.")
+    args = parser.parse_args()
+
+    version_info = get_git_version()
+    inject_version_metadata(version_info)
+
+    if not args.skip_assets:
+        generate_assets()
+
+    if args.serve:
+        print(f"🚀 Starting Zensical dev server on http://127.0.0.1:{args.port} ...")
+        subprocess.call([sys.executable, "-m", "zensical", "serve", "--dev-addr", f"127.0.0.1:{args.port}"], cwd=ROOT_DIR)
+    else:
+        print("📦 Building static documentation site with Zensical...")
+        subprocess.check_call([sys.executable, "-m", "zensical", "build"], cwd=ROOT_DIR)
+        print("✅ Documentation build complete.")
+
+
+if __name__ == "__main__":
+    main()

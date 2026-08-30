@@ -8,3 +8,8 @@ scripts/__pycache__/
 .live_full_out.txt
 .stress_out.txt
 target/coverage/
+/site/
+docs/assets/screenshots/
+docs/assets/lazygitlab-cheatsheet.pdf
+docs/assets/lazygitlab-cheatsheet-preview.png
+docs/assets/version.json
