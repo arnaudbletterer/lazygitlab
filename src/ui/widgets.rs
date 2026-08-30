@@ -127,12 +127,243 @@ impl Default for Theme {
 }
 
 impl Theme {
+    pub fn catppuccin_mocha() -> Self {
+        Self::default()
+    }
+
+    pub fn catppuccin_latte() -> Self {
+        Self {
+            border: Color::Rgb(64, 160, 43),            // green
+            highlight_bg: Color::Rgb(30, 102, 245),     // blue
+            author: Color::Rgb(136, 57, 239),           // mauve
+            dim: Color::Rgb(156, 160, 176),             // overlay0
+            success: Color::Rgb(64, 160, 43),           // green
+            failed: Color::Rgb(210, 15, 57),            // red
+            running: Color::Rgb(30, 102, 245),          // blue
+            pending: Color::Rgb(223, 142, 29),          // yellow
+            open_mr: Color::Rgb(30, 102, 245),          // blue
+            merged_mr: Color::Rgb(114, 135, 253),       // lavender
+            closed_mr: Color::Rgb(210, 15, 57),         // red
+            header: Color::Rgb(30, 102, 245),           // blue
+            header1: Color::Rgb(32, 159, 181),          // sapphire
+            header2: Color::Rgb(136, 57, 239),          // mauve
+            project: Color::Rgb(32, 159, 181),          // sapphire
+            issue: Color::Rgb(64, 160, 43),             // green
+            mr: Color::Rgb(136, 57, 239),               // mauve
+            shortcut_key: Color::Rgb(30, 102, 245),     // blue
+            shortcut_desc: Color::Rgb(76, 79, 105),     // text
+            keyword: Color::Rgb(210, 15, 57),           // red
+            code: Color::Rgb(64, 160, 43),              // green
+            code_bg: Color::Rgb(230, 233, 239),         // surface0
+            range_highlight: Color::Rgb(204, 208, 218), // surface2
+        }
+    }
+
+    pub fn tokyo_night() -> Self {
+        Self {
+            border: Color::Rgb(115, 218, 202),        // teal
+            highlight_bg: Color::Rgb(61, 89, 161),    // blue highlight
+            author: Color::Rgb(187, 154, 247),        // purple
+            dim: Color::Rgb(86, 95, 137),             // comment
+            success: Color::Rgb(158, 206, 106),       // green
+            failed: Color::Rgb(247, 118, 142),        // red
+            running: Color::Rgb(122, 162, 247),       // blue
+            pending: Color::Rgb(224, 175, 104),       // yellow
+            open_mr: Color::Rgb(122, 162, 247),       // blue
+            merged_mr: Color::Rgb(187, 154, 247),     // purple
+            closed_mr: Color::Rgb(247, 118, 142),     // red
+            header: Color::Rgb(122, 162, 247),        // blue
+            header1: Color::Rgb(125, 207, 255),       // cyan
+            header2: Color::Rgb(187, 154, 247),       // purple
+            project: Color::Rgb(125, 207, 255),       // cyan
+            issue: Color::Rgb(158, 206, 106),         // green
+            mr: Color::Rgb(187, 154, 247),            // purple
+            shortcut_key: Color::Rgb(125, 207, 255),  // cyan
+            shortcut_desc: Color::Rgb(192, 202, 245), // fg
+            keyword: Color::Rgb(247, 118, 142),       // red
+            code: Color::Rgb(158, 206, 106),          // green
+            code_bg: Color::Rgb(26, 27, 38),          // bg
+            range_highlight: Color::Rgb(41, 46, 66),  // selection
+        }
+    }
+
+    pub fn nord() -> Self {
+        Self {
+            border: Color::Rgb(143, 188, 187),        // nord7 frost
+            highlight_bg: Color::Rgb(94, 129, 172),   // nord10 blue
+            author: Color::Rgb(180, 142, 173),        // nord15 purple
+            dim: Color::Rgb(97, 110, 136),            // nord3
+            success: Color::Rgb(163, 190, 140),       // nord14 green
+            failed: Color::Rgb(191, 97, 106),         // nord11 red
+            running: Color::Rgb(129, 161, 193),       // nord9 blue
+            pending: Color::Rgb(235, 203, 139),       // nord13 yellow
+            open_mr: Color::Rgb(129, 161, 193),       // nord9
+            merged_mr: Color::Rgb(180, 142, 173),     // nord15
+            closed_mr: Color::Rgb(191, 97, 106),      // nord11
+            header: Color::Rgb(136, 192, 208),        // nord8
+            header1: Color::Rgb(143, 188, 187),       // nord7
+            header2: Color::Rgb(180, 142, 173),       // nord15
+            project: Color::Rgb(136, 192, 208),       // nord8
+            issue: Color::Rgb(163, 190, 140),         // nord14
+            mr: Color::Rgb(180, 142, 173),            // nord15
+            shortcut_key: Color::Rgb(136, 192, 208),  // nord8
+            shortcut_desc: Color::Rgb(229, 233, 240), // nord4 snow
+            keyword: Color::Rgb(191, 97, 106),        // nord11
+            code: Color::Rgb(163, 190, 140),          // nord14
+            code_bg: Color::Rgb(46, 52, 64),          // nord0
+            range_highlight: Color::Rgb(67, 76, 94),  // nord1
+        }
+    }
+
+    pub fn dracula() -> Self {
+        Self {
+            border: Color::Rgb(189, 147, 249),        // purple
+            highlight_bg: Color::Rgb(98, 114, 164),   // comment / sel
+            author: Color::Rgb(255, 121, 198),        // pink
+            dim: Color::Rgb(98, 114, 164),            // comment
+            success: Color::Rgb(80, 250, 123),        // green
+            failed: Color::Rgb(255, 85, 85),          // red
+            running: Color::Rgb(139, 233, 253),       // cyan
+            pending: Color::Rgb(241, 250, 140),       // yellow
+            open_mr: Color::Rgb(139, 233, 253),       // cyan
+            merged_mr: Color::Rgb(189, 147, 249),     // purple
+            closed_mr: Color::Rgb(255, 85, 85),       // red
+            header: Color::Rgb(189, 147, 249),        // purple
+            header1: Color::Rgb(139, 233, 253),       // cyan
+            header2: Color::Rgb(255, 121, 198),       // pink
+            project: Color::Rgb(139, 233, 253),       // cyan
+            issue: Color::Rgb(80, 250, 123),          // green
+            mr: Color::Rgb(255, 121, 198),            // pink
+            shortcut_key: Color::Rgb(139, 233, 253),  // cyan
+            shortcut_desc: Color::Rgb(248, 248, 242), // fg
+            keyword: Color::Rgb(255, 85, 85),         // red
+            code: Color::Rgb(80, 250, 123),           // green
+            code_bg: Color::Rgb(40, 42, 54),          // current line
+            range_highlight: Color::Rgb(68, 71, 90),  // selection
+        }
+    }
+
+    pub fn gruvbox_dark() -> Self {
+        Self {
+            border: Color::Rgb(184, 187, 38),         // green
+            highlight_bg: Color::Rgb(69, 133, 136),   // blue/aqua
+            author: Color::Rgb(211, 134, 155),        // purple
+            dim: Color::Rgb(146, 131, 116),           // gray
+            success: Color::Rgb(184, 187, 38),        // green
+            failed: Color::Rgb(251, 73, 52),          // red
+            running: Color::Rgb(131, 165, 152),       // blue
+            pending: Color::Rgb(250, 189, 47),        // yellow
+            open_mr: Color::Rgb(131, 165, 152),       // blue
+            merged_mr: Color::Rgb(211, 134, 155),     // purple
+            closed_mr: Color::Rgb(251, 73, 52),       // red
+            header: Color::Rgb(254, 128, 25),         // orange
+            header1: Color::Rgb(142, 192, 124),       // aqua
+            header2: Color::Rgb(211, 134, 155),       // purple
+            project: Color::Rgb(142, 192, 124),       // aqua
+            issue: Color::Rgb(184, 187, 38),          // green
+            mr: Color::Rgb(211, 134, 155),            // purple
+            shortcut_key: Color::Rgb(254, 128, 25),   // orange
+            shortcut_desc: Color::Rgb(235, 219, 178), // light1
+            keyword: Color::Rgb(251, 73, 52),         // red
+            code: Color::Rgb(184, 187, 38),           // green
+            code_bg: Color::Rgb(40, 40, 40),          // dark0
+            range_highlight: Color::Rgb(80, 73, 69),  // dark2
+        }
+    }
+
+    pub fn github_dark() -> Self {
+        Self {
+            border: Color::Rgb(46, 160, 67),          // green
+            highlight_bg: Color::Rgb(31, 111, 235),   // blue
+            author: Color::Rgb(163, 113, 247),        // purple
+            dim: Color::Rgb(110, 118, 129),           // muted
+            success: Color::Rgb(63, 185, 80),         // green
+            failed: Color::Rgb(248, 81, 73),          // red
+            running: Color::Rgb(88, 166, 255),        // blue
+            pending: Color::Rgb(210, 153, 34),        // yellow
+            open_mr: Color::Rgb(88, 166, 255),        // blue
+            merged_mr: Color::Rgb(163, 113, 247),     // purple
+            closed_mr: Color::Rgb(248, 81, 73),       // red
+            header: Color::Rgb(88, 166, 255),         // blue
+            header1: Color::Rgb(57, 197, 187),        // cyan
+            header2: Color::Rgb(163, 113, 247),       // purple
+            project: Color::Rgb(88, 166, 255),        // blue
+            issue: Color::Rgb(63, 185, 80),           // green
+            mr: Color::Rgb(163, 113, 247),            // purple
+            shortcut_key: Color::Rgb(88, 166, 255),   // blue
+            shortcut_desc: Color::Rgb(240, 246, 252), // fg
+            keyword: Color::Rgb(248, 81, 73),         // red
+            code: Color::Rgb(63, 185, 80),            // green
+            code_bg: Color::Rgb(22, 27, 34),          // dark
+            range_highlight: Color::Rgb(48, 54, 61),  // sel
+        }
+    }
+
+    pub fn github_light() -> Self {
+        Self {
+            border: Color::Rgb(26, 127, 55),            // green
+            highlight_bg: Color::Rgb(9, 105, 218),      // blue
+            author: Color::Rgb(130, 80, 223),           // purple
+            dim: Color::Rgb(110, 119, 129),             // muted
+            success: Color::Rgb(26, 127, 55),           // green
+            failed: Color::Rgb(207, 34, 46),            // red
+            running: Color::Rgb(9, 105, 218),           // blue
+            pending: Color::Rgb(154, 103, 0),           // yellow
+            open_mr: Color::Rgb(9, 105, 218),           // blue
+            merged_mr: Color::Rgb(130, 80, 223),        // purple
+            closed_mr: Color::Rgb(207, 34, 46),         // red
+            header: Color::Rgb(9, 105, 218),            // blue
+            header1: Color::Rgb(5, 80, 174),            // cyan
+            header2: Color::Rgb(130, 80, 223),          // purple
+            project: Color::Rgb(9, 105, 218),           // blue
+            issue: Color::Rgb(26, 127, 55),             // green
+            mr: Color::Rgb(130, 80, 223),               // purple
+            shortcut_key: Color::Rgb(9, 105, 218),      // blue
+            shortcut_desc: Color::Rgb(31, 35, 40),      // dark fg
+            keyword: Color::Rgb(207, 34, 46),           // red
+            code: Color::Rgb(26, 127, 55),              // green
+            code_bg: Color::Rgb(246, 248, 250),         // light
+            range_highlight: Color::Rgb(221, 244, 255), // light blue
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_lowercase().replace(['-', '_', ' '], "").as_str() {
+            "catppuccinmocha" | "mocha" | "default" => Some(Self::catppuccin_mocha()),
+            "catppuccinlatte" | "latte" => Some(Self::catppuccin_latte()),
+            "tokyonight" | "tokyo" => Some(Self::tokyo_night()),
+            "nord" => Some(Self::nord()),
+            "dracula" => Some(Self::dracula()),
+            "gruvboxdark" | "gruvbox" => Some(Self::gruvbox_dark()),
+            "githubdark" => Some(Self::github_dark()),
+            "githublight" => Some(Self::github_light()),
+            _ => None,
+        }
+    }
+
     pub fn load() -> Self {
         let config_path = "theme.toml";
-        std::fs::read_to_string(config_path)
-            .ok()
-            .and_then(|content| toml::from_str(&content).ok())
-            .unwrap_or_default()
+        if let Ok(content) = std::fs::read_to_string(config_path) {
+            // First check if there is a preset theme = "name"
+            #[derive(Deserialize)]
+            struct ThemeConfig {
+                theme: Option<String>,
+                #[serde(flatten)]
+                custom: Option<Theme>,
+            }
+            if let Ok(cfg) = toml::from_str::<ThemeConfig>(&content) {
+                if let Some(preset) = cfg.theme.as_deref().and_then(Self::from_name) {
+                    return preset;
+                }
+                if let Some(custom) = cfg.custom {
+                    return custom;
+                }
+            }
+            if let Ok(t) = toml::from_str::<Theme>(&content) {
+                return t;
+            }
+        }
+        Self::default()
     }
 }
 
