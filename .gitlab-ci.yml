@@ -3,6 +3,7 @@ stages:
   - test
   - live
   - coverage
+  - deploy
 
 variables:
   CARGO_TERM_COLOR: always
@@ -134,3 +135,22 @@ coverage:tarpaulin:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_PIPELINE_SOURCE == "web"
+
+# ----- Documentation & Pages -----
+
+pages:
+  stage: deploy
+  image: rust:1.85
+  needs: ["test:wiremock"]
+  before_script:
+    - apt-get update && apt-get install -y python3 python3-pip
+    - pip install zensical pymupdf --break-system-packages
+  script:
+    - python3 scripts/build_docs.py
+    - mv site public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
