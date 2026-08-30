@@ -20,7 +20,11 @@ static TODO_TARGET_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"/(?:issues|merge_requests)/(\d+)").unwrap());
 
 impl App {
-    pub fn new(gitlab: AsyncGitlab, tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
+    pub fn new(
+        gitlab: AsyncGitlab,
+        tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
+        target_project: Option<String>,
+    ) -> Self {
         let mut dashboard_menu_state = ListState::default();
         dashboard_menu_state.select(Some(0));
         let mut explore_menu_state = ListState::default();
@@ -29,6 +33,7 @@ impl App {
         project_menu_state.select(Some(0));
 
         Self {
+            target_project,
             should_quit: false,
             active_context: Context::Dashboard,
             dashboard_menu_state,

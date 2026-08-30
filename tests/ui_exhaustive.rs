@@ -20,7 +20,7 @@ async fn setup_app() -> (MockServer, App) {
         .await
         .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let app = App::new(client, tx);
+    let app = App::new(client, tx, None);
     (server, app)
 }
 

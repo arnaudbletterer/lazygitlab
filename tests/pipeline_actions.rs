@@ -47,7 +47,7 @@ async fn drive(script: &str) -> (App, Vec<String>) {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.initial_setup().await.expect("initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;
 

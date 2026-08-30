@@ -48,7 +48,7 @@ async fn live_full_create_branch_opens_popup_with_prefill() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.initial_setup().await.expect("initial setup");
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
@@ -101,7 +101,7 @@ async fn live_full_create_branch_validation_empty_name() {
     let ground = common::test_ground();
 
     let (tx, mut _rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -151,7 +151,7 @@ async fn live_full_create_branch_validation_empty_ref() {
     let ground = common::test_ground();
 
     let (tx, mut _rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -198,7 +198,7 @@ async fn live_full_create_branch_dismisses_with_esc() {
     let ground = common::test_ground();
 
     let (tx, mut _rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -239,7 +239,7 @@ async fn live_full_delete_branch_success_via_d_key() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),

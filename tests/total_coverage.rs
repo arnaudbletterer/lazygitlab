@@ -42,7 +42,7 @@ async fn run_monolithic_tests() {
         .await
         .unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(Project {
         id: 1,
         name: "p".into(),

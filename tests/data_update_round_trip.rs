@@ -52,7 +52,7 @@ where
 
 async fn build_app(client: gitlab::AsyncGitlab) -> (App, mpsc::UnboundedReceiver<DataUpdate>) {
     let (tx, rx) = mpsc::unbounded_channel();
-    (App::new(client, tx), rx)
+    (App::new(client, tx, None), rx)
 }
 
 #[tokio::test]

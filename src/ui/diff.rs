@@ -439,7 +439,7 @@ mod tests {
             .await
             .unwrap();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(client, tx);
+        let mut app = App::new(client, tx, None);
 
         app.selected_mr = Some(MergeRequest {
             iid: 1,

@@ -106,7 +106,7 @@ async fn test_hybrid_search_logic() {
         .await
         .unwrap();
 
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     // 1. Trigger membership sync
     app.refresh().await;

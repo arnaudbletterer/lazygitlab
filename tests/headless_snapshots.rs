@@ -51,7 +51,7 @@ async fn test_headless_dashboard_initial() {
         .await
         .unwrap();
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     let backend = TestBackend::new(120, 40);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -99,7 +99,7 @@ async fn test_headless_dashboard_after_navigation() {
         .await
         .unwrap();
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     let backend = TestBackend::new(120, 40);
     let mut terminal = Terminal::new(backend).unwrap();

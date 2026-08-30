@@ -22,7 +22,7 @@ async fn setup_app() -> (
         .await
         .unwrap();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    (server, App::new(client, tx), rx)
+    (server, App::new(client, tx, None), rx)
 }
 
 fn key(code: KeyCode) -> KeyEvent {

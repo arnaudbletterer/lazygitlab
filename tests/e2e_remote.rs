@@ -51,7 +51,7 @@ async fn live_full_remote_validation_and_isolation() {
     };
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     app.initial_setup().await.expect("Failed initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;
@@ -161,7 +161,7 @@ async fn live_smoke_real_updates_on_test_ground() {
     };
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     app.initial_setup().await.expect("Failed initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;
@@ -308,7 +308,7 @@ async fn live_smoke_collaboration_on_test_ground() {
     };
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     app.initial_setup().await.expect("Failed initial setup");
     wait_for_loading_finish(&mut app, &mut rx).await;

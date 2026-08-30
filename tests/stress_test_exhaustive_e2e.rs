@@ -70,7 +70,7 @@ async fn live_full_exhaustive_test_ground() {
     };
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx.clone());
+    let mut app = App::new(client, tx.clone(), None);
 
     println!("Starting initial setup...");
     app.initial_setup().await.expect("Failed initial setup");

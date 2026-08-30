@@ -1123,7 +1123,7 @@ mod tests {
             .await
             .unwrap();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        (server, App::new(client, tx))
+        (server, App::new(client, tx, None))
     }
 
     #[tokio::test]

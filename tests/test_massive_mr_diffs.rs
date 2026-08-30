@@ -55,7 +55,7 @@ async fn live_full_massive_mr_diff_automatic_fetch() {
         .unwrap_or(0) as usize;
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx.clone());
+    let mut app = App::new(client, tx.clone(), None);
 
     let endpoint = gitlab::api::projects::merge_requests::MergeRequest::builder()
         .project(project_id)

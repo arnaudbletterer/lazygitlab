@@ -38,7 +38,7 @@ async fn setup_app() -> (MockServer, App) {
         .await
         .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.active_panel = Panel::MainDetail;
     app.active_context = Context::Project;
     app.project_menu_state.select(Some(1)); // Merge Requests by default for these tests

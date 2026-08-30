@@ -77,7 +77,7 @@ async fn setup_app() -> (
         .await
         .unwrap();
     let (tx, rx) = mpsc::unbounded_channel();
-    let app = App::new(client, tx);
+    let app = App::new(client, tx, None);
     (server, app, rx)
 }
 

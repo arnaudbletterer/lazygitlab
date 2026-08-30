@@ -48,7 +48,7 @@ async fn live_full_create_issue_optimistic_insert() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -93,7 +93,7 @@ async fn live_full_remove_pending_issue_data_update() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),

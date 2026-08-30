@@ -546,7 +546,7 @@ mod tests {
             .await
             .unwrap();
         let (tx, rx) = mpsc::unbounded_channel();
-        let mut app = App::new(client, tx);
+        let mut app = App::new(client, tx, None);
         app.active_panel = Panel::Project;
         app.project_menu_state.select(Some(1));
         app.active_context = Context::Project;

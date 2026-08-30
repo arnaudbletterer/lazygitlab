@@ -66,7 +66,7 @@ async fn live_full_issue_resolve_discussion_sends_correct_payload() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -135,7 +135,7 @@ async fn live_full_issue_resolve_no_discussion_status_message() {
     let ground = common::test_ground();
 
     let (tx, mut _rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -192,7 +192,7 @@ async fn live_full_issue_s_key_dispatches_to_issue_resolve() {
     let ground = common::test_ground();
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),
@@ -264,7 +264,7 @@ async fn live_full_help_lists_resolve_shortcut_for_issues() {
     let ground = common::test_ground();
 
     let (tx, _rx) = mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.selected_project = Some(lazygitlab::models::Project {
         id: ground.project.id,
         name: ground.project.path_with_namespace.clone(),

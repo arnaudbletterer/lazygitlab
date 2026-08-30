@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let client = builder.build_async().await?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
 
     if is_headless_requested() {
         let args: Vec<String> = std::env::args().skip(1).collect();
@@ -212,7 +212,7 @@ mod tests {
             .await
             .unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(client, tx);
+        let mut app = App::new(client, tx, None);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 
@@ -248,7 +248,7 @@ mod tests {
             .await
             .unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(client, tx);
+        let mut app = App::new(client, tx, None);
         let backend = TestBackend::new(100, 50);
         let mut terminal = Terminal::new(backend).unwrap();
 

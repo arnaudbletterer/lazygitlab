@@ -18,7 +18,7 @@ async fn setup_app() -> (MockServer, App) {
         .await
         .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(client, tx);
+    let mut app = App::new(client, tx, None);
     app.dashboard_menu_state.select(Some(1));
     app.active_selection = MenuSelection::MergeRequests;
 

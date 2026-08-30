@@ -26,7 +26,7 @@ async fn setup_app() -> App {
         .await
         .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    App::new(client, tx)
+    App::new(client, tx, None)
 }
 
 fn log_line(content: &str) -> LogLine {

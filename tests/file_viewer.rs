@@ -27,7 +27,7 @@ async fn setup_app() -> (MockServer, App) {
         .await
         .unwrap();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    (server, App::new(client, tx))
+    (server, App::new(client, tx, None))
 }
 
 fn make_log_line(content: &str) -> LogLine {

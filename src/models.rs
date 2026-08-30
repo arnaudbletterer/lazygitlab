@@ -976,6 +976,7 @@ pub enum DataUpdate {
 }
 
 pub struct App {
+    pub target_project: Option<String>,
     pub should_quit: bool,
     pub active_context: Context,
     pub dashboard_menu_state: ListState,
