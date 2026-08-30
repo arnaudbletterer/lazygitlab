@@ -6,19 +6,16 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(70, 80, f.area());
     app.set_rect("popup_search", area);
     f.render_widget(Clear, area);
-    let title = if app.is_loading {
-        " Global Search (Searching...) "
-    } else {
-        " Global Search "
-    };
-    f.render_widget(
-        Block::default()
-            .bg(Color::Black)
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(Style::default().fg(app.theme.border)),
-        area,
-    );
+    let block = Block::default()
+        .bg(Color::Black)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            if app.is_loading { " 🔍 Global Search (Searching...) " } else { " 🔍 Global Search " },
+            Style::default().fg(app.theme.accent).bold(),
+        ))
+        .border_style(Style::default().fg(app.theme.active_border));
+    f.render_widget(block, area);
 
     let inner = area.inner(Margin {
         horizontal: 2,
@@ -35,12 +32,13 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
 
     // Search Input
     let search_style = if app.input_target == InputTarget::Search {
-        Style::default().fg(app.theme.highlight_bg)
+        Style::default().fg(app.theme.accent)
     } else {
         Style::default()
     };
     let search_block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Search Query (Esc to close) ")
         .border_style(search_style);
     let search_para = Paragraph::new(app.search_query.as_str()).block(search_block);
@@ -59,19 +57,18 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
         .iter()
         .map(|res| match res {
             SearchResult::Project(p) => ListItem::new(Line::from(vec![
-                Span::styled(" [Project] ", Style::default().fg(app.theme.project)),
-                Span::raw(format!(
-                    " {}",
-                    p.path_with_namespace.as_deref().unwrap_or(&p.name)
-                )),
+                Span::styled(" [Project] ", Style::default().fg(app.theme.project).bold()),
+                Span::styled(format!(" 📂 {}", p.path_with_namespace.as_deref().unwrap_or(&p.name)), Style::default().fg(app.theme.title_fg)),
             ])),
             SearchResult::Issue(i) => ListItem::new(Line::from(vec![
-                Span::styled(" [Issue]   ", Style::default().fg(app.theme.issue)),
-                Span::raw(format!(" #{} {}", i.iid, i.title)),
+                Span::styled(" [Issue]   ", Style::default().fg(app.theme.issue).bold()),
+                Span::styled(format!(" #{} ", i.iid), Style::default().fg(app.theme.issue)),
+                Span::styled(&i.title, Style::default().fg(app.theme.title_fg)),
             ])),
             SearchResult::MergeRequest(m) => ListItem::new(Line::from(vec![
-                Span::styled(" [MR]      ", Style::default().fg(app.theme.mr)),
-                Span::raw(format!(" !{} {}", m.iid, m.title)),
+                Span::styled(" [MR]      ", Style::default().fg(app.theme.mr).bold()),
+                Span::styled(format!(" !{} ", m.iid), Style::default().fg(app.theme.mr)),
+                Span::styled(&m.title, Style::default().fg(app.theme.title_fg)),
             ])),
         })
         .collect();
@@ -80,6 +77,7 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title(format!(" Results ({}) ", app.search_results.len())),
         )
         .highlight_style(
@@ -87,7 +85,7 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
                 .bg(app.theme.highlight_bg)
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol("> ");
+        .highlight_symbol("▎ ");
     f.render_stateful_widget(list, chunks[1], &mut app.search_state);
 
     // Footer

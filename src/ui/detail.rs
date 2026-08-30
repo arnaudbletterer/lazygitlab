@@ -8,11 +8,19 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     // Outer block containing the detail area
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Details ")
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " 🔍 Details & Inspector ",
+            if is_detail_focused {
+                Style::default().fg(app.theme.accent).bold()
+            } else {
+                Style::default().fg(app.theme.title_fg)
+            },
+        ))
         .border_style(if is_detail_focused {
-            Style::default().fg(app.theme.border)
+            Style::default().fg(app.theme.active_border)
         } else {
-            Style::default().fg(app.theme.dim)
+            Style::default().fg(app.theme.inactive_border)
         });
 
     let inner = block.inner(area);
@@ -31,11 +39,11 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     // Generate tab titles
     let has_changes = app.selected_mr.is_some();
     let mut titles = vec![
-        " Description ".to_string(),
-        format!(" Discussions ({}) ", app.discussions.len()),
+        " 󰈙 Overview ".to_string(),
+        format!(" 💬 Discussions ({}) ", app.discussions.len()),
     ];
     if has_changes {
-        titles.push(format!(" Changes ({}) ", app.mr_diffs.len()));
+        titles.push(format!(" 📝 Changes ({}) ", app.mr_diffs.len()));
     }
 
     // Determine active tab index based on detail_section
@@ -54,7 +62,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
         .style(Style::default().fg(app.theme.dim))
         .highlight_style(
             Style::default()
-                .fg(app.theme.border)
+                .fg(app.theme.accent)
                 .add_modifier(Modifier::BOLD),
         );
     f.render_widget(tabs, detail_chunks[0]);
@@ -101,11 +109,19 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             // Render Description Panel
             let desc_block = Block::default()
                 .borders(Borders::ALL)
-                .title(" Description / Preview ")
+                .border_type(BorderType::Rounded)
+                .title(Span::styled(
+                    " 󰈙 Description / Preview ",
+                    if is_editing_desc || is_desc_focused {
+                        Style::default().fg(app.theme.accent).bold()
+                    } else {
+                        Style::default().fg(app.theme.title_fg)
+                    },
+                ))
                 .border_style(if is_editing_desc || is_desc_focused {
-                    Style::default().fg(app.theme.border)
+                    Style::default().fg(app.theme.active_border)
                 } else {
-                    Style::default().fg(app.theme.dim)
+                    Style::default().fg(app.theme.inactive_border)
                 });
             let desc_inner = desc_block.inner(desc_chunks[1]);
             f.render_widget(desc_block, desc_chunks[1]);

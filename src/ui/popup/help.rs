@@ -10,8 +10,12 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
-        .title(" Help & Shortcuts (?: close, /: search, Enter: run) ")
-        .border_style(Style::default().fg(app.theme.border));
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " ❓ Help & Command Palette (?: close, /: search, Enter: run) ",
+            Style::default().fg(app.theme.accent).bold(),
+        ))
+        .border_style(Style::default().fg(app.theme.active_border));
     f.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -29,8 +33,9 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     if app.show_help_filter {
         let filter_block = Block::default()
             .borders(Borders::ALL)
-            .title(" Search Command ")
-            .border_style(Style::default().fg(app.theme.highlight_bg));
+            .border_type(BorderType::Rounded)
+            .title(" 🔍 Search Commands ")
+            .border_style(Style::default().fg(app.theme.accent));
         let filter_paragraph = Paragraph::new(app.help_filter_input.as_str()).block(filter_block);
         f.render_widget(filter_paragraph, chunks[0]);
 
@@ -46,7 +51,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         .map(|h| {
             let line = Line::from(vec![
                 Span::styled(
-                    format!("{:<15}", h.shortcut),
+                    format!(" {:<15}", h.shortcut),
                     Style::default()
                         .fg(app.theme.shortcut_key)
                         .add_modifier(Modifier::BOLD),
@@ -58,7 +63,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
                 Span::styled(
                     format!("[{}]", h.category),
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(app.theme.dim)
                         .add_modifier(Modifier::ITALIC),
                 ),
             ]);
@@ -67,7 +72,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         .collect();
 
     let list = List::new(items)
-        .highlight_style(Style::default().bg(app.theme.highlight_bg))
-        .highlight_symbol(">> ");
+        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
+        .highlight_symbol("▎ ");
     f.render_stateful_widget(list, chunks[1], &mut app.help_state);
 }

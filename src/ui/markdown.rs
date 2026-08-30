@@ -8,7 +8,7 @@ use syntect::parsing::SyntaxSet;
 fn ensure_prefix(spans: &mut Vec<Span<'static>>, depth: usize) {
     if spans.is_empty() && depth > 0 {
         for _ in 0..depth {
-            spans.push(Span::styled("│ ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled("▎ ", Style::default().fg(Color::DarkGray)));
         }
     }
 }
@@ -41,47 +41,73 @@ fn render_table(rows: &[Vec<Vec<Span<'static>>>], theme: &Theme, lines: &mut Vec
     let border_style = Style::default().fg(theme.dim);
     let body_style = Style::default();
 
+    // Top border
+    let mut top_spans = vec![Span::styled("╭", border_style)];
+    for (i, w) in widths.iter().enumerate() {
+        top_spans.push(Span::styled("─".repeat(*w), border_style));
+        if i < widths.len() - 1 {
+            top_spans.push(Span::styled("┬", border_style));
+        }
+    }
+    top_spans.push(Span::styled("╮", border_style));
+    lines.push(Line::from(top_spans));
+
     for row in header_rows.iter() {
-        let mut line_spans: Vec<Span<'static>> = vec![Span::styled("│".to_string(), border_style)];
+        let mut line_spans: Vec<Span<'static>> = vec![Span::styled("│", border_style)];
         for (j, cell) in row.iter().enumerate() {
-            line_spans.push(Span::styled(" ".to_string(), body_style));
+            line_spans.push(Span::styled(" ", body_style));
             for span in cell {
                 line_spans.push(Span::styled(span.content.clone(), header_style));
             }
             let cell_w: usize = cell.iter().map(|s| s.content.chars().count()).sum();
-            let pad = widths[j].saturating_sub(cell_w + 2);
+            let pad = widths[j].saturating_sub(cell_w + 1); // +1 because we already added a leading space
             if pad > 0 {
                 line_spans.push(Span::styled(" ".repeat(pad), body_style));
             }
-            line_spans.push(Span::styled("│".to_string(), border_style));
+            line_spans.push(Span::styled("│", border_style));
         }
         lines.push(Line::from(line_spans));
     }
 
-    let mut sep_spans: Vec<Span<'static>> = Vec::new();
-    for w in &widths {
-        sep_spans.push(Span::styled("├".to_string(), border_style));
-        sep_spans.push(Span::styled("─".repeat(*w), border_style));
+    if has_header && !body_rows.is_empty() {
+        let mut sep_spans = vec![Span::styled("├", border_style)];
+        for (i, w) in widths.iter().enumerate() {
+            sep_spans.push(Span::styled("─".repeat(*w), border_style));
+            if i < widths.len() - 1 {
+                sep_spans.push(Span::styled("┼", border_style));
+            }
+        }
+        sep_spans.push(Span::styled("┤", border_style));
+        lines.push(Line::from(sep_spans));
     }
-    sep_spans.push(Span::styled("┤".to_string(), border_style));
-    lines.push(Line::from(sep_spans));
 
     for row in body_rows.iter() {
-        let mut line_spans: Vec<Span<'static>> = vec![Span::styled("│".to_string(), border_style)];
+        let mut line_spans: Vec<Span<'static>> = vec![Span::styled("│", border_style)];
         for (j, cell) in row.iter().enumerate() {
-            line_spans.push(Span::styled(" ".to_string(), body_style));
+            line_spans.push(Span::styled(" ", body_style));
             for span in cell {
                 line_spans.push(Span::styled(span.content.clone(), body_style));
             }
             let cell_w: usize = cell.iter().map(|s| s.content.chars().count()).sum();
-            let pad = widths[j].saturating_sub(cell_w + 2);
+            let pad = widths[j].saturating_sub(cell_w + 1);
             if pad > 0 {
                 line_spans.push(Span::styled(" ".repeat(pad), body_style));
             }
-            line_spans.push(Span::styled("│".to_string(), border_style));
+            line_spans.push(Span::styled("│", border_style));
         }
         lines.push(Line::from(line_spans));
     }
+
+    // Bottom border
+    let mut bottom_spans = vec![Span::styled("╰", border_style)];
+    for (i, w) in widths.iter().enumerate() {
+        bottom_spans.push(Span::styled("─".repeat(*w), border_style));
+        if i < widths.len() - 1 {
+            bottom_spans.push(Span::styled("┴", border_style));
+        }
+    }
+    bottom_spans.push(Span::styled("╯", border_style));
+    lines.push(Line::from(bottom_spans));
 
     lines.push(Line::from(""));
 }
@@ -393,7 +419,7 @@ mod tests {
         assert!(all_content.contains("H1"));
         assert!(all_content.contains("H2"));
         assert!(all_content.contains("H3"));
-        assert!(all_content.contains("│ quote"));
+        assert!(all_content.contains("▎ quote"));
         assert!(all_content.contains("• item 1"));
         assert!(all_content.contains("[x] done"));
         assert!(all_content.contains("fn main() {}"));

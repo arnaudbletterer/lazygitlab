@@ -118,17 +118,18 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
                 .add_modifier(Modifier::BOLD)
         };
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled(
-                format!(" {} ({}) ", title.to_uppercase(), issues.len()),
-                header_style,
-            ))
-            .border_style(Style::default().fg(if is_column_focused {
-                app.theme.border
-            } else {
-                app.theme.dim
-            }));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            format!(" 📋 {} ({}) ", title.to_uppercase(), issues.len()),
+            header_style,
+        ))
+        .border_style(Style::default().fg(if is_column_focused {
+            app.theme.active_border
+        } else {
+            app.theme.inactive_border
+        }));
 
         if issues.is_empty() && app.is_loading {
             f.render_widget(

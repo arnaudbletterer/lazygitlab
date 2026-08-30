@@ -45,34 +45,78 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(chunks[0]);
 
-    // 1. Status Panel
+    // 1. Modern Status Header Card
     let status_block = Block::default()
         .borders(Borders::ALL)
-        .title(" Status ")
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " 󰊤 GitLab ",
+            Style::default().fg(app.theme.accent).bold(),
+        ))
         .border_style(Style::default().fg(app.theme.dim));
-    let status_text = if let Some(project) = &app.selected_project {
-        format!(
-            " Project: {}\n Context: {:?}",
-            project.name, app.active_context
-        )
-    } else {
-        " No Project Selected\n Context: Dashboard".to_string()
-    };
-    f.render_widget(
-        Paragraph::new(status_text).block(status_block),
-        side_chunks[0],
-    );
 
-    // 2. Navigation Panels (Filling space)
+    let status_lines = if let Some(project) = &app.selected_project {
+        vec![
+            Line::from(vec![
+                Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
+                Span::styled(
+                    crate::ui::widgets::truncate_str(&project.name, 18),
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    format!(" 󰘬 {}", project.default_branch.as_deref().unwrap_or("main")),
+                    Style::default().fg(app.theme.dim),
+                ),
+                Span::styled(" ● Live", Style::default().fg(app.theme.status_success)),
+            ]),
+        ]
+    } else {
+        vec![
+            Line::from(vec![
+                Span::styled(" 󰋜 ", Style::default().fg(app.theme.accent)),
+                Span::styled("Personal Dashboard", Style::default().fg(app.theme.title_fg).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(" Global View", Style::default().fg(app.theme.dim)),
+                Span::styled(" ● Ready", Style::default().fg(app.theme.status_success)),
+            ]),
+        ]
+    };
+    f.render_widget(Paragraph::new(status_lines).block(status_block), side_chunks[0]);
+
+    // 2. Modern Navigation Panels
+    let todo_badge = if !app.todos.is_empty() {
+        format!(" ({})", app.todos.len())
+    } else {
+        String::new()
+    };
+    let mr_badge = if !app.merge_requests.is_empty() {
+        format!(" ({})", app.merge_requests.len())
+    } else {
+        String::new()
+    };
+    let issue_badge = if !app.issues.is_empty() {
+        format!(" ({})", app.issues.len())
+    } else {
+        String::new()
+    };
+
     app.set_rect("nav_dashboard", side_chunks[1]);
     render_nav_panel(
         f,
         app.active_panel == Panel::Dashboard,
         &app.theme,
         side_chunks[1],
-        " Dashboard ",
+        "󰋜 Dashboard",
         &mut app.dashboard_menu_state,
-        vec!["  Todos", "  Merge Requests", "  Issues", "  Pipelines"],
+        vec![
+            format!("  󰅂 To-Dos{}", todo_badge),
+            format!("  󰅂 Merge Requests{}", mr_badge),
+            format!("  󰅂 Issues{}", issue_badge),
+            "  󰅂 Pipelines".to_string(),
+        ],
     );
 
     app.set_rect("nav_explore", side_chunks[2]);
@@ -81,9 +125,9 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         app.active_panel == Panel::Explore,
         &app.theme,
         side_chunks[2],
-        " Explore ",
+        "󰈈 Explore",
         &mut app.explore_menu_state,
-        vec!["  Projects", "  Groups"],
+        vec!["  󰅂 Projects".to_string(), "  󰅂 Groups".to_string()],
     );
 
     if app.selected_project.is_some() {
@@ -94,23 +138,23 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
             .is_some_and(|ns| ns.kind == "group");
         app.set_rect("nav_project", side_chunks[3]);
         let mut project_items = vec![
-            "  Merge Requests",
-            "  Issues",
-            "  Pipelines",
-            "  Repository",
-            "  Branches",
-            "  Commits",
-            "  Boards",
+            "  󰅂 Merge Requests".to_string(),
+            "  󰅂 Issues".to_string(),
+            "  󰅂 Pipelines".to_string(),
+            "  󰅂 Repository".to_string(),
+            "  󰅂 Branches".to_string(),
+            "  󰅂 Commits".to_string(),
+            "  󰅂 Boards".to_string(),
         ];
         if has_epics {
-            project_items.push("  Epics");
+            project_items.push("  󰅂 Epics".to_string());
         }
         render_nav_panel(
             f,
             app.active_panel == Panel::Project,
             &app.theme,
             side_chunks[3],
-            " Project ",
+            "󰘬 Project",
             &mut app.project_menu_state,
             project_items,
         );
@@ -142,29 +186,38 @@ fn render_nav_panel(
     area: Rect,
     title: &str,
     state: &mut ListState,
-    items: Vec<&str>,
+    items: Vec<String>,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(title)
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            format!(" {} ", title),
+            if is_focused {
+                Style::default().fg(theme.accent).bold()
+            } else {
+                Style::default().fg(theme.title_fg)
+            },
+        ))
         .border_style(if is_focused {
-            Style::default().fg(theme.border)
+            Style::default().fg(theme.active_border)
         } else {
-            Style::default().fg(theme.dim)
+            Style::default().fg(theme.inactive_border)
         });
 
-    let list_items: Vec<ListItem> = items.iter().map(|i| ListItem::new(*i)).collect();
+    let list_items: Vec<ListItem> = items.into_iter().map(ListItem::new).collect();
     f.render_stateful_widget(
         List::new(list_items)
             .block(block)
             .highlight_style(if is_focused {
                 Style::default()
                     .bg(theme.highlight_bg)
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             })
-            .highlight_symbol(if is_focused { "> " } else { "  " }),
+            .highlight_symbol(if is_focused { "▎ " } else { "  " }),
         area,
         state,
     );
@@ -208,11 +261,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     };
     let list_block = Block::default()
         .borders(Borders::ALL)
-        .title(list_title.as_str())
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            list_title.as_str(),
+            if is_main_focused {
+                Style::default().fg(app.theme.accent).bold()
+            } else {
+                Style::default().fg(app.theme.title_fg)
+            },
+        ))
         .border_style(if is_main_focused {
-            Style::default().fg(app.theme.border)
+            Style::default().fg(app.theme.active_border)
         } else {
-            Style::default().fg(app.theme.dim)
+            Style::default().fg(app.theme.inactive_border)
         });
 
     let list_inner = list_block.inner(area);
@@ -293,7 +354,15 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|item| match item {
                     GroupedItem::Item(t) => {
-                        ListItem::new(format!("{} - {}", t.action_name, t.body))
+                        let action_style = Style::default().fg(app.theme.accent).bold();
+                        let target_icon = if t.target_type == "MergeRequest" { "🔀 " } else { "📋 " };
+                        let time_str = crate::ui::widgets::format_relative_time(&t.created_at);
+                        ListItem::new(Line::from(vec![
+                            Span::styled(target_icon, Style::default().fg(app.theme.dim)),
+                            Span::styled(format!("[{}] ", t.action_name.replace('_', " ")), action_style),
+                            Span::styled(crate::ui::widgets::truncate_str(&t.body, 50), Style::default().fg(app.theme.title_fg)),
+                            Span::styled(format!(" ({})", time_str), Style::default().fg(app.theme.dim)),
+                        ]))
                     }
                     GroupedItem::Header(h) => {
                         let key = format!("todos:{}", h);
@@ -325,7 +394,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             no_highlight
                         })
-                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                     list_chunks[1],
                     &mut app.todos_state,
                 );
@@ -351,16 +420,34 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         if involved {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
-                        let max_title = (area.width as usize).saturating_sub(24).max(16);
-                        spans.push(Span::raw(format!(
-                            "!{} {}",
-                            mr.iid,
-                            crate::ui::widgets::truncate_str(&mr.title, max_title)
-                        )));
+
+                        // State Icon badge
+                        let (icon, state_style) = if mr.draft.unwrap_or(false) {
+                            ("✎ ", Style::default().fg(app.theme.dim))
+                        } else if mr.state == "merged" {
+                            ("✔ ", Style::default().fg(app.theme.merged_mr))
+                        } else if mr.state == "closed" {
+                            ("✖ ", Style::default().fg(app.theme.closed_mr))
+                        } else {
+                            ("✦ ", Style::default().fg(app.theme.open_mr))
+                        };
+                        spans.push(Span::styled(icon, state_style));
+
                         spans.push(Span::styled(
-                            format!(" [{}]", mr.state),
-                            crate::ui::widgets::get_status_style(&mr.state, &app.theme),
+                            format!("!{} ", mr.iid),
+                            Style::default().fg(app.theme.accent).bold(),
                         ));
+
+                        let max_title = (area.width as usize).saturating_sub(28).max(16);
+                        spans.push(Span::styled(
+                            crate::ui::widgets::truncate_str(&mr.title, max_title),
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        ));
+
+                        if let Some(up) = mr.upvotes && up > 0 {
+                            spans.push(Span::styled(format!(" 👍{}", up), Style::default().fg(app.theme.status_success)));
+                        }
+
                         spans.push(Span::raw(" "));
                         for label in &mr.labels {
                             let bg = hex_to_color(label.color());
@@ -408,7 +495,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             no_highlight
                         })
-                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                     list_chunks[1],
                     &mut app.mrs_state,
                 );
@@ -433,19 +520,32 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         if involved {
                             spans.push(Span::styled("● ", Style::default().fg(Color::Yellow)));
                         }
+
+                        let (icon, state_style) = if i.state == "closed" {
+                            ("✔ ", Style::default().fg(app.theme.merged_mr))
+                        } else {
+                            ("✦ ", Style::default().fg(app.theme.status_success))
+                        };
+                        spans.push(Span::styled(icon, state_style));
+
+                        spans.push(Span::styled(
+                            format!("#{} ", i.iid),
+                            Style::default().fg(app.theme.issue).bold(),
+                        ));
+
                         let max_title = (area.width as usize).saturating_sub(32).max(16);
-                        spans.push(Span::raw(format!(
-                            "#{} {}",
-                            i.iid,
-                            crate::ui::widgets::truncate_str(&i.title, max_title)
-                        )));
+                        spans.push(Span::styled(
+                            crate::ui::widgets::truncate_str(&i.title, max_title),
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        ));
                         spans.push(Span::raw(" "));
+
                         if let Some(m) = &i.milestone {
                             spans.push(Span::styled(
-                                format!(" {} ", m.title),
+                                format!(" ⚑ {} ", m.title),
                                 Style::default()
                                     .fg(app.theme.project)
-                                    .add_modifier(Modifier::BOLD),
+                                    .bg(app.theme.chip_bg),
                             ));
                             spans.push(Span::raw(" "));
                         }
@@ -460,7 +560,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             } else {
                                 Style::default().fg(app.theme.dim)
                             };
-                            spans.push(Span::styled(format!("due {}", due), due_style));
+                            spans.push(Span::styled(format!(" 📅 due {} ", due), due_style));
                             spans.push(Span::raw(" "));
                         }
                         for label in &i.labels {
@@ -509,7 +609,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             no_highlight
                         })
-                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                     list_chunks[1],
                     &mut app.issues_state,
                 );
@@ -520,10 +620,17 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .filtered_pipelines
                 .iter()
                 .map(|p| {
-                    let mut spans = vec![Span::styled(
-                        format!(" {} ", p.status),
-                        crate::ui::widgets::get_status_style(&p.status, &app.theme),
-                    )];
+                    let (icon, status_style) = match p.status.as_str() {
+                        "success" | "passed" => ("✔", Style::default().fg(app.theme.status_success).bold()),
+                        "failed" => ("✖", Style::default().fg(app.theme.failed).bold()),
+                        "running" => ("⟳", Style::default().fg(app.theme.running).bold()),
+                        "pending" => ("⏱", Style::default().fg(app.theme.pending).bold()),
+                        _ => ("⭘", Style::default().fg(app.theme.dim)),
+                    };
+                    let mut spans = vec![
+                        Span::styled(format!(" {} {} ", icon, p.status), status_style),
+                        Span::styled(format!("#{} ", p.id), Style::default().fg(app.theme.title_fg).bold()),
+                    ];
                     if app.active_context != Context::Project {
                         let project_label = app
                             .project_cache
@@ -531,15 +638,24 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             .and_then(|proj| proj.path_with_namespace.clone())
                             .unwrap_or_else(|| format!("#{}", p.project_id));
                         spans.push(Span::styled(
-                            format!(" {} ", crate::ui::widgets::truncate_str(&project_label, 24)),
+                            format!(" 📂 {} ", crate::ui::widgets::truncate_str(&project_label, 20)),
                             Style::default().fg(app.theme.project),
                         ));
                     }
                     spans.push(Span::styled(
-                        format!(" {} ", p.ref_name),
+                        format!(" 󰘬 {} ", p.ref_name),
                         Style::default().fg(app.theme.author),
                     ));
-                    spans.push(Span::raw(format!(" {} ", p.source)));
+                    spans.push(Span::styled(
+                        format!(" [{}] ", p.source),
+                        Style::default().fg(app.theme.dim),
+                    ));
+                    if let Some(dur) = p.duration {
+                        spans.push(Span::styled(
+                            format!(" ⏱ {} ", crate::ui::widgets::format_duration(dur)),
+                            Style::default().fg(app.theme.dim),
+                        ));
+                    }
                     ListItem::new(Line::from(spans))
                 })
                 .collect();
@@ -557,7 +673,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             no_highlight
                         })
-                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                     list_chunks[1],
                     &mut app.pipelines_state,
                 );
@@ -569,12 +685,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|p| {
                     ListItem::new(Line::from(vec![
+                        Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
                         Span::styled(
-                            format!(" {} ", p.name),
-                            Style::default().add_modifier(Modifier::BOLD),
+                            format!("{} ", p.name),
+                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
-                            format!(" ({})", p.path_with_namespace.as_deref().unwrap_or("")),
+                            format!("({})", p.path_with_namespace.as_deref().unwrap_or("")),
                             Style::default().fg(app.theme.dim),
                         ),
                     ]))
@@ -587,7 +704,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         no_highlight
                     })
-                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                 list_chunks[1],
                 &mut app.projects_state,
             );
@@ -598,12 +715,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|g| {
                     ListItem::new(Line::from(vec![
+                        Span::styled(" 👥 ", Style::default().fg(app.theme.accent)),
                         Span::styled(
-                            format!(" {} ", g.name),
-                            Style::default().add_modifier(Modifier::BOLD),
+                            format!("{} ", g.name),
+                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
-                            format!(" ({})", g.full_path),
+                            format!("({})", g.full_path),
                             Style::default().fg(app.theme.dim),
                         ),
                     ]))
@@ -616,7 +734,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         no_highlight
                     })
-                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                 list_chunks[1],
                 &mut app.groups_state,
             );
@@ -635,12 +753,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
                 .block(
                     Block::default()
-                        .title("Tree")
+                        .title(" Tree ")
                         .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
                         .border_style(if is_main_focused {
-                            Style::default().fg(app.theme.border)
+                            Style::default().fg(app.theme.active_border)
                         } else {
-                            Style::default().fg(app.theme.dim)
+                            Style::default().fg(app.theme.inactive_border)
                         }),
                 )
                 .highlight_style(if is_main_focused {
@@ -648,7 +767,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     no_highlight
                 })
-                .highlight_symbol(if is_main_focused { "> " } else { "  " });
+                .highlight_symbol(if is_main_focused { "▎ " } else { "  " });
             f.render_stateful_widget(tree, list_chunks[1], &mut app.repository_tree_state);
         }
         MenuSelection::Branches => {
@@ -656,10 +775,20 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .filtered_branches
                 .iter()
                 .map(|b| {
-                    ListItem::new(Line::from(vec![Span::styled(
-                        format!(" {} ", b.name),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    )]))
+                    let mut spans = vec![
+                        Span::styled(" 🌿 ", Style::default().fg(app.theme.author)),
+                        Span::styled(
+                            format!("{} ", b.name),
+                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                        ),
+                    ];
+                    if b.default.unwrap_or(false) {
+                        spans.push(Span::styled(" [Default] ", Style::default().fg(app.theme.status_success).bold()));
+                    }
+                    if b.merged.unwrap_or(false) {
+                        spans.push(Span::styled(" [Merged] ", Style::default().fg(app.theme.dim)));
+                    }
+                    ListItem::new(Line::from(spans))
                 })
                 .collect();
             f.render_stateful_widget(
@@ -669,7 +798,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         no_highlight
                     })
-                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                 list_chunks[1],
                 &mut app.branches_state,
             );
@@ -680,16 +809,17 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|c| {
                     ListItem::new(Line::from(vec![
+                        Span::styled(" 📜 ", Style::default().fg(app.theme.dim)),
                         Span::styled(
-                            format!(" {} ", c.short_id),
-                            Style::default().fg(app.theme.dim),
+                            format!("[{}] ", c.short_id),
+                            Style::default().fg(app.theme.accent).bold(),
                         ),
                         Span::styled(
-                            c.title.clone(),
-                            Style::default().add_modifier(Modifier::BOLD),
+                            crate::ui::widgets::truncate_str(&c.title, (area.width as usize).saturating_sub(35).max(16)),
+                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
-                            format!(" - {}", c.author_name),
+                            format!(" - @{}", c.author_name),
                             Style::default().fg(app.theme.dim),
                         ),
                     ]))
@@ -702,7 +832,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         no_highlight
                     })
-                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                 list_chunks[1],
                 &mut app.commits_state,
             );
@@ -712,10 +842,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .project_boards
                 .iter()
                 .map(|b| {
-                    ListItem::new(Line::from(vec![Span::styled(
-                        format!(" {} ", b.name),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    )]))
+                    ListItem::new(Line::from(vec![
+                        Span::styled(" 📋 ", Style::default().fg(app.theme.accent)),
+                        Span::styled(
+                            format!("{} ", b.name),
+                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                        ),
+                    ]))
                 })
                 .collect();
             f.render_stateful_widget(
@@ -725,7 +858,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         no_highlight
                     })
-                    .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                 list_chunks[1],
                 &mut app.project_boards_state,
             );
@@ -741,13 +874,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                                 format!(" {} ", i.state),
                                 crate::ui::widgets::get_status_style(&i.state, &app.theme),
                             ),
-                            Span::raw(format!("#{} ", i.iid)),
+                            Span::styled(format!("#{} ", i.iid), Style::default().fg(app.theme.issue).bold()),
                             Span::styled(
                                 crate::ui::widgets::truncate_str(
                                     &i.title,
                                     (area.width as usize).saturating_sub(24).max(16),
                                 ),
-                                Style::default().add_modifier(Modifier::BOLD),
+                                Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
                             ),
                         ]))
                     })
@@ -766,7 +899,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             } else {
                                 no_highlight
                             })
-                            .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                            .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
                         list_chunks[1],
                         &mut app.epic_issues_state,
                     );
@@ -813,11 +946,19 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Discussions;
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Discussions (Threads) ")
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " 💬 Discussions (Threads) ",
+            if is_disc_focused {
+                Style::default().fg(app.theme.accent).bold()
+            } else {
+                Style::default().fg(app.theme.title_fg)
+            },
+        ))
         .border_style(if is_disc_focused {
-            Style::default().fg(app.theme.border)
+            Style::default().fg(app.theme.active_border)
         } else {
-            Style::default().fg(app.theme.dim)
+            Style::default().fg(app.theme.inactive_border)
         });
 
     let inner = block.inner(area);
@@ -938,23 +1079,34 @@ pub fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let is_jobs_focused = app.active_panel == Panel::MainDetail;
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Pipeline Jobs ")
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " 🚀 Pipeline Jobs ",
+            if is_jobs_focused {
+                Style::default().fg(app.theme.accent).bold()
+            } else {
+                Style::default().fg(app.theme.title_fg)
+            },
+        ))
         .border_style(if is_jobs_focused {
-            Style::default().fg(app.theme.border)
+            Style::default().fg(app.theme.active_border)
         } else {
-            Style::default().fg(app.theme.dim)
+            Style::default().fg(app.theme.inactive_border)
         });
 
     let items: Vec<ListItem> = app
         .jobs
         .iter()
         .map(|j| {
+            let (icon, status_style) = match j.status.as_str() {
+                "success" | "passed" => ("✔", Style::default().fg(app.theme.status_success).bold()),
+                "failed" => ("✖", Style::default().fg(app.theme.failed).bold()),
+                "running" => ("⟳", Style::default().fg(app.theme.running).bold()),
+                _ => ("⏱", Style::default().fg(app.theme.pending)),
+            };
             ListItem::new(Line::from(vec![
-                Span::styled(
-                    format!(" {} ", j.status),
-                    crate::ui::widgets::get_status_style(&j.status, &app.theme),
-                ),
-                Span::raw(format!(" {} ", j.name)),
+                Span::styled(format!(" {} {} ", icon, j.status), status_style),
+                Span::styled(format!("{} ", j.name), Style::default().fg(app.theme.title_fg).bold()),
                 Span::styled(format!("({})", j.stage), Style::default().fg(app.theme.dim)),
             ]))
         })
@@ -978,7 +1130,7 @@ pub fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     Style::default()
                 })
-                .highlight_symbol(if is_jobs_focused { "> " } else { "  " }),
+                .highlight_symbol(if is_jobs_focused { "▎ " } else { "  " }),
             area,
             &mut app.jobs_state,
         );
@@ -990,11 +1142,19 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         app.active_panel == Panel::MainDetail && app.detail_section == DetailSection::Metadata;
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Metadata ")
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(
+            " 📋 Metadata ",
+            if is_meta_focused {
+                Style::default().fg(app.theme.accent).bold()
+            } else {
+                Style::default().fg(app.theme.title_fg)
+            },
+        ))
         .border_style(if is_meta_focused {
-            Style::default().fg(app.theme.border)
+            Style::default().fg(app.theme.active_border)
         } else {
-            Style::default().fg(app.theme.dim)
+            Style::default().fg(app.theme.inactive_border)
         });
 
     let mut lines = Vec::new();

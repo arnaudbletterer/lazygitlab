@@ -10,8 +10,9 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Confirm Merge Request ")
-        .border_style(Style::default().fg(app.theme.border));
+        .border_style(Style::default().fg(app.theme.shortcut_key));
 
     f.render_widget(block.clone(), area);
 
@@ -103,14 +104,15 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         Span::styled(
-            "  [y/Enter] Confirm  ",
+            "  [ Enter: Confirm ]  ",
             Style::default()
-                .bg(app.theme.highlight_bg)
+                .bg(app.theme.success)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("   "),
         Span::styled(
-            "  [n/Esc] Cancel  ",
+            "  [ Esc: Cancel ]  ",
             Style::default().bg(app.theme.dim).fg(Color::Black),
         ),
     ]));
@@ -127,8 +129,9 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Confirm Rebase ")
-        .border_style(Style::default().fg(app.theme.border));
+        .border_style(Style::default().fg(app.theme.shortcut_key));
 
     f.render_widget(block.clone(), area);
 
@@ -188,14 +191,15 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         Span::styled(
-            "  [y/Enter] Confirm  ",
+            "  [ Enter: Confirm ]  ",
             Style::default()
-                .bg(app.theme.highlight_bg)
+                .bg(app.theme.success)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("   "),
         Span::styled(
-            "  [n/Esc] Cancel  ",
+            "  [ Esc: Cancel ]  ",
             Style::default().bg(app.theme.dim).fg(Color::Black),
         ),
     ]));
@@ -212,6 +216,7 @@ pub fn render_confirm_delete_branch_popup(f: &mut Frame, app: &mut App) {
     let block = Block::default()
         .bg(Color::Black)
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Confirm Delete Branch ")
         .border_style(Style::default().fg(app.theme.failed));
 
@@ -237,11 +242,21 @@ pub fn render_confirm_delete_branch_popup(f: &mut Frame, app: &mut App) {
         ]));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "y / Enter = delete   n / Esc = cancel",
-        Style::default().fg(app.theme.dim),
-    )));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  [ Enter: Confirm ]  ",
+            Style::default()
+                .bg(app.theme.failed)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("   "),
+        Span::styled(
+            "  [ Esc: Cancel ]  ",
+            Style::default().bg(app.theme.dim).fg(Color::Black),
+        ),
+    ]));
 
-    let para = Paragraph::new(lines).block(Block::default());
+    let para = Paragraph::new(lines).alignment(Alignment::Center);
     f.render_widget(para, inner);
 }

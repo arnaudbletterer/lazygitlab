@@ -89,7 +89,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
             ]));
         }
         f.render_widget(
-            Paragraph::new(header_lines).block(Block::default().borders(Borders::BOTTOM)),
+            Paragraph::new(header_lines).block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(" Approval & Details ")),
             chunks[0],
         );
     }
@@ -116,7 +116,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     let diff_list = List::new(diff_items)
-        .block(Block::default().borders(Borders::RIGHT).title(" Files "))
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(" Files "))
         .highlight_style(if is_file_list_focused {
             highlight_style
         } else {

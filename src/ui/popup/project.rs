@@ -12,11 +12,11 @@ pub fn render_project_popup(f: &mut Frame, app: &mut App) {
         .projects
         .iter()
         .map(|p| {
-            ListItem::new(format!(
-                "{} ({})",
-                p.name,
-                p.path_with_namespace.as_deref().unwrap_or("")
-            ))
+            ListItem::new(Line::from(vec![
+                Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
+                Span::styled(format!("{} ", p.name), Style::default().fg(app.theme.title_fg).bold()),
+                Span::styled(format!("({})", p.path_with_namespace.as_deref().unwrap_or("")), Style::default().fg(app.theme.dim)),
+            ]))
         })
         .collect();
 
@@ -24,15 +24,19 @@ pub fn render_project_popup(f: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Select Project ")
-                .border_style(Style::default().fg(app.theme.border)),
+                .border_type(BorderType::Rounded)
+                .title(Span::styled(
+                    " 📂 Select Project (Enter to switch, Esc to cancel) ",
+                    Style::default().fg(app.theme.accent).bold(),
+                ))
+                .border_style(Style::default().fg(app.theme.active_border)),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol("> ");
+        .highlight_symbol("▎ ");
 
     f.render_stateful_widget(list, area, &mut app.projects_state);
 }
