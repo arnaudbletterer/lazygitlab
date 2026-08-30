@@ -232,6 +232,34 @@ impl App {
         }
         if (self.selected_mr.is_some() || self.selected_issue.is_some())
             && self.active_panel == Panel::MainDetail
+        {
+            items.push(HelpItem {
+                shortcut: "Tab / [ / ]".into(),
+                description: "Cycle detail tabs (Overview, Discussions, Changes)".into(),
+                action: HelpAction::None,
+                category: "Detail".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "m".into(),
+                description: "Focus Metadata Inspector".into(),
+                action: HelpAction::None,
+                category: "Detail".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "d".into(),
+                description: "Focus Description preview".into(),
+                action: HelpAction::None,
+                category: "Detail".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "e / Enter".into(),
+                description: "Edit selected field or description".into(),
+                action: HelpAction::None,
+                category: "Detail".into(),
+            });
+        }
+        if (self.selected_mr.is_some() || self.selected_issue.is_some())
+            && self.active_panel == Panel::MainDetail
             && self.detail_section == DetailSection::Discussions
             && !self.discussions.is_empty()
         {
@@ -2172,8 +2200,59 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('d') if self.active_selection == MenuSelection::Todos => {
-                let _ = self.mark_todo_as_done().await;
+            KeyCode::Char('d') => {
+                if self.active_selection == MenuSelection::Todos && self.active_panel == Panel::Main {
+                    let _ = self.mark_todo_as_done().await;
+                } else if self.active_panel == Panel::MainDetail {
+                    self.detail_section = DetailSection::Description;
+                }
+            }
+            KeyCode::Char('m') => {
+                if self.active_panel == Panel::MainDetail {
+                    self.detail_section = DetailSection::Metadata;
+                }
+            }
+            KeyCode::Char('e') => {
+                if self.active_panel == Panel::MainDetail {
+                    match self.detail_section {
+                        DetailSection::Description => {
+                            self.input_mode = true;
+                            self.input_target = InputTarget::EditDescription;
+                            let text = if let Some(i) = &self.selected_issue {
+                                i.description.clone().unwrap_or_default()
+                            } else if let Some(m) = &self.selected_mr {
+                                m.description.clone().unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            self.textarea = ratatui_textarea::TextArea::from(text.lines());
+                            self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
+                        }
+                        DetailSection::Metadata => {
+                            self.enter_detail_action().await;
+                        }
+                        DetailSection::Changes => {
+                            if let Some((mr_diff, mr)) = self
+                                .mr_diff_state
+                                .selected()
+                                .and_then(|idx| self.mr_diffs.get(idx))
+                                .filter(|d| d.collapsed)
+                                .cloned()
+                                .zip(self.selected_mr.as_ref())
+                            {
+                                let _ = self
+                                    .fetch_single_file_diff(
+                                        mr.project_id,
+                                        mr.iid,
+                                        mr_diff.old_path,
+                                        mr_diff.new_path,
+                                    )
+                                    .await;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             KeyCode::Char('n') => {
                 if self.show_create_issue_popup

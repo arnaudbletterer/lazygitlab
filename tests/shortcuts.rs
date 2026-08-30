@@ -251,3 +251,122 @@ async fn test_ux_interaction_refinements() {
     );
     assert_eq!(app.mr_diff_state.selected(), Some(0));
 }
+
+#[tokio::test]
+async fn test_work_item_and_mr_detail_navigation_coherence() {
+    let (_server, mut app) = setup_app().await;
+
+    app.selected_mr = Some(lazygitlab::models::MergeRequest {
+        iid: 1,
+        project_id: 1,
+        title: "Feature MR".into(),
+        description: Some("Long description text\nline 2\nline 3\nline 4".into()),
+        author: lazygitlab::models::Author::new(1, "author".into()),
+        web_url: "http://example.com/mr/1".into(),
+        state: "opened".into(),
+        references: None,
+        upvotes: Some(0),
+        downvotes: Some(0),
+        labels: vec![],
+        milestone: None,
+        assignees: vec![],
+        reviewers: vec![],
+        squash: Some(false),
+        created_at: Some("2026-08-30T10:00:00Z".into()),
+        draft: Some(false),
+        diff_refs: None,
+        reactions: vec![],
+        merge_status: None,
+        detailed_merge_status: Some("mergeable".into()),
+        has_conflicts: Some(false),
+        head_pipeline: None,
+        source_branch: "feature".into(),
+        target_branch: "main".into(),
+        participants: vec![],
+    });
+
+    app.active_selection = MenuSelection::MergeRequests;
+    app.active_panel = Panel::MainDetail;
+    app.detail_section = lazygitlab::models::DetailSection::Metadata;
+    app.selected_metadata_field = lazygitlab::models::MetadataField::Title;
+
+    // 1. Step down in MR Metadata
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::TargetBranch
+    );
+
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::Labels
+    );
+
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::Assignees
+    );
+
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::Reviewers
+    );
+
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::Milestone
+    );
+
+    // Pressing 'j' at the bottom of MR metadata MUST clamp at Milestone and NOT jump to Description!
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Metadata
+    );
+    assert_eq!(
+        app.selected_metadata_field,
+        lazygitlab::models::MetadataField::Milestone
+    );
+
+    // 2. Direct jump to Description via 'd'
+    app.handle_key(key_event(KeyCode::Char('d'))).await;
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Description
+    );
+    assert_eq!(app.description_scroll, 0);
+
+    // Pressing 'j' in Description scrolls down smoothly
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(app.description_scroll, 1);
+    app.handle_key(key_event(KeyCode::Char('j'))).await;
+    assert_eq!(app.description_scroll, 2);
+    app.handle_key(key_event(KeyCode::Char('k'))).await;
+    assert_eq!(app.description_scroll, 1);
+
+    // 3. Direct jump back to Metadata via 'm'
+    app.handle_key(key_event(KeyCode::Char('m'))).await;
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Metadata
+    );
+
+    // 4. Pressing 'e' in Description enters editing mode
+    app.handle_key(key_event(KeyCode::Char('d'))).await;
+    assert_eq!(
+        app.detail_section,
+        lazygitlab::models::DetailSection::Description
+    );
+    assert!(!app.input_mode);
+
+    app.handle_key(key_event(KeyCode::Char('e'))).await;
+    assert!(app.input_mode);
+    assert_eq!(
+        app.input_target,
+        lazygitlab::models::InputTarget::EditDescription
+    );
+}

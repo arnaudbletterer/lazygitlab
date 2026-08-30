@@ -107,11 +107,18 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
             app.set_rect("metadata_panel", desc_chunks[0]);
 
             // Render Description Panel
+            let desc_title = if is_editing_desc {
+                " 📄 Description (Editing: Ctrl+Enter to save, Esc to cancel) "
+            } else if is_desc_focused {
+                " 📄 Description (Focused) [j/k: scroll | e/Enter: edit | m: metadata] "
+            } else {
+                " 📄 Description [press 'd' to focus] "
+            };
             let desc_block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(Span::styled(
-                    " 📄 Description / Preview ",
+                    desc_title,
                     if is_editing_desc || is_desc_focused {
                         Style::default().fg(app.theme.accent).bold()
                     } else {
@@ -149,7 +156,9 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                     content.push(line.clone());
                 }
                 f.render_widget(
-                    Paragraph::new(content).wrap(Wrap { trim: false }),
+                    Paragraph::new(content)
+                        .wrap(Wrap { trim: false })
+                        .scroll((app.description_scroll, 0)),
                     desc_inner,
                 );
             }

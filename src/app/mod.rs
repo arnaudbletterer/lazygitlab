@@ -218,6 +218,7 @@ impl App {
             linked_issues: Vec::new(),
             issue_closing_mrs: Vec::new(),
             file_scroll: 0,
+            description_scroll: 0,
             file_viewport_height: 0,
             file_highlight_cache: None,
             job_log_epoch: 0,

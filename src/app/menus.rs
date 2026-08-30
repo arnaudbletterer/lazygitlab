@@ -162,53 +162,43 @@ impl App {
                             }
                         }
                         MetadataField::TargetBranch => {
-                            self.selected_metadata_field = MetadataField::Labels
+                            self.selected_metadata_field = MetadataField::Labels;
                         }
                         MetadataField::Labels => {
-                            self.selected_metadata_field = MetadataField::Assignees
+                            self.selected_metadata_field = MetadataField::Assignees;
                         }
                         MetadataField::Assignees => {
                             if self.selected_mr.is_some() {
                                 self.selected_metadata_field = MetadataField::Reviewers;
                             } else if self.selected_issue.is_some() {
                                 self.selected_metadata_field = MetadataField::Milestone;
-                            } else {
-                                self.detail_section = DetailSection::Description;
                             }
                         }
                         MetadataField::Reviewers => {
                             self.selected_metadata_field = MetadataField::Milestone;
                         }
                         MetadataField::Milestone => {
-                            if self.selected_mr.is_some() {
-                                self.detail_section = DetailSection::Description;
-                            } else if self.selected_issue.is_some() {
+                            if self.selected_issue.is_some() {
                                 self.selected_metadata_field = MetadataField::StartDate;
-                            } else {
-                                self.detail_section = DetailSection::Description;
                             }
                         }
                         MetadataField::StartDate => {
                             if self.selected_issue.is_some() {
                                 self.selected_metadata_field = MetadataField::DueDate;
-                            } else {
-                                self.detail_section = DetailSection::Description;
                             }
                         }
                         MetadataField::DueDate => {
                             if self.selected_issue.is_some() {
                                 self.selected_metadata_field = MetadataField::Confidential;
-                            } else {
-                                self.detail_section = DetailSection::Description;
                             }
                         }
                         MetadataField::Confidential => {
-                            self.detail_section = DetailSection::Description;
+                            // Clamped at bottom
                         }
-                        _ => self.detail_section = DetailSection::Description,
+                        _ => {}
                     },
                     DetailSection::Description => {
-                        // Do nothing (it is the bottom sub-panel of Tab 0)
+                        self.description_scroll = self.description_scroll.saturating_add(1);
                     }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {
@@ -438,14 +428,7 @@ impl App {
                         }
                     }
                     DetailSection::Description => {
-                        self.detail_section = DetailSection::Metadata;
-                        if self.selected_mr.is_some() {
-                            self.selected_metadata_field = MetadataField::Milestone;
-                        } else if self.selected_issue.is_some() {
-                            self.selected_metadata_field = MetadataField::Confidential;
-                        } else {
-                            self.selected_metadata_field = MetadataField::Assignees;
-                        }
+                        self.description_scroll = self.description_scroll.saturating_sub(1);
                     }
                     DetailSection::Discussions => {
                         if !self.discussions.is_empty() {

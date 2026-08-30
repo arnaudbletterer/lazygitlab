@@ -1022,6 +1022,7 @@ pub struct App {
     pub job_log_search: String,
     pub follow_log: bool,
     pub file_scroll: u16,
+    pub description_scroll: u16,
     pub file_viewport_height: u16,
     pub file_highlight_cache: Option<(String, String, Vec<ratatui::text::Line<'static>>)>,
     pub job_log_epoch: u64,

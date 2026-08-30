@@ -1353,7 +1353,11 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(
-            " 📋 Metadata ",
+            if is_meta_focused {
+                " 📋 Metadata Inspector (Focused) [j/k: select | Enter: edit | d: description] "
+            } else {
+                " 📋 Metadata [press 'm' to focus] "
+            },
             if is_meta_focused {
                 Style::default().fg(app.theme.accent).bold()
             } else {
@@ -1377,6 +1381,27 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             Style::default()
         }
     };
+    let cursor = |f| {
+        if is_meta_focused && app.selected_metadata_field == f {
+            Span::styled("▶ ", Style::default().fg(app.theme.author).bold())
+        } else {
+            Span::raw("  ")
+        }
+    };
+    let edit_hint = |f| {
+        if is_meta_focused && app.selected_metadata_field == f {
+            match f {
+                MetadataField::Confidential => {
+                    Span::styled(" [Space: toggle]", Style::default().fg(app.theme.author).bold())
+                }
+                _ => {
+                    Span::styled(" [Enter: edit]", Style::default().fg(app.theme.author).bold())
+                }
+            }
+        } else {
+            Span::raw("")
+        }
+    };
 
     use crate::models::MetadataField;
 
@@ -1390,8 +1415,10 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             mr.title.clone()
         };
         lines.push(Line::from(vec![
-            Span::raw(" Title: "),
+            cursor(MetadataField::Title),
+            Span::raw("Title: "),
             Span::styled(title, field_style(MetadataField::Title)),
+            edit_hint(MetadataField::Title),
         ]));
 
         let target_branch_style =
@@ -1401,13 +1428,15 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 Style::default().fg(app.theme.project)
             };
         lines.push(Line::from(vec![
-            Span::raw(" Branches: "),
+            cursor(MetadataField::TargetBranch),
+            Span::raw("Branches: "),
             Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
             Span::raw(" -> "),
             Span::styled(&mr.target_branch, target_branch_style),
+            edit_hint(MetadataField::TargetBranch),
         ]));
 
-        let mut label_spans = vec![Span::raw(" Labels: ")];
+        let mut label_spans = vec![cursor(MetadataField::Labels), Span::raw("Labels: ")];
         if mr.labels.is_empty() {
             label_spans.push(Span::styled("None", field_style(MetadataField::Labels)));
         } else {
@@ -1424,9 +1453,10 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 ));
             }
         }
+        label_spans.push(edit_hint(MetadataField::Labels));
         lines.push(Line::from(label_spans));
 
-        let mut assign_spans = vec![Span::raw(" Assign: ")];
+        let mut assign_spans = vec![cursor(MetadataField::Assignees), Span::raw("Assign: ")];
         if mr.assignees.is_empty() {
             assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees)));
         } else {
@@ -1440,9 +1470,10 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 ));
             }
         }
+        assign_spans.push(edit_hint(MetadataField::Assignees));
         lines.push(Line::from(assign_spans));
 
-        let mut reviewer_spans = vec![Span::raw(" Review: ")];
+        let mut reviewer_spans = vec![cursor(MetadataField::Reviewers), Span::raw("Review: ")];
         if mr.reviewers.is_empty() {
             reviewer_spans.push(Span::styled("None", field_style(MetadataField::Reviewers)));
         } else {
@@ -1456,10 +1487,12 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 ));
             }
         }
+        reviewer_spans.push(edit_hint(MetadataField::Reviewers));
         lines.push(Line::from(reviewer_spans));
 
         lines.push(Line::from(vec![
-            Span::raw(" Miles: "),
+            cursor(MetadataField::Milestone),
+            Span::raw("Miles: "),
             Span::styled(
                 mr.milestone
                     .as_ref()
@@ -1467,14 +1500,16 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                     .unwrap_or("None"),
                 field_style(MetadataField::Milestone),
             ),
+            edit_hint(MetadataField::Milestone),
         ]));
         lines.push(Line::from(vec![
-            Span::raw(" Squash: "),
+            Span::raw("  Squash: "),
             Span::raw(if mr.squash.unwrap_or(false) {
                 "Yes"
             } else {
                 "No"
             }),
+            Span::styled(" [toggle with 'S']", Style::default().fg(app.theme.dim)),
         ]));
 
         use crate::ui::widgets::get_status_style;
@@ -1486,7 +1521,7 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             Span::raw("None")
         };
-        lines.push(Line::from(vec![Span::raw(" Pipeline: "), pipeline_status]));
+        lines.push(Line::from(vec![Span::raw("  Pipeline: "), pipeline_status]));
 
         let detailed_status = mr.detailed_merge_status.as_deref().unwrap_or("unknown");
         let status_color = match detailed_status {
@@ -1495,11 +1530,11 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             _ => app.theme.pending,
         };
         lines.push(Line::from(vec![
-            Span::raw(" Status: "),
+            Span::raw("  Status: "),
             Span::styled(detailed_status, Style::default().fg(status_color)),
         ]));
 
-        let mut participant_spans = vec![Span::raw(" Participants: ")];
+        let mut participant_spans = vec![Span::raw("  Participants: ")];
         if mr.participants.is_empty() {
             participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
@@ -1515,7 +1550,7 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         }
         lines.push(Line::from(participant_spans));
 
-        let mut related_mr_spans = vec![Span::raw(" Rel. MRs: ")];
+        let mut related_mr_spans = vec![Span::raw("  Rel. MRs: ")];
         if app.related_mrs.is_empty() {
             related_mr_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
@@ -1535,7 +1570,7 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         }
         lines.push(Line::from(related_mr_spans));
 
-        let mut closes_spans = vec![Span::raw(" Closes: ")];
+        let mut closes_spans = vec![Span::raw("  Closes: ")];
         if app.mr_closing_issues.is_empty() {
             closes_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
@@ -1557,7 +1592,7 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     } else if let Some(issue) = &app.selected_issue {
         use crate::ui::widgets::get_status_style;
         lines.push(Line::from(vec![
-            Span::raw(" Status: "),
+            Span::raw("  Status: "),
             Span::styled(&issue.state, get_status_style(&issue.state, &app.theme)),
         ]));
 
@@ -1570,11 +1605,13 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
             issue.title.clone()
         };
         lines.push(Line::from(vec![
-            Span::raw(" Title: "),
+            cursor(MetadataField::Title),
+            Span::raw("Title: "),
             Span::styled(title, field_style(MetadataField::Title)),
+            edit_hint(MetadataField::Title),
         ]));
 
-        let mut label_spans = vec![Span::raw(" Labels: ")];
+        let mut label_spans = vec![cursor(MetadataField::Labels), Span::raw("Labels: ")];
         if issue.labels.is_empty() {
             label_spans.push(Span::styled("None", field_style(MetadataField::Labels)));
         } else {
@@ -1591,9 +1628,10 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 ));
             }
         }
+        label_spans.push(edit_hint(MetadataField::Labels));
         lines.push(Line::from(label_spans));
 
-        let mut assign_spans = vec![Span::raw(" Assign: ")];
+        let mut assign_spans = vec![cursor(MetadataField::Assignees), Span::raw("Assign: ")];
         if issue.assignees.is_empty() {
             assign_spans.push(Span::styled("None", field_style(MetadataField::Assignees)));
         } else {
@@ -1607,10 +1645,12 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                 ));
             }
         }
+        assign_spans.push(edit_hint(MetadataField::Assignees));
         lines.push(Line::from(assign_spans));
 
         lines.push(Line::from(vec![
-            Span::raw(" Miles: "),
+            cursor(MetadataField::Milestone),
+            Span::raw("Miles: "),
             Span::styled(
                 issue
                     .milestone
@@ -1619,12 +1659,15 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
                     .unwrap_or("None"),
                 field_style(MetadataField::Milestone),
             ),
+            edit_hint(MetadataField::Milestone),
         ]));
 
         let start_date_str = issue.start_date.as_deref().unwrap_or("None");
         lines.push(Line::from(vec![
-            Span::raw(" Start Date: "),
+            cursor(MetadataField::StartDate),
+            Span::raw("Start Date: "),
             Span::styled(start_date_str, field_style(MetadataField::StartDate)),
+            edit_hint(MetadataField::StartDate),
         ]));
 
         let due_date_str = issue.due_date.as_deref().unwrap_or("None");
@@ -1643,19 +1686,23 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
         };
         let due_label = if is_overdue { " (overdue)" } else { "" };
         lines.push(Line::from(vec![
-            Span::raw(" Due Date: "),
+            cursor(MetadataField::DueDate),
+            Span::raw("Due Date: "),
             Span::styled(format!("{}{}", due_date_str, due_label), due_style),
+            edit_hint(MetadataField::DueDate),
         ]));
 
         lines.push(Line::from(vec![
-            Span::raw(" Confidential: "),
+            cursor(MetadataField::Confidential),
+            Span::raw("Confidential: "),
             Span::styled(
                 if issue.confidential { "Yes" } else { "No" },
                 field_style(MetadataField::Confidential),
             ),
+            edit_hint(MetadataField::Confidential),
         ]));
 
-        let mut participant_spans = vec![Span::raw(" Participants: ")];
+        let mut participant_spans = vec![Span::raw("  Participants: ")];
         if issue.participants.is_empty() {
             participant_spans.push(Span::styled("None", Style::default().fg(app.theme.dim)));
         } else {
