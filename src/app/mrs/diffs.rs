@@ -9,6 +9,7 @@ impl App {
         mr_iid: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.is_fetching_diffs = true;
+        self.status_message = Some(format!("Fetching diffs for MR !{}...", mr_iid));
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
@@ -49,6 +50,7 @@ impl App {
         old_path: String,
         new_path: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.status_message = Some(format!("Fetching diff for {}...", new_path));
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
 

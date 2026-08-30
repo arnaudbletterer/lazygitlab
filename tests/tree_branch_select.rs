@@ -215,3 +215,49 @@ async fn test_file_fetch_uses_selected_ref() {
         urls
     );
 }
+
+#[tokio::test]
+async fn test_enter_on_branch_menu_switches_to_repository_tree() {
+    let (server, mut app, _rx) = setup_app().await;
+    Mock::given(path("/api/v4/projects/1/repository/tree"))
+        .and(query_param("ref", "feature-branch"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![tree_item("src/lib.rs")]))
+        .mount(&server)
+        .await;
+
+    app.active_context = Context::Project;
+    app.selected_project = Some(Project {
+        id: 1,
+        name: "p".into(),
+        web_url: Some("u".into()),
+        path_with_namespace: Some("p".into()),
+        default_branch: Some("main".into()),
+        namespace: None,
+    });
+    app.active_panel = Panel::Main;
+    app.active_selection = MenuSelection::Branches;
+    app.filtered_branches = vec![
+        Branch {
+            name: "main".into(),
+            merged: None,
+            protected: None,
+            default: Some(true),
+            web_url: None,
+        },
+        Branch {
+            name: "feature-branch".into(),
+            merged: None,
+            protected: None,
+            default: None,
+            web_url: None,
+        },
+    ];
+    app.branches_state.select(Some(1));
+
+    // Press Enter on feature-branch
+    app.handle_key(key(KeyCode::Enter)).await;
+
+    assert_eq!(app.active_selection, MenuSelection::Repository);
+    assert_eq!(app.repository_ref, Some("feature-branch".to_string()));
+    assert_eq!(app.active_panel, Panel::Main);
+}

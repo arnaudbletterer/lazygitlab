@@ -225,6 +225,7 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
+            self.status_message = Some(format!("Approving MR !{}...", iid));
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
@@ -271,6 +272,7 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
+            self.status_message = Some(format!("Unapproving MR !{}...", iid));
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
@@ -318,6 +320,7 @@ impl App {
             let pid = mr.project_id;
             let iid = mr.iid;
             let squash = mr.squash.unwrap_or(false);
+            self.status_message = Some(format!("Merging MR !{}...", iid));
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
@@ -373,6 +376,11 @@ impl App {
         } else {
             return Ok(());
         };
+        self.status_message = Some(if current_draft {
+            format!("Marking MR !{} as ready...", iid)
+        } else {
+            format!("Marking MR !{} as draft...", iid)
+        });
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         if let Some(m) = &mut self.selected_mr {
@@ -597,6 +605,11 @@ impl App {
         } else {
             return Ok(());
         };
+        self.status_message = Some(if current_squash {
+            format!("Disabling squash for MR !{}...", iid)
+        } else {
+            format!("Enabling squash for MR !{}...", iid)
+        });
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         if let Some(m) = &mut self.selected_mr {
@@ -656,6 +669,7 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
+            self.status_message = Some(format!("Rebasing MR !{}...", iid));
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
@@ -707,6 +721,11 @@ impl App {
             let iid = mr.iid;
             let disc_id = disc.id.clone();
             let current_resolved = disc.resolved.unwrap_or(false);
+            self.status_message = Some(if current_resolved {
+                "Reopening discussion thread...".into()
+            } else {
+                "Resolving discussion thread...".into()
+            });
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
@@ -718,36 +737,44 @@ impl App {
                     resolved: !current_resolved,
                 };
                 let res: Result<serde_json::Value, _> = endpoint.query_async(&client).await;
-                if res.is_ok() {
-                    let mr_endpoint = SingleMergeRequest {
-                        project: pid,
-                        merge_request: iid,
-                    };
-                    let disc_endpoint = MergeRequestDiscussions {
-                        project: pid,
-                        merge_request: iid,
-                    };
-                    let (mr_res, disc_res) = tokio::join!(
-                        tokio::time::timeout(
-                            std::time::Duration::from_secs(30),
-                            mr_endpoint.query_async(&client)
-                        ),
-                        tokio::time::timeout(
-                            std::time::Duration::from_secs(30),
-                            disc_endpoint.query_async(&client)
-                        )
-                    );
-                    if let Ok(Ok(val)) = mr_res
-                        && let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val)
-                    {
-                        let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                match res {
+                    Ok(_) => {
+                        let mr_endpoint = SingleMergeRequest {
+                            project: pid,
+                            merge_request: iid,
+                        };
+                        let disc_endpoint = MergeRequestDiscussions {
+                            project: pid,
+                            merge_request: iid,
+                        };
+                        let (mr_res, disc_res) = tokio::join!(
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(30),
+                                mr_endpoint.query_async(&client)
+                            ),
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(30),
+                                disc_endpoint.query_async(&client)
+                            )
+                        );
+                        if let Ok(Ok(val)) = mr_res
+                            && let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val)
+                        {
+                            let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                        }
+                        if let Ok(Ok(discs)) = disc_res {
+                            let _ = tx.send(DataUpdate::Discussions {
+                                project_id: pid,
+                                iid,
+                                data: discs,
+                            });
+                        }
                     }
-                    if let Ok(Ok(discs)) = disc_res {
-                        let _ = tx.send(DataUpdate::Discussions {
-                            project_id: pid,
-                            iid,
-                            data: discs,
-                        });
+                    Err(e) => {
+                        let _ = tx.send(DataUpdate::Error(format!(
+                            "Resolve discussion failed: {}",
+                            e
+                        )));
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));

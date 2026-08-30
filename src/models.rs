@@ -626,6 +626,7 @@ pub enum HelpAction {
     GotoIssues,
     GotoPipelines,
     GotoRepository,
+    GotoBranches,
     Panel1,
     Panel2,
     Panel3,

@@ -8,10 +8,10 @@ expression: last_frame
 │ 🏠  Personal Dashboard││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
 ╰──────────────────────╯│No merge requests match this view or filter.                                                  │
 ╭ 🏠  Dashboard ────────╮│                                                                                              │
-│    › To-Dos          ││                                                                                              │
-│    › Merge Requests  ││                                                                                              │
-│    › Issues          ││                                                                                              │
-╰──────────────────────╯│                                                                                              │
+│    › To-Dos          ││  • Press n to create a new merge request                                                     │
+│    › Merge Requests  ││  • Press [ / ] to cycle status filters                                                       │
+│    › Issues          ││  • Press I to toggle involved-only filter                                                    │
+╰──────────────────────╯│  • Press r to refresh from GitLab                                                            │
 ╭ 🌐  Explore ──────────╮│                                                                                              │
 │    › Projects        ││                                                                                              │
 │    › Groups          ││                                                                                              │

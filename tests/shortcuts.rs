@@ -53,6 +53,44 @@ async fn test_g_prefix_shortcuts() {
     app.handle_key(key_event(KeyCode::Char('g'))).await;
     app.handle_key(key_event(KeyCode::Char('t'))).await;
     assert_eq!(app.active_selection, MenuSelection::Todos);
+
+    // In project context: test 'g b' (Branches) and 'g r' (Repository)
+    app.selected_project = Some(lazygitlab::models::Project {
+        id: 1,
+        name: "test-proj".into(),
+        path_with_namespace: Some("grp/test-proj".into()),
+        web_url: None,
+        default_branch: Some("main".into()),
+        namespace: None,
+    });
+
+    app.handle_key(key_event(KeyCode::Char('g'))).await;
+    app.handle_key(key_event(KeyCode::Char('b'))).await;
+    assert_eq!(app.active_selection, MenuSelection::Branches);
+    assert_eq!(app.active_context, Context::Project);
+
+    app.handle_key(key_event(KeyCode::Char('g'))).await;
+    app.handle_key(key_event(KeyCode::Char('r'))).await;
+    assert_eq!(app.active_selection, MenuSelection::Repository);
+    assert_eq!(app.active_context, Context::Project);
+}
+
+#[tokio::test]
+async fn test_available_actions_catalog() {
+    let (_server, app) = setup_app().await;
+
+    let actions = app.get_available_actions();
+    assert!(actions.iter().any(|a| a.shortcut == "p" && a.category == "Global"));
+    assert!(actions.iter().any(|a| a.shortcut == "q" && a.category == "Global"));
+    assert!(actions.iter().any(|a| a.shortcut == "?" && a.category == "Global"));
+    assert!(actions.iter().any(|a| a.shortcut == "r" && a.category == "Global"));
+    assert!(actions.iter().any(|a| a.shortcut == "f" && a.category == "Global"));
+    assert!(actions.iter().any(|a| a.shortcut == "g b" && a.category == "Jump"));
+    assert!(actions.iter().any(|a| a.shortcut == "g r" && a.category == "Jump"));
+    assert!(actions.iter().any(|a| a.shortcut == "g t" && a.category == "Jump"));
+    assert!(actions.iter().any(|a| a.shortcut == "g m" && a.category == "Jump"));
+    assert!(actions.iter().any(|a| a.shortcut == "g i" && a.category == "Jump"));
+    assert!(actions.iter().any(|a| a.shortcut == "g p" && a.category == "Jump"));
 }
 
 #[tokio::test]

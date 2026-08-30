@@ -36,6 +36,7 @@ Click on the preview to open the high-resolution lightbox or download the vector
 | <kbd>q</kbd> | Quit application |
 | <kbd>?</kbd> | Show/hide help |
 | <kbd>r</kbd> | Refresh current view |
+| <kbd>p</kbd> | Switch project |
 | <kbd>o</kbd> | Open in browser |
 | <kbd>y</kbd> | Copy URL/Content to clipboard |
 | <kbd>f</kbd> | Global Search |
@@ -53,12 +54,37 @@ Click on the preview to open the high-resolution lightbox or download the vector
 | <kbd>E</kbd> | Rebase Merge Request |
 | <kbd>S</kbd> | Toggle Squash on merge |
 | <kbd>c</kbd> | Toggle Open/Closed state |
+| <kbd>n</kbd> | Create new merge request |
 
 ## 📝 Diff Review & Comments
 
 | Shortcut | Description |
 | :--- | :--- |
+| <kbd>h</kbd>  /  <kbd>l</kbd>  /  <kbd>Enter</kbd> | Switch focus between files and diff lines |
+| <kbd>j</kbd>  /  <kbd>k</kbd> | Navigate files or diff lines |
+| <kbd>Shift</kbd>  +  <kbd>j/k</kbd> | Select multi-line range |
+| <kbd>[</kbd>  /  <kbd>]</kbd> | Jump to prev / next file or hunk |
+| <kbd>n</kbd>  /  <kbd>N</kbd>  /  <kbd>p</kbd> | Jump to next / prev discussion thread |
+| <kbd>c</kbd> | Add inline comment on selected line/range |
+| <kbd>C</kbd> | Add file-level comment |
+| <kbd>r</kbd> | Reply to selected inline discussion |
+| <kbd>Space</kbd> | Collapse / expand discussion thread |
+| <kbd>s</kbd> | Resolve / unresolve discussion thread |
+| <kbd>A</kbd> | Approve Merge Request |
+| <kbd>R</kbd> | Unapprove Merge Request |
+| <kbd>M</kbd> | Merge Merge Request |
+| <kbd>D</kbd> | Toggle Draft state |
+| <kbd>E</kbd> | Rebase Merge Request |
+| <kbd>S</kbd> | Toggle Squash on merge |
+| <kbd>y</kbd> | Copy selected line(s) to clipboard |
 | <kbd>e</kbd>  /  <kbd>E</kbd> | Expand collapsed diff file |
+
+## 📋 Issues & Triage
+
+| Shortcut | Description |
+| :--- | :--- |
+| <kbd>n</kbd> | Create new issue |
+| <kbd>c</kbd> | Toggle Open/Closed state |
 
 ## 🚀 CI/CD Pipelines
 

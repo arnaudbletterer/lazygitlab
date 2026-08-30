@@ -164,6 +164,17 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     footer_spans.push(Span::styled("q", Style::default().fg(app.theme.accent).bold()));
     footer_spans.push(Span::raw(" quit"));
 
+    if app.pending_g_prefix {
+        footer_spans.push(Span::raw("   "));
+        footer_spans.push(Span::styled(
+            " g- [t:todos, m:mrs, i:issues, p:pipelines, r:repo, b:branches] ",
+            Style::default()
+                .bg(app.theme.accent)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     if let Some(err) = &app.last_error {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
@@ -593,16 +604,28 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
     app.file_viewport_height = area.height.saturating_sub(2);
+    let ref_str = app.repository_ref.as_deref().unwrap_or("default");
+    let file_path = app
+        .selected_file_content
+        .as_ref()
+        .map(|f| f.file_path.as_str())
+        .unwrap_or("");
     let block = Block::default()
-        .title(format!(
-            " File Content: {} ",
-            app.selected_file_content
-                .as_ref()
-                .map(|f| f.file_path.as_str())
-                .unwrap_or("")
+        .title(Span::styled(
+            format!(" 📄 File: {} (🌿 {}) ", file_path, ref_str),
+            Style::default().fg(app.theme.title_fg).bold(),
         ))
+        .title_bottom(Line::from(vec![
+            Span::styled(" b ", Style::default().fg(app.theme.author).bold()),
+            Span::styled("switch branch  ", Style::default().fg(app.theme.dim)),
+            Span::styled("y ", Style::default().fg(app.theme.author).bold()),
+            Span::styled("copy content  ", Style::default().fg(app.theme.dim)),
+            Span::styled("Esc/h ", Style::default().fg(app.theme.author).bold()),
+            Span::styled("back to tree ", Style::default().fg(app.theme.dim)),
+        ]))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(app.theme.border));
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.active_border));
 
     if let Some(file) = &app.selected_file_content {
         let cached_hit = app

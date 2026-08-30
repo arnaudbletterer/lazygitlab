@@ -8,8 +8,8 @@ expression: frame
 │ 🏠  Personal Dashboard││ Pending  │  Snoozed  │  Done                                                                 │
 ╰──────────────────────╯│No todos match this view or filter.                                                           │
 ╭ 🏠  Dashboard ────────╮│                                                                                              │
-│▎   › To-Dos          ││                                                                                              │
-│    › Merge Requests  ││                                                                                              │
+│▎   › To-Dos          ││  • Press [ / ] to cycle Pending, Snoozed, Done                                               │
+│    › Merge Requests  ││  • Press r to refresh from GitLab                                                            │
 │    › Issues          ││                                                                                              │
 ╰──────────────────────╯│                                                                                              │
 ╭ 🌐  Explore ──────────╮│                                                                                              │

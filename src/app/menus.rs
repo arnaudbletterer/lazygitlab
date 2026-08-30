@@ -649,6 +649,21 @@ impl App {
                             let _ = self.fetch_board_lists(board.id).await;
                         }
                     }
+                    MenuSelection::Branches => {
+                        if let Some(branch) = self
+                            .branches_state
+                            .selected()
+                            .and_then(|i| self.filtered_branches.get(i))
+                            .cloned()
+                        {
+                            let name = branch.name.clone();
+                            self.active_selection = MenuSelection::Repository;
+                            self.project_menu_state.select(Some(3));
+                            self.view_mode = ViewMode::List;
+                            self.active_panel = Panel::Main;
+                            let _ = self.select_repository_ref(name).await;
+                        }
+                    }
                     MenuSelection::MergeRequests if self.selected_mr.is_some() => {
                         self.view_mode = ViewMode::Diff;
                         if self.mr_diff_state.selected().is_none() {

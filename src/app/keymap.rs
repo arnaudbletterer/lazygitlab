@@ -26,6 +26,12 @@ impl App {
                 category: "Global".into(),
             },
             HelpItem {
+                shortcut: "p".into(),
+                description: "Switch project".into(),
+                action: HelpAction::SwitchProject,
+                category: "Global".into(),
+            },
+            HelpItem {
                 shortcut: "o".into(),
                 description: "Open in browser".into(),
                 action: HelpAction::OpenBrowser,
@@ -37,8 +43,116 @@ impl App {
                 action: HelpAction::CopyUrl,
                 category: "Global".into(),
             },
+            HelpItem {
+                shortcut: "f".into(),
+                description: "Global Search".into(),
+                action: HelpAction::Search,
+                category: "Global".into(),
+            },
         ];
         if self.view_mode == ViewMode::Diff {
+            items.push(HelpItem {
+                shortcut: "h / l / Enter".into(),
+                description: "Switch focus between files and diff lines".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "j / k".into(),
+                description: "Navigate files or diff lines".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "Shift + j/k".into(),
+                description: "Select multi-line range".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "[ / ]".into(),
+                description: "Jump to prev / next file or hunk".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "n / N / p".into(),
+                description: "Jump to next / prev discussion thread".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "c".into(),
+                description: "Add inline comment on selected line/range".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "C".into(),
+                description: "Add file-level comment".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "r".into(),
+                description: "Reply to selected inline discussion".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "Space".into(),
+                description: "Collapse / expand discussion thread".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "s".into(),
+                description: "Resolve / unresolve discussion thread".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "A".into(),
+                description: "Approve Merge Request".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "R".into(),
+                description: "Unapprove Merge Request".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "M".into(),
+                description: "Merge Merge Request".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "D".into(),
+                description: "Toggle Draft state".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "E".into(),
+                description: "Rebase Merge Request".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "S".into(),
+                description: "Toggle Squash on merge".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "y".into(),
+                description: "Copy selected line(s) to clipboard".into(),
+                action: HelpAction::None,
+                category: "Diff".into(),
+            });
             items.push(HelpItem {
                 shortcut: "e / E".into(),
                 description: "Expand collapsed diff file".into(),
@@ -121,6 +235,18 @@ impl App {
             && self.detail_section == DetailSection::Discussions
             && !self.discussions.is_empty()
         {
+            items.push(HelpItem {
+                shortcut: "Space".into(),
+                description: "Collapse / expand discussion thread".into(),
+                action: HelpAction::None,
+                category: "Discussion".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "r / Enter".into(),
+                description: "Reply to selected discussion".into(),
+                action: HelpAction::None,
+                category: "Discussion".into(),
+            });
             items.push(HelpItem {
                 shortcut: "s / S".into(),
                 description: "Resolve / unresolve discussion".into(),
@@ -242,18 +368,60 @@ impl App {
         });
         if self.active_selection == MenuSelection::Issues {
             items.push(HelpItem {
+                shortcut: "n".into(),
+                description: "Create new issue".into(),
+                action: HelpAction::CreateIssue,
+                category: "Issue".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "c".into(),
+                description: "Toggle Open/Closed state".into(),
+                action: HelpAction::ToggleIssueState,
+                category: "Issue".into(),
+            });
+            items.push(HelpItem {
                 shortcut: "V".into(),
                 description: "Group issues by milestone / project".into(),
                 action: HelpAction::None,
                 category: "Filter".into(),
             });
         }
-        items.push(HelpItem {
-            shortcut: "f".into(),
-            description: "Global Search".into(),
-            action: HelpAction::Search,
-            category: "Global".into(),
-        });
+        if self.active_selection == MenuSelection::MergeRequests {
+            items.push(HelpItem {
+                shortcut: "n".into(),
+                description: "Create new merge request".into(),
+                action: HelpAction::CreateMR,
+                category: "Merge Request".into(),
+            });
+        }
+        if self.active_selection == MenuSelection::Todos {
+            items.push(HelpItem {
+                shortcut: "d".into(),
+                description: "Mark To-Do as done".into(),
+                action: HelpAction::MarkDone,
+                category: "To-Do".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "s".into(),
+                description: "Snooze To-Do".into(),
+                action: HelpAction::Snooze,
+                category: "To-Do".into(),
+            });
+        }
+        if self.active_selection == MenuSelection::Branches {
+            items.push(HelpItem {
+                shortcut: "n".into(),
+                description: "Create new branch".into(),
+                action: HelpAction::None,
+                category: "Branch".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "D".into(),
+                description: "Delete selected branch".into(),
+                action: HelpAction::None,
+                category: "Branch".into(),
+            });
+        }
         items.push(HelpItem {
             shortcut: "1/2/3".into(),
             description: "Focus Sidebar/List/Detail".into(),
@@ -292,7 +460,7 @@ impl App {
         });
         items.push(HelpItem {
             shortcut: "Tab".into(),
-            description: "Next Panel".into(),
+            description: "Next Panel / Tab".into(),
             action: HelpAction::ToggleFocus,
             category: "Navigation".into(),
         });
@@ -318,6 +486,18 @@ impl App {
             shortcut: "g p".into(),
             description: "Go to Pipelines".into(),
             action: HelpAction::GotoPipelines,
+            category: "Jump".into(),
+        });
+        items.push(HelpItem {
+            shortcut: "g r".into(),
+            description: "Go to Repository".into(),
+            action: HelpAction::GotoRepository,
+            category: "Jump".into(),
+        });
+        items.push(HelpItem {
+            shortcut: "g b".into(),
+            description: "Go to Branches".into(),
+            action: HelpAction::GotoBranches,
             category: "Jump".into(),
         });
         if self.view_mode == ViewMode::List {
@@ -436,6 +616,18 @@ impl App {
                     self.active_panel = Panel::Main;
                     let _ = self.refresh().await;
                 }
+            }
+            HelpAction::GotoBranches => {
+                if self.selected_project.is_some() {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Branches;
+                    self.project_menu_state.select(Some(4));
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
+            }
+            HelpAction::SwitchProject => {
+                let _ = self.switch_project().await;
             }
             HelpAction::ToggleInvolvedOnly => {
                 self.show_involved_only = !self.show_involved_only;
@@ -571,6 +763,15 @@ impl App {
                         self.active_context = Context::Project;
                         self.active_selection = MenuSelection::Repository;
                         self.project_menu_state.select(Some(3));
+                        self.active_panel = Panel::Main;
+                        let _ = self.refresh().await;
+                    }
+                }
+                KeyCode::Char('b') => {
+                    if self.selected_project.is_some() {
+                        self.active_context = Context::Project;
+                        self.active_selection = MenuSelection::Branches;
+                        self.project_menu_state.select(Some(4));
                         self.active_panel = Panel::Main;
                         let _ = self.refresh().await;
                     }
@@ -933,7 +1134,7 @@ impl App {
                         let _ = self.update_preview().await;
                         return;
                     }
-                    KeyCode::Char('e') | KeyCode::Char('E') => {
+                    KeyCode::Char('e') => {
                         if let Some((mr_diff, mr)) = self
                             .mr_diff_state
                             .selected()
@@ -983,6 +1184,7 @@ impl App {
                                 String::new()
                             };
                             self.copy_to_clipboard(text);
+                            self.status_message = Some("Copied diff content to clipboard".into());
                             self.diff_selection_start = None;
                         }
                         return;
@@ -1102,6 +1304,90 @@ impl App {
                             }
                         }
                     }
+                    KeyCode::Char(']') => {
+                        if let Some(file_idx) = self.mr_diff_state.selected() {
+                            if let Some(current_line) = self.diff_line_state.selected() {
+                                let mut found_hunk = None;
+                                if let Some(mr_diff) = self.mr_diffs.get(file_idx) {
+                                    for i in (current_line + 1)..mr_diff.display_lines.len() {
+                                        if let DiffDisplayLine::Code(line, ..) = &mr_diff.display_lines[i]
+                                            && line.starts_with("@@")
+                                        {
+                                            let target = (i + 1..mr_diff.display_lines.len())
+                                                .find(|&idx| is_selectable_diff_line(&mr_diff.display_lines[idx]))
+                                                .unwrap_or(i);
+                                            found_hunk = Some(target);
+                                            break;
+                                        }
+                                    }
+                                }
+                                if let Some(target) = found_hunk {
+                                    self.diff_line_state.select(Some(target));
+                                    self.diff_selection_start = None;
+                                } else if file_idx + 1 < self.mr_diffs.len() {
+                                    self.mr_diff_state.select(Some(file_idx + 1));
+                                    let first_sel = self.mr_diffs[file_idx + 1]
+                                        .display_lines
+                                        .iter()
+                                        .position(is_selectable_diff_line)
+                                        .unwrap_or(0);
+                                    self.diff_line_state.select(Some(first_sel));
+                                    self.diff_selection_start = None;
+                                }
+                            } else {
+                                let next = (file_idx + 1) % self.mr_diffs.len().max(1);
+                                self.mr_diff_state.select(Some(next));
+                                self.diff_line_state.select(None);
+                                self.diff_selection_start = None;
+                            }
+                            let _ = self.update_preview().await;
+                            return;
+                        }
+                    }
+                    KeyCode::Char('[') => {
+                        if let Some(file_idx) = self.mr_diff_state.selected() {
+                            if let Some(current_line) = self.diff_line_state.selected() {
+                                let mut found_hunk = None;
+                                if let Some(mr_diff) = self.mr_diffs.get(file_idx) {
+                                    for i in (0..current_line).rev() {
+                                        if let DiffDisplayLine::Code(line, ..) = &mr_diff.display_lines[i]
+                                            && line.starts_with("@@")
+                                        {
+                                            let target = (i + 1..mr_diff.display_lines.len())
+                                                .find(|&idx| is_selectable_diff_line(&mr_diff.display_lines[idx]))
+                                                .unwrap_or(i);
+                                            found_hunk = Some(target);
+                                            break;
+                                        }
+                                    }
+                                }
+                                if let Some(target) = found_hunk {
+                                    self.diff_line_state.select(Some(target));
+                                    self.diff_selection_start = None;
+                                } else if file_idx > 0 {
+                                    self.mr_diff_state.select(Some(file_idx - 1));
+                                    let last_sel = self.mr_diffs[file_idx - 1]
+                                        .display_lines
+                                        .iter()
+                                        .rposition(is_selectable_diff_line)
+                                        .unwrap_or(0);
+                                    self.diff_line_state.select(Some(last_sel));
+                                    self.diff_selection_start = None;
+                                }
+                            } else {
+                                let prev = if file_idx == 0 {
+                                    self.mr_diffs.len().saturating_sub(1)
+                                } else {
+                                    file_idx - 1
+                                };
+                                self.mr_diff_state.select(Some(prev));
+                                self.diff_line_state.select(None);
+                                self.diff_selection_start = None;
+                            }
+                            let _ = self.update_preview().await;
+                            return;
+                        }
+                    }
                     KeyCode::Char('n') => {
                         if let Some(file_idx) = self.mr_diff_state.selected() {
                             let current = self.diff_line_state.selected().unwrap_or(0);
@@ -1123,7 +1409,7 @@ impl App {
                             }
                         }
                     }
-                    KeyCode::Char('p') => {
+                    KeyCode::Char('N') | KeyCode::Char('p') => {
                         if let Some(file_idx) = self.mr_diff_state.selected() {
                             let current = self.diff_line_state.selected().unwrap_or(0);
                             for fi in (0..=file_idx).rev() {
@@ -1148,6 +1434,42 @@ impl App {
                                 }
                             }
                         }
+                    }
+                    KeyCode::Char('A') => {
+                        if self.selected_mr.is_some() {
+                            let _ = self.approve_mr().await;
+                        }
+                        return;
+                    }
+                    KeyCode::Char('R') => {
+                        if self.selected_mr.is_some() {
+                            let _ = self.unapprove_mr().await;
+                        }
+                        return;
+                    }
+                    KeyCode::Char('M') => {
+                        if self.selected_mr.is_some() {
+                            self.show_confirm_merge_popup = true;
+                        }
+                        return;
+                    }
+                    KeyCode::Char('D') => {
+                        if self.selected_mr.is_some() {
+                            let _ = self.toggle_mr_draft().await;
+                        }
+                        return;
+                    }
+                    KeyCode::Char('E') => {
+                        if self.selected_mr.is_some() {
+                            self.show_confirm_rebase_popup = true;
+                        }
+                        return;
+                    }
+                    KeyCode::Char('S') => {
+                        if self.selected_mr.is_some() {
+                            let _ = self.toggle_mr_squash().await;
+                        }
+                        return;
                     }
                     _ => {}
                 }
@@ -1586,7 +1908,27 @@ impl App {
             }
             KeyCode::Char('p') => self.switch_project().await,
             KeyCode::Char('r') => {
-                let _ = self.refresh().await;
+                if self.active_panel == Panel::MainDetail
+                    && self.detail_section == DetailSection::Discussions
+                    && self.discussion_state.selected().is_some()
+                {
+                    self.input_mode = true;
+                    self.input_target = InputTarget::Reply;
+                    self.textarea = ratatui_textarea::TextArea::default();
+                } else {
+                    let _ = self.refresh().await;
+                }
+            }
+            KeyCode::Char(' ') => {
+                if self.active_panel == Panel::MainDetail
+                    && self.detail_section == DetailSection::Discussions
+                    && let Some(disc) = self
+                        .discussion_state
+                        .selected()
+                        .and_then(|idx| self.discussions.get_mut(idx))
+                {
+                    disc.collapsed = !disc.collapsed;
+                }
             }
             KeyCode::Char('/') => {
                 if self.active_panel == Panel::Main {

@@ -381,11 +381,24 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                f.render_widget(
-                    Paragraph::new("No todos match this view or filter.")
-                        .style(Style::default().fg(app.theme.dim)),
-                    list_chunks[1],
-                );
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No todos match this view or filter.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to cycle Pending, Snoozed, Done", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -482,11 +495,34 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                f.render_widget(
-                    Paragraph::new("No merge requests match this view or filter.")
-                        .style(Style::default().fg(app.theme.dim)),
-                    list_chunks[1],
-                );
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No merge requests match this view or filter.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to create a new merge request", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to cycle status filters", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("I", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to toggle involved-only filter", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -596,11 +632,34 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                f.render_widget(
-                    Paragraph::new("No issues match this view or filter.")
-                        .style(Style::default().fg(app.theme.dim)),
-                    list_chunks[1],
-                );
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No issues match this view or filter.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to create a new issue", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to cycle status filters", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("I", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to toggle involved-only filter", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -660,11 +719,29 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                f.render_widget(
-                    Paragraph::new("No pipelines match this view or filter.")
-                        .style(Style::default().fg(app.theme.dim)),
-                    list_chunks[1],
-                );
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No pipelines match this view or filter.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to launch a new pipeline", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to cycle status filters (All, Running, Failed, Passed)", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -697,17 +774,35 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     ]))
                 })
                 .collect();
-            f.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(if is_main_focused {
-                        highlight_style
-                    } else {
-                        no_highlight
-                    })
-                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
-                list_chunks[1],
-                &mut app.projects_state,
-            );
+            if items.is_empty() {
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No Projects found.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("/", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to filter or ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.projects_state,
+                );
+            }
         }
         MenuSelection::Groups => {
             let items: Vec<ListItem> = app
@@ -727,17 +822,35 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     ]))
                 })
                 .collect();
-            f.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(if is_main_focused {
-                        highlight_style
-                    } else {
-                        no_highlight
-                    })
-                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
-                list_chunks[1],
-                &mut app.groups_state,
-            );
+            if items.is_empty() {
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No Groups found.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("/", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to filter or ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.groups_state,
+                );
+            }
         }
         MenuSelection::Repository => {
             let mut tree_items: Vec<tui_tree_widget::TreeItem<'static, String>> = Vec::new();
@@ -749,11 +862,21 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 };
                 tree_items.push(tui_tree_widget::TreeItem::new_leaf(item.path.clone(), text));
             }
+            let ref_name = app.repository_ref.as_deref().unwrap_or("default");
             let tree = tui_tree_widget::Tree::new(&tree_items)
                 .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
                 .block(
                     Block::default()
-                        .title(" Tree ")
+                        .title(Span::styled(
+                            format!(" 📂 Files (🌿 {}) ", ref_name),
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        ))
+                        .title_bottom(Line::from(vec![
+                            Span::styled(" b ", Style::default().fg(app.theme.author).bold()),
+                            Span::styled("switch branch  ", Style::default().fg(app.theme.dim)),
+                            Span::styled("Enter ", Style::default().fg(app.theme.author).bold()),
+                            Span::styled("open file/folder ", Style::default().fg(app.theme.dim)),
+                        ]))
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
                         .border_style(if is_main_focused {
@@ -791,17 +914,38 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     ListItem::new(Line::from(spans))
                 })
                 .collect();
-            f.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(if is_main_focused {
-                        highlight_style
-                    } else {
-                        no_highlight
-                    })
-                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
-                list_chunks[1],
-                &mut app.branches_state,
-            );
+            if items.is_empty() {
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No Branches found.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to create a new branch", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.branches_state,
+                );
+            }
         }
         MenuSelection::Commits => {
             let items: Vec<ListItem> = app
@@ -825,17 +969,33 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     ]))
                 })
                 .collect();
-            f.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(if is_main_focused {
-                        highlight_style
-                    } else {
-                        no_highlight
-                    })
-                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
-                list_chunks[1],
-                &mut app.commits_state,
-            );
+            if items.is_empty() {
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No Commits found on this branch.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.commits_state,
+                );
+            }
         }
         MenuSelection::Boards => {
             let items: Vec<ListItem> = app
@@ -851,17 +1011,33 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     ]))
                 })
                 .collect();
-            f.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(if is_main_focused {
-                        highlight_style
-                    } else {
-                        no_highlight
-                    })
-                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
-                list_chunks[1],
-                &mut app.project_boards_state,
-            );
+            if items.is_empty() {
+                let msg = vec![
+                    Line::from(Span::styled(
+                        "No Issue Boards found for this project.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+            } else {
+                f.render_stateful_widget(
+                    List::new(items)
+                        .highlight_style(if is_main_focused {
+                            highlight_style
+                        } else {
+                            no_highlight
+                        })
+                        .highlight_symbol(if is_main_focused { "▎ " } else { "  " }),
+                    list_chunks[1],
+                    &mut app.project_boards_state,
+                );
+            }
         }
         MenuSelection::Epics => {
             if app.selected_epic.is_some() {
@@ -886,11 +1062,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     })
                     .collect();
                 if items.is_empty() {
-                    f.render_widget(
-                        Paragraph::new("No issues linked to this epic.")
-                            .style(Style::default().fg(app.theme.dim)),
-                        list_chunks[1],
-                    );
+                    let msg = vec![
+                        Line::from(Span::styled(
+                            "No issues linked to this epic.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("Esc", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(" to return to Epics list", Style::default().fg(app.theme.dim)),
+                        ]),
+                    ];
+                    f.render_widget(Paragraph::new(msg), list_chunks[1]);
                 } else {
                     f.render_stateful_widget(
                         List::new(items)
@@ -925,17 +1109,33 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         ]))
                     })
                     .collect();
-                f.render_stateful_widget(
-                    List::new(items)
-                        .highlight_style(if is_main_focused {
-                            highlight_style
-                        } else {
-                            no_highlight
-                        })
-                        .highlight_symbol(if is_main_focused { "> " } else { "  " }),
-                    list_chunks[1],
-                    &mut app.epics_state,
-                );
+                if items.is_empty() {
+                    let msg = vec![
+                        Line::from(Span::styled(
+                            "No Epics found for this group.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        ]),
+                    ];
+                    f.render_widget(Paragraph::new(msg), list_chunks[1]);
+                } else {
+                    f.render_stateful_widget(
+                        List::new(items)
+                            .highlight_style(if is_main_focused {
+                                highlight_style
+                            } else {
+                                no_highlight
+                            })
+                            .highlight_symbol(if is_main_focused { "> " } else { "  " }),
+                        list_chunks[1],
+                        &mut app.epics_state,
+                    );
+                }
             }
         }
     }
@@ -1056,10 +1256,19 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     if comments.is_empty() {
-        f.render_widget(
-            Paragraph::new(" No discussions found.").fg(app.theme.dim),
-            chunks[0],
-        );
+        let msg = vec![
+            Line::from(Span::styled(
+                "No discussions found on this item.",
+                Style::default().fg(app.theme.title_fg).bold(),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                Span::styled("c", Style::default().fg(app.theme.accent).bold()),
+                Span::styled(" to start a new discussion / comment", Style::default().fg(app.theme.dim)),
+            ]),
+        ];
+        f.render_widget(Paragraph::new(msg), chunks[0]);
     } else {
         f.render_stateful_widget(List::new(comments), chunks[0], &mut app.discussion_state);
     }

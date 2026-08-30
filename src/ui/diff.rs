@@ -408,6 +408,39 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
             workspace_chunks[1],
         );
     }
+
+    // 3. Render Shortcuts Bar (Bottom)
+    let shortcuts_spans = vec![
+        Span::styled("[h/l]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Focus  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[j/k]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Move  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[[/]]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" File/Hunk  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[c]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Comment  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[C]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" File Note  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[r]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Reply  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[Space]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Fold  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[s]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Resolve  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[n/N]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Disc  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[A]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Approve  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[M]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Merge  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[D]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Draft  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[y]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Copy  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[Esc]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(" Back", Style::default().fg(app.theme.dim)),
+    ];
+    f.render_widget(Paragraph::new(Line::from(shortcuts_spans)), chunks[2]);
 }
 
 #[cfg(test)]
