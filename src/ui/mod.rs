@@ -26,90 +26,156 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(footer_height)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(footer_height),
+        ])
         .split(f.area());
 
+    let mut header_spans = vec![
+        Span::styled(
+            " 󰊤 GitLab ",
+            Style::default()
+                .bg(app.theme.accent)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if let Some(proj) = &app.selected_project {
+        header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
+        header_spans.push(Span::styled(
+            proj.path_with_namespace.as_deref().unwrap_or(&proj.name),
+            Style::default()
+                .fg(app.theme.project)
+                .add_modifier(Modifier::BOLD),
+        ));
+        if let Some(ref_name) = &app.repository_ref {
+            header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
+            header_spans.push(Span::styled("󰘬 ", Style::default().fg(app.theme.accent)));
+            header_spans.push(Span::styled(ref_name, Style::default().fg(app.theme.accent)));
+        }
+    } else {
+        header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
+        header_spans.push(Span::styled(
+            "Personal Dashboard",
+            Style::default()
+                .fg(app.theme.title_fg)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    if app.is_loading {
+        header_spans.push(Span::styled(
+            "  ● LOADING",
+            Style::default()
+                .fg(app.theme.pending)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else {
+        header_spans.push(Span::styled(
+            "  ● LIVE",
+            Style::default()
+                .fg(app.theme.status_success)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    f.render_widget(Paragraph::new(Line::from(header_spans)), main_chunks[0]);
+
     match app.view_mode {
-        ViewMode::List => render_list_view(f, app, main_chunks[0]),
-        ViewMode::Detail => render_detail_view(f, app, main_chunks[0]),
-        ViewMode::JobLog => render_job_log_view(f, app, main_chunks[0]),
-        ViewMode::Diff => render_diff_view(f, app, main_chunks[0]),
-        ViewMode::Tree => render_tree_view(f, app, main_chunks[0]),
-        ViewMode::Board => render_boards_view(f, app, main_chunks[0]),
-        ViewMode::Epics => render_epics_view(f, app, main_chunks[0]),
+        ViewMode::List => render_list_view(f, app, main_chunks[1]),
+        ViewMode::Detail => render_detail_view(f, app, main_chunks[1]),
+        ViewMode::JobLog => render_job_log_view(f, app, main_chunks[1]),
+        ViewMode::Diff => render_diff_view(f, app, main_chunks[1]),
+        ViewMode::Tree => render_tree_view(f, app, main_chunks[1]),
+        ViewMode::Board => render_boards_view(f, app, main_chunks[1]),
+        ViewMode::Epics => render_epics_view(f, app, main_chunks[1]),
     }
 
     let (filter_rect, footer_rect) = if has_filter {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
-            .split(main_chunks[1]);
+            .split(main_chunks[2]);
         (Some(chunks[0]), chunks[1])
     } else {
-        (None, main_chunks[1])
+        (None, main_chunks[2])
     };
 
     if let Some(rect) = filter_rect {
-        let mut filter_spans = if job_log_searching {
-            vec![
-                Span::styled(
-                    " Search log: ",
-                    Style::default()
-                        .fg(app.theme.shortcut_key)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(&app.job_log_search),
-            ]
+        let mut filter_spans = vec![
+            Span::styled(" [ FILTER ] ", Style::default().bg(app.theme.highlight_bg).fg(Color::White).add_modifier(Modifier::BOLD)),
+        ];
+        if job_log_searching {
+            filter_spans.push(Span::styled(" Search log: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
+            filter_spans.push(Span::raw(&app.job_log_search));
         } else {
-            vec![
-                Span::styled(
-                    " Filter: ",
-                    Style::default()
-                        .fg(app.theme.shortcut_key)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(&app.filter_input),
-            ]
-        };
+            filter_spans.push(Span::styled(" Filter: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
+            filter_spans.push(Span::raw(&app.filter_input));
+        }
         if job_log_searching || app.show_filter_input {
             filter_spans.push(Span::styled("█", Style::default().fg(app.theme.pending)));
         } else {
-            filter_spans.push(Span::styled(
-                " (Esc to clear)",
-                Style::default().fg(app.theme.dim),
-            ));
+            filter_spans.push(Span::styled(" (Esc to clear)", Style::default().fg(app.theme.dim)));
         }
         f.render_widget(Paragraph::new(Line::from(filter_spans)), rect);
     }
 
-    // Footer with left shortcuts and right version info
     let footer_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(footer_rect);
 
+    let mode_str = match app.view_mode {
+        ViewMode::List => " LIST ",
+        ViewMode::Detail => " DETAIL ",
+        ViewMode::JobLog => " JOB LOG ",
+        ViewMode::Diff => " DIFF ",
+        ViewMode::Tree => " TREE ",
+        ViewMode::Board => " BOARD ",
+        ViewMode::Epics => " EPICS ",
+    };
+
     let mut footer_spans = vec![
-        Span::styled("?", Style::default().fg(app.theme.shortcut_key)),
-        Span::raw(" help  "),
-        Span::styled("q", Style::default().fg(app.theme.shortcut_key)),
-        Span::raw(" quit"),
+        Span::styled(mode_str, Style::default().bg(app.theme.shortcut_key).fg(Color::Black).add_modifier(Modifier::BOLD)),
+        Span::raw(" "),
     ];
+
+    let count = match app.view_mode {
+        ViewMode::List => match app.active_selection {
+            crate::models::MenuSelection::MergeRequests => app.filtered_mrs.len(),
+            crate::models::MenuSelection::Issues => app.filtered_issues.len(),
+            crate::models::MenuSelection::Pipelines => app.filtered_pipelines.len(),
+            crate::models::MenuSelection::Todos => app.filtered_todos.len(),
+            crate::models::MenuSelection::Projects => app.filtered_projects.len(),
+            crate::models::MenuSelection::Branches => app.filtered_branches.len(),
+            _ => 0,
+        },
+        _ => 0,
+    };
+    if count > 0 {
+        footer_spans.push(Span::styled(format!(" [{}] ", count), Style::default().bg(app.theme.chip_bg).fg(app.theme.chip_fg).bold()));
+        footer_spans.push(Span::raw(" "));
+    }
+
+    footer_spans.push(Span::styled("?", Style::default().fg(app.theme.accent).bold()));
+    footer_spans.push(Span::raw(" help  "));
+    footer_spans.push(Span::styled("q", Style::default().fg(app.theme.accent).bold()));
+    footer_spans.push(Span::raw(" quit"));
 
     if let Some(err) = &app.last_error {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" Error: {} ", err),
-            Style::default()
-                .bg(app.theme.failed)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
+            Style::default().bg(app.theme.failed).fg(Color::White).add_modifier(Modifier::BOLD),
         ));
     }
     if app.is_loading || app.status_message.is_some() {
         let msg = app.status_message.as_deref().unwrap_or("Loading");
         let lower = msg.to_lowercase();
-        let style = if lower.contains("failed") || lower.contains("timed out") {
-            Style::default().fg(app.theme.failed)
+        let bg = if lower.contains("failed") || lower.contains("timed out") {
+            app.theme.failed
         } else if lower.starts_with("copied")
             || lower.contains("cancelled")
             || lower.contains("canceled")
@@ -119,26 +185,20 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             || lower.contains("approved")
             || lower.contains("resolved")
         {
-            Style::default().fg(app.theme.success)
+            app.theme.success
         } else {
-            Style::default().fg(app.theme.pending)
+            app.theme.pending
         };
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" {} ", msg),
-            style.add_modifier(Modifier::BOLD),
+            Style::default().bg(bg).fg(Color::Black).add_modifier(Modifier::BOLD),
         ));
     }
 
     f.render_widget(Paragraph::new(Line::from(footer_spans)), footer_chunks[0]);
 
-    // Bottom right version info
-    let version_info = format!(
-        "v{} ({}{})",
-        env!("CARGO_PKG_VERSION"),
-        env!("GIT_HASH"),
-        env!("GIT_DIRTY")
-    );
+    let version_info = env!("LAZYGITLAB_VERSION");
     f.render_widget(
         Paragraph::new(version_info)
             .alignment(Alignment::Right)

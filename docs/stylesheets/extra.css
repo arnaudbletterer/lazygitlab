@@ -119,3 +119,55 @@ kbd {
   background-color: rgba(247, 118, 142, 0.12);
   color: #f7768e;
 }
+
+/* Header Version Badge (visible on every page next to lazygitlab title) */
+.header-version-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  vertical-align: middle;
+  font-family: var(--md-code-font);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.header-version-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background-color: rgba(127, 127, 127, 0.15);
+  color: var(--md-default-fg-color);
+  line-height: 1.4;
+  border: 1px solid var(--md-default-fg-color--lighter);
+}
+
+.header-version-badge code {
+  background: none !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: 0.9em;
+}
+
+.header-version-badge.badge-dirty {
+  background-color: rgba(247, 118, 142, 0.2);
+  border-color: #f7768e;
+  color: #f7768e;
+  font-weight: 600;
+}
+
+.header-version-badge.badge-tag {
+  background-color: rgba(255, 110, 64, 0.18);
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-fg-color);
+  font-weight: 600;
+}
+
+@media screen and (max-width: 60em) {
+  .header-version-container {
+    display: none;
+  }
+}

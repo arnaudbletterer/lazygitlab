@@ -29,7 +29,7 @@ SCREENSHOTS_DIR = ASSETS_DIR / "screenshots"
 
 
 def get_git_version():
-    """Extracts git tag, commit sha, and dirty status."""
+    """Extracts git tag, commit sha, and dirty status using standard git describe."""
     is_dirty = False
     commit_sha = "unknown"
     tag_name = None
@@ -62,30 +62,19 @@ def get_git_version():
 
     try:
         describe_str = subprocess.check_output(
-            ["git", "describe", "--tags", "--always"], cwd=ROOT_DIR, text=True
+            ["git", "describe", "--tags", "--always", "--dirty"], cwd=ROOT_DIR, text=True
         ).strip()
     except Exception:
-        describe_str = commit_sha
-
-    if tag_name:
-        display_version = tag_name
-        version_type = "release"
-    else:
-        display_version = describe_str
-        version_type = "development"
-
-    status_tag = "dirty" if is_dirty else "clean"
-    full_version_string = f"{display_version} ({commit_sha}{'-dirty' if is_dirty else ''})"
+        describe_str = f"v0.16.0{'-dirty' if is_dirty else ''}"
 
     return {
         "tag": tag_name,
         "commit": commit_sha,
         "describe": describe_str,
         "is_dirty": is_dirty,
-        "status": status_tag,
-        "version_type": version_type,
-        "display": display_version,
-        "full": full_version_string,
+        "version_type": "release" if tag_name and not is_dirty else "development",
+        "display": describe_str,
+        "full": describe_str,
         "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
     }
 

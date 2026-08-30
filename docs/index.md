@@ -5,13 +5,7 @@
   <em>Manage your merge requests, issues, Kanban boards, CI/CD pipelines, and repositories directly from the comfort of your terminal.</em>
 </p>
 
-<div class="version-banner" align="center">
-  <span class="version-pill version-tag">📦 <strong id="doc-version">v0.16.0</strong></span>
-  <span class="version-pill version-commit" id="doc-commit"></span>
-  <span class="version-pill version-dirty" id="doc-dirty" style="display:none;">⚠️ uncommitted changes</span>
-</div>
 
----
 
 ![lazygitlab Personal Dashboard](assets/screenshots/dashboard.svg#only-dark)
 ![lazygitlab Personal Dashboard (Light)](assets/screenshots/dashboard-light.svg#only-light)
