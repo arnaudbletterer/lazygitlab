@@ -39,7 +39,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
     // Generate tab titles
     let has_changes = app.selected_mr.is_some();
     let mut titles = vec![
-        " 󰈙 Overview ".to_string(),
+        " 📄 Overview ".to_string(),
         format!(" 💬 Discussions ({}) ", app.discussions.len()),
     ];
     if has_changes {
@@ -111,7 +111,7 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(Span::styled(
-                    " 󰈙 Description / Preview ",
+                    " 📄 Description / Preview ",
                     if is_editing_desc || is_desc_focused {
                         Style::default().fg(app.theme.accent).bold()
                     } else {

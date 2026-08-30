@@ -50,7 +50,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(
-            " 󰊤 GitLab ",
+            " 🦊 GitLab ",
             Style::default().fg(app.theme.accent).bold(),
         ))
         .border_style(Style::default().fg(app.theme.dim));
@@ -66,7 +66,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(" 󰘬 {}", project.default_branch.as_deref().unwrap_or("main")),
+                    format!(" 🌿 {}", project.default_branch.as_deref().unwrap_or("main")),
                     Style::default().fg(app.theme.dim),
                 ),
                 Span::styled(" ● Live", Style::default().fg(app.theme.status_success)),
@@ -75,7 +75,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         vec![
             Line::from(vec![
-                Span::styled(" 󰋜 ", Style::default().fg(app.theme.accent)),
+                Span::styled(" 🏠 ", Style::default().fg(app.theme.accent)),
                 Span::styled("Personal Dashboard", Style::default().fg(app.theme.title_fg).bold()),
             ]),
             Line::from(vec![
@@ -109,13 +109,13 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         app.active_panel == Panel::Dashboard,
         &app.theme,
         side_chunks[1],
-        "󰋜 Dashboard",
+        "🏠 Dashboard",
         &mut app.dashboard_menu_state,
         vec![
-            format!("  󰅂 To-Dos{}", todo_badge),
-            format!("  󰅂 Merge Requests{}", mr_badge),
-            format!("  󰅂 Issues{}", issue_badge),
-            "  󰅂 Pipelines".to_string(),
+            format!("  › To-Dos{}", todo_badge),
+            format!("  › Merge Requests{}", mr_badge),
+            format!("  › Issues{}", issue_badge),
+            "  › Pipelines".to_string(),
         ],
     );
 
@@ -125,9 +125,9 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         app.active_panel == Panel::Explore,
         &app.theme,
         side_chunks[2],
-        "󰈈 Explore",
+        "🌐 Explore",
         &mut app.explore_menu_state,
-        vec!["  󰅂 Projects".to_string(), "  󰅂 Groups".to_string()],
+        vec!["  › Projects".to_string(), "  › Groups".to_string()],
     );
 
     if app.selected_project.is_some() {
@@ -138,23 +138,23 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
             .is_some_and(|ns| ns.kind == "group");
         app.set_rect("nav_project", side_chunks[3]);
         let mut project_items = vec![
-            "  󰅂 Merge Requests".to_string(),
-            "  󰅂 Issues".to_string(),
-            "  󰅂 Pipelines".to_string(),
-            "  󰅂 Repository".to_string(),
-            "  󰅂 Branches".to_string(),
-            "  󰅂 Commits".to_string(),
-            "  󰅂 Boards".to_string(),
+            "  › Merge Requests".to_string(),
+            "  › Issues".to_string(),
+            "  › Pipelines".to_string(),
+            "  › Repository".to_string(),
+            "  › Branches".to_string(),
+            "  › Commits".to_string(),
+            "  › Boards".to_string(),
         ];
         if has_epics {
-            project_items.push("  󰅂 Epics".to_string());
+            project_items.push("  › Epics".to_string());
         }
         render_nav_panel(
             f,
             app.active_panel == Panel::Project,
             &app.theme,
             side_chunks[3],
-            "󰘬 Project",
+            "📂 Project",
             &mut app.project_menu_state,
             project_items,
         );
@@ -643,7 +643,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         ));
                     }
                     spans.push(Span::styled(
-                        format!(" 󰘬 {} ", p.ref_name),
+                        format!(" 🌿 {} ", p.ref_name),
                         Style::default().fg(app.theme.author),
                     ));
                     spans.push(Span::styled(

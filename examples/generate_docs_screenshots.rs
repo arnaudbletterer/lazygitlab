@@ -164,7 +164,7 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
         "    @font-face {{ font-family: 'JetBrains Mono'; src: url('data:font/truetype;charset=utf-8;base64,{}') format('truetype'); font-weight: bold; font-style: normal; }}\n",
         b64_bold
     ));
-    svg.push_str("    text { font-family: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, monospace; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }\n");
+    svg.push_str("    text { font-family: 'JetBrains Mono', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Segoe UI Symbol', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, monospace; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }\n");
     svg.push_str("  </style>\n");
     svg.push_str("</defs>\n");
 

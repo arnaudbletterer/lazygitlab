@@ -35,7 +35,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     let mut header_spans = vec![
         Span::styled(
-            " 󰊤 GitLab ",
+            " 🦊 GitLab ",
             Style::default()
                 .bg(app.theme.accent)
                 .fg(Color::Black)
@@ -52,7 +52,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ));
         if let Some(ref_name) = &app.repository_ref {
             header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
-            header_spans.push(Span::styled("󰘬 ", Style::default().fg(app.theme.accent)));
+            header_spans.push(Span::styled("🌿 ", Style::default().fg(app.theme.accent)));
             header_spans.push(Span::styled(ref_name, Style::default().fg(app.theme.accent)));
         }
     } else {

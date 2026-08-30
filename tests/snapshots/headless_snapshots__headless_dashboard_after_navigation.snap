@@ -1,19 +1,21 @@
 ---
 source: tests/headless_snapshots.rs
+assertion_line: 130
 expression: last_frame
 ---
-┌ Status ──────────────┐┌ Merge Requests ──────────────────────────────────────────────────────────────────────────────┐
-│ No Project Selected  ││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
-└──────────────────────┘│No merge requests match this view or filter.                                                  │
-┌ Dashboard ───────────┐│                                                                                              │
-│    Todos             ││                                                                                              │
-│    Merge Requests    ││                                                                                              │
-│    Issues            ││                                                                                              │
-└──────────────────────┘│                                                                                              │
-┌ Explore ─────────────┐│                                                                                              │
-│    Projects          ││                                                                                              │
-│    Groups            ││                                                                                              │
-└──────────────────────┘│                                                                                              │
+ 🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
+╭ 🦊  GitLab ───────────╮╭ Merge Requests ──────────────────────────────────────────────────────────────────────────────╮
+│ 🏠  Personal Dashboard││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
+╰──────────────────────╯│No merge requests match this view or filter.                                                  │
+╭ 🏠  Dashboard ────────╮│                                                                                              │
+│    › To-Dos          ││                                                                                              │
+│    › Merge Requests  ││                                                                                              │
+│    › Issues          ││                                                                                              │
+╰──────────────────────╯│                                                                                              │
+╭ 🌐  Explore ──────────╮│                                                                                              │
+│    › Projects        ││                                                                                              │
+│    › Groups          ││                                                                                              │
+╰──────────────────────╯│                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
@@ -39,6 +41,5 @@ expression: last_frame
                         │                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
-                        │                                                                                              │
-                        └──────────────────────────────────────────────────────────────────────────────────────────────┘
-? help  q quit    Fetching Merge Requests...
+                        ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+ LIST  ? help  q quit    Fetching Merge Requests...                                             v0.16.0-9-gc0a9611-dirty

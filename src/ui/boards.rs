@@ -175,7 +175,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
                 if let Some(ms) = &issue.milestone {
                     meta_spans.push(Span::raw(" | "));
                     meta_spans.push(Span::styled(
-                        format!(" 󰔛 {} ", ms.title),
+                        format!(" ⚑ {} ", ms.title),
                         Style::default().fg(app.theme.pending),
                     ));
                 }

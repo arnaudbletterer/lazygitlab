@@ -1,19 +1,21 @@
 ---
 source: tests/headless_snapshots.rs
+assertion_line: 83
 expression: frame
 ---
-┌ Status ──────────────┐┌ To-Do List ──────────────────────────────────────────────────────────────────────────────────┐
-│ No Project Selected  ││ Pending  │  Snoozed  │  Done                                                                 │
-└──────────────────────┘│No todos match this view or filter.                                                           │
-┌ Dashboard ───────────┐│                                                                                              │
-│>   Todos             ││                                                                                              │
-│    Merge Requests    ││                                                                                              │
-│    Issues            ││                                                                                              │
-└──────────────────────┘│                                                                                              │
-┌ Explore ─────────────┐│                                                                                              │
-│    Projects          ││                                                                                              │
-│    Groups            ││                                                                                              │
-└──────────────────────┘│                                                                                              │
+ 🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
+╭ 🦊  GitLab ───────────╮╭ To-Do List ──────────────────────────────────────────────────────────────────────────────────╮
+│ 🏠  Personal Dashboard││ Pending  │  Snoozed  │  Done                                                                 │
+╰──────────────────────╯│No todos match this view or filter.                                                           │
+╭ 🏠  Dashboard ────────╮│                                                                                              │
+│▎   › To-Dos          ││                                                                                              │
+│    › Merge Requests  ││                                                                                              │
+│    › Issues          ││                                                                                              │
+╰──────────────────────╯│                                                                                              │
+╭ 🌐  Explore ──────────╮│                                                                                              │
+│    › Projects        ││                                                                                              │
+│    › Groups          ││                                                                                              │
+╰──────────────────────╯│                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
@@ -39,6 +41,5 @@ expression: frame
                         │                                                                                              │
                         │                                                                                              │
                         │                                                                                              │
-                        │                                                                                              │
-                        └──────────────────────────────────────────────────────────────────────────────────────────────┘
-? help  q quit    Fetching Todos...
+                        ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+ LIST  ? help  q quit    Fetching Todos...                                                      v0.16.0-9-gc0a9611-dirty

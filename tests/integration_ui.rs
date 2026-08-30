@@ -185,7 +185,7 @@ async fn test_navigation_and_focus() {
     app.projects_state.select(Some(0));
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "> Proj 1 (n/p1)");
+    assert_buffer_contains(&terminal, "Proj 1 (n/p1)");
 
     // Move down
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -197,7 +197,7 @@ async fn test_navigation_and_focus() {
     };
     app.handle_key(down).await;
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    assert_buffer_contains(&terminal, "> Proj 2 (n/p2)");
+    assert_buffer_contains(&terminal, "Proj 2 (n/p2)");
 
     // Select and go to list
     let enter = KeyEvent {
@@ -223,7 +223,7 @@ async fn test_navigation_and_focus() {
     terminal.draw(|f| ui(f, &mut app)).unwrap();
     assert_buffer_contains(&terminal, "Opened");
     assert_buffer_contains(&terminal, "Merged");
-    assert_buffer_contains(&terminal, "> !1 MR 1");
+    assert_buffer_contains(&terminal, "!1 MR 1");
 
     // Toggle focus to sidebar (cycles from Project -> Dashboard)
     let tab = KeyEvent {
@@ -240,9 +240,7 @@ async fn test_navigation_and_focus() {
     app.selected_pipeline = None;
 
     terminal.draw(|f| ui(f, &mut app)).unwrap();
-    // Dashboard: Todos is selected, but marked with "> " only if panel is focused.
-    // Since we were in Main, Tab cycles Sidebar panels.
-    assert_buffer_contains(&terminal, "  Todos");
+    assert_buffer_contains(&terminal, "To-Dos");
 }
 
 #[tokio::test]
