@@ -3,6 +3,7 @@
 This document tracks the current state of `lazygitlab` and what is left to do. The original four-phase plan that previously lived here is **complete** and has been merged into the **Current State** section below; new work is tracked in **What's Next**.
 
 ## Current State
+- Intelligent Git Integration, Smart Project Selection, CLI Flags, and Security Sanitization.
 
 `lazygitlab` is a mature, daily-driver TUI for GitLab. The original phased plan (multi-line editor, inline code review, repository tree, Kanban boards, global search, real-time refresh) is fully implemented, as is the entire P0-P3 backlog derived from the original roadmap and the five-persona expert review round. Recent work focused on: cross-project pipeline triage, reviewer queue filters, render-path performance, real approvals, schedules/variables management, and ETag-based polling.
 

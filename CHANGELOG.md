@@ -6,6 +6,13 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project.
+- **Smart Project Selection:** Automatically selects the project if it is the only one available for the user/service account.
+- **CLI Arguments:** Added support for --help, --version, --project, --url, --token, --config, and --insecure.
+- **Security:** Redacted GitLab personal access tokens and Bearer tokens in application logs and error messages.
+- **Setup Wizard:** Friendly styled terminal wizard if GITLAB_TOKEN is missing.
+
 ## [0.16.0] - 2026-08-24
 
 ### Added

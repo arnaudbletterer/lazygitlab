@@ -5,6 +5,10 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 `lazygitlab` talks to any GitLab instance via the REST API and renders everything with [ratatui](https://ratatui.rs). It is designed to be a daily-driver replacement for the web UI's most common workflows.
 
 ## Features
+- **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project (src/main.rs:100).
+- **Smart Project Selection:** Automatically selects the project if it is the only one available (src/app/mod.rs:350).
+- **CLI Arguments:** Added support for --help, --version, --project, --url, --token, --config, and --insecure (src/main.rs:130).
+- **Security:** Redacted GitLab personal access tokens and Bearer tokens in logs and error messages (src/logger.rs:40).
 
 ### Dashboard & Navigation
 - **Personal dashboard** with tabs for Todos, Merge Requests, Issues, Projects, Groups (`src/app/mod.rs:1`)
