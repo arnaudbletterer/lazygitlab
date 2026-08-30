@@ -19,7 +19,7 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                     format!(" !{} ", mr.iid),
                     Style::default()
                         .bg(app.theme.border)
-                        .fg(Color::Black)
+                        .fg(crate::ui::widgets::get_contrast_color(app.theme.border))
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),

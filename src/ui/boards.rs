@@ -109,7 +109,7 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
 
         let header_style = if is_column_focused {
             Style::default()
-                .fg(Color::Black)
+                .fg(crate::ui::widgets::get_contrast_color(app.theme.border))
                 .bg(app.theme.border)
                 .add_modifier(Modifier::BOLD)
         } else {

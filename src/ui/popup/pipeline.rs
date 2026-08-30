@@ -8,10 +8,11 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(
         Block::default()
-            .bg(Color::Black)
+            .bg(app.theme.code_bg)
             .borders(Borders::ALL)
-            .title(" Launch Pipeline ")
-            .border_style(Style::default().fg(app.theme.border)),
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Launch Pipeline ", Style::default().fg(app.theme.title_fg).bold()))
+            .border_style(Style::default().fg(app.theme.active_border)),
         area,
     );
 
@@ -32,42 +33,45 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
 
     // Ref Input
     let ref_style = if let InputTarget::PipelineRef = app.input_target {
-        Style::default().fg(app.theme.highlight_bg)
+        Style::default().fg(app.theme.accent)
     } else {
-        Style::default()
+        Style::default().fg(app.theme.inactive_border)
     };
     let ref_input = Paragraph::new(app.pipeline_ref_input.as_str()).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Ref (Branch/Tag) ")
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Ref (Branch/Tag) ", Style::default().fg(app.theme.title_fg)))
             .border_style(ref_style),
     );
     f.render_widget(ref_input, chunks[0]);
 
     // Variable Key Input
     let key_style = if let InputTarget::PipelineVariableKey = app.input_target {
-        Style::default().fg(app.theme.highlight_bg)
+        Style::default().fg(app.theme.accent)
     } else {
-        Style::default()
+        Style::default().fg(app.theme.inactive_border)
     };
     let key_input = Paragraph::new(app.pipeline_variable_key_input.as_str()).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Variable Key ")
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Variable Key ", Style::default().fg(app.theme.title_fg)))
             .border_style(key_style),
     );
     f.render_widget(key_input, chunks[1]);
 
     // Variable Value Input
     let val_style = if let InputTarget::PipelineVariableValue = app.input_target {
-        Style::default().fg(app.theme.highlight_bg)
+        Style::default().fg(app.theme.accent)
     } else {
-        Style::default()
+        Style::default().fg(app.theme.inactive_border)
     };
     let val_input = Paragraph::new(app.pipeline_variable_value_input.as_str()).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Variable Value ")
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Variable Value ", Style::default().fg(app.theme.title_fg)))
             .border_style(val_style),
     );
     f.render_widget(val_input, chunks[2]);
@@ -76,41 +80,39 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
     let items: Vec<ListItem> = app
         .pipeline_variables
         .iter()
-        .map(|v| ListItem::new(format!("{}: {}", v.key, v.value)))
+        .map(|v| ListItem::new(Span::styled(format!("{}: {}", v.key, v.value), Style::default().fg(app.theme.title_fg))))
         .collect();
     let is_var_list_focused = app.input_target == InputTarget::PipelineVariableList;
     let var_list_style = if is_var_list_focused {
-        Style::default().fg(app.theme.highlight_bg)
+        Style::default().fg(app.theme.accent)
     } else {
-        Style::default()
+        Style::default().fg(app.theme.inactive_border)
     };
-    let highlight_style = if is_var_list_focused {
-        Style::default().bg(app.theme.highlight_bg)
-    } else {
-        Style::default()
-    };
-    let highlight_symbol = if is_var_list_focused { "> " } else { "  " };
-
     let list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Variables ")
+                .border_type(BorderType::Rounded)
+                .title(Span::styled(" Variables ", Style::default().fg(app.theme.title_fg)))
                 .border_style(var_list_style),
         )
-        .highlight_style(highlight_style)
-        .highlight_symbol(highlight_symbol);
+        .highlight_style(
+            Style::default()
+                .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_stateful_widget(list, chunks[3], &mut app.pipeline_variables_state);
 
-    // Shortcuts
+    // Footer
     render_shortcuts(
         f,
         chunks[4],
         vec![
-            ("enter", "next"),
-            ("p", "launch"),
-            ("del", "remove var"),
-            ("esc", "back"),
+            ("tab", "next field"),
+            ("enter", "add var/run"),
+            ("ctrl+r", "run pipeline"),
+            ("esc", "cancel"),
         ],
         &app.theme,
     );
@@ -127,15 +129,21 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
         let branches: Vec<ListItem> = app
             .filtered_branches
             .iter()
-            .map(|b| ListItem::new(b.name.as_str()))
+            .map(|b| ListItem::new(Span::styled(b.name.as_str(), Style::default().fg(app.theme.title_fg))))
             .collect();
         let list = List::new(branches)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.theme.highlight_bg)),
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(app.theme.active_border)),
             )
-            .highlight_style(Style::default().bg(app.theme.highlight_bg))
+            .highlight_style(
+                Style::default()
+                    .bg(app.theme.highlight_bg)
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            )
             .highlight_symbol(">> ");
         f.render_stateful_widget(list, dropdown_area, &mut app.branches_state);
     }
@@ -162,16 +170,22 @@ pub fn render_pipeline_popup(f: &mut Frame, app: &mut App) {
             f.render_widget(Clear, dropdown_area);
             let items: Vec<ListItem> = suggested_vars
                 .iter()
-                .map(|v| ListItem::new(format!("{} ({})", v.key, v.environment_scope)))
+                .map(|v| ListItem::new(Span::styled(format!("{} ({})", v.key, v.environment_scope), Style::default().fg(app.theme.title_fg))))
                 .collect();
             let list = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title(" Suggested Keys ")
-                        .border_style(Style::default().fg(app.theme.highlight_bg)),
+                        .border_type(BorderType::Rounded)
+                        .title(Span::styled(" Suggested Keys ", Style::default().fg(app.theme.title_fg)))
+                        .border_style(Style::default().fg(app.theme.active_border)),
                 )
-                .highlight_style(Style::default().bg(app.theme.highlight_bg))
+                .highlight_style(
+                    Style::default()
+                        .bg(app.theme.highlight_bg)
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .highlight_symbol(">> ");
             f.render_stateful_widget(list, dropdown_area, &mut app.label_state);
         }
@@ -184,10 +198,11 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(
         Block::default()
-            .bg(Color::Black)
+            .bg(app.theme.code_bg)
             .borders(Borders::ALL)
-            .title(" Pipeline Schedules (Enter = run now) ")
-            .border_style(Style::default().fg(app.theme.border)),
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Pipeline Schedules (Enter = run now) ", Style::default().fg(app.theme.title_fg).bold()))
+            .border_style(Style::default().fg(app.theme.active_border)),
         area,
     );
 
@@ -204,9 +219,9 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
                 Span::styled(if s.active { "[on]  " } else { "[off] " }, status_style),
                 Span::styled(
                     crate::ui::widgets::truncate_str(&s.description, 30),
-                    Style::default().add_modifier(Modifier::BOLD),
+                    Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(format!("  {} @ {}", s.ref_name, s.cron)),
+                Span::styled(format!("  {} @ {}", s.ref_name, s.cron), Style::default().fg(app.theme.dim)),
             ]))
         })
         .collect();
@@ -225,6 +240,7 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
         let list = List::new(items).highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
         f.render_stateful_widget(list, area, &mut app.schedules_state);
@@ -239,10 +255,11 @@ pub fn render_ci_vars_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(
         Block::default()
-            .bg(Color::Black)
+            .bg(app.theme.code_bg)
             .borders(Borders::ALL)
-            .title(" CI Variables ")
-            .border_style(Style::default().fg(app.theme.border)),
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" CI Variables ", Style::default().fg(app.theme.title_fg).bold()))
+            .border_style(Style::default().fg(app.theme.active_border)),
         area,
     );
 
@@ -339,10 +356,16 @@ pub fn render_ci_vars_popup(f: &mut Frame, app: &mut App) {
             );
         } else {
             let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
+                        .border_style(Style::default().fg(app.theme.active_border)),
+                )
                 .highlight_style(
                     Style::default()
                         .bg(app.theme.highlight_bg)
+                        .fg(app.theme.title_fg)
                         .add_modifier(Modifier::BOLD),
                 );
             f.render_stateful_widget(list, chunks[0], &mut app.ci_vars_state);

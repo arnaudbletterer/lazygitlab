@@ -19,9 +19,11 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     };
     f.render_widget(
         Block::default()
-            .bg(Color::Black)
+            .bg(app.theme.code_bg)
             .borders(Borders::ALL)
-            .title(title),
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(app.theme.active_border))
+            .title(Span::styled(title, Style::default().fg(app.theme.title_fg).bold())),
         area,
     );
 
@@ -56,11 +58,12 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     let mut current_row = vec![Cell::from(""); weekday_offset as usize];
 
     for day in 1..=days_in_month {
-        let mut cell = Cell::from(day.to_string());
+        let mut cell = Cell::from(day.to_string()).style(Style::default().fg(app.theme.title_fg));
         if day == app.calendar_date.day() as i64 {
             cell = cell.style(
                 Style::default()
                     .bg(app.theme.highlight_bg)
+                    .fg(app.theme.title_fg)
                     .add_modifier(Modifier::BOLD),
             );
         }

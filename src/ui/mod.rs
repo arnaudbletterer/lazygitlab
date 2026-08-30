@@ -38,7 +38,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             " 🦊 GitLab ",
             Style::default()
                 .bg(app.theme.accent)
-                .fg(Color::Black)
+                .fg(widgets::get_contrast_color(app.theme.accent))
                 .add_modifier(Modifier::BOLD),
         ),
     ];
@@ -105,7 +105,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     if let Some(rect) = filter_rect {
         let mut filter_spans = vec![
-            Span::styled(" [ FILTER ] ", Style::default().bg(app.theme.highlight_bg).fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled(" [ FILTER ] ", Style::default().bg(app.theme.highlight_bg).fg(widgets::get_contrast_color(app.theme.highlight_bg)).add_modifier(Modifier::BOLD)),
         ];
         if job_log_searching {
             filter_spans.push(Span::styled(" Search log: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
@@ -138,7 +138,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     };
 
     let mut footer_spans = vec![
-        Span::styled(mode_str, Style::default().bg(app.theme.shortcut_key).fg(Color::Black).add_modifier(Modifier::BOLD)),
+        Span::styled(mode_str, Style::default().bg(app.theme.shortcut_key).fg(widgets::get_contrast_color(app.theme.shortcut_key)).add_modifier(Modifier::BOLD)),
         Span::raw(" "),
     ];
 
@@ -170,7 +170,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             " g- [t:todos, m:mrs, i:issues, p:pipelines, r:repo, b:branches] ",
             Style::default()
                 .bg(app.theme.accent)
-                .fg(Color::Black)
+                .fg(widgets::get_contrast_color(app.theme.accent))
                 .add_modifier(Modifier::BOLD),
         ));
     }
@@ -179,7 +179,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" Error: {} ", err),
-            Style::default().bg(app.theme.failed).fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default().bg(app.theme.failed).fg(widgets::get_contrast_color(app.theme.failed)).add_modifier(Modifier::BOLD),
         ));
     }
     if app.is_loading || app.status_message.is_some() {
@@ -203,7 +203,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" {} ", msg),
-            Style::default().bg(bg).fg(Color::Black).add_modifier(Modifier::BOLD),
+            Style::default().bg(bg).fg(widgets::get_contrast_color(bg)).add_modifier(Modifier::BOLD),
         ));
     }
 
@@ -513,15 +513,36 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             break;
         }
 
+        let mut line_style = Style::default();
+        let is_selected = selection_range
+            .map(|(s, e)| idx >= s && idx <= e)
+            .unwrap_or(false);
+        if is_selected {
+            line_style = line_style.bg(app.theme.highlight_bg);
+        }
+        if idx == cursor_line_idx {
+            line_style = line_style.add_modifier(Modifier::UNDERLINED);
+        }
+
+        let num_style = if is_selected {
+            Style::default().fg(app.theme.dim).bg(app.theme.highlight_bg)
+        } else {
+            Style::default().fg(app.theme.dim)
+        };
         let mut spans = vec![Span::styled(
             format!("{:4} ", idx + 1),
-            Style::default().fg(app.theme.dim),
+            num_style,
         )];
 
         if !line.timestamp.is_empty() {
+            let ts_style = if is_selected {
+                Style::default().fg(app.theme.dim).bg(app.theme.highlight_bg)
+            } else {
+                Style::default().fg(app.theme.dim)
+            };
             spans.push(Span::styled(
                 format!("{} ", format_time_only(&line.timestamp)),
-                Style::default().fg(app.theme.dim),
+                ts_style,
             ));
         }
 
@@ -536,25 +557,27 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 "[-] "
             };
-            spans.push(Span::styled(
-                symbol,
+            let sym_style = if is_selected {
                 Style::default()
                     .fg(app.theme.shortcut_key)
-                    .add_modifier(Modifier::BOLD),
+                    .bg(app.theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD)
+            };
+            spans.push(Span::styled(
+                symbol,
+                sym_style,
             ));
         } else if line.section.is_some() {
-            spans.push(Span::raw("    "));
-        }
-
-        let mut line_style = Style::default();
-        let is_selected = selection_range
-            .map(|(s, e)| idx >= s && idx <= e)
-            .unwrap_or(false);
-        if is_selected {
-            line_style = line_style.bg(app.theme.highlight_bg);
-        }
-        if idx == cursor_line_idx {
-            line_style = line_style.add_modifier(Modifier::UNDERLINED);
+            let indent_style = if is_selected {
+                Style::default().bg(app.theme.highlight_bg)
+            } else {
+                Style::default()
+            };
+            spans.push(Span::styled("    ", indent_style));
         }
 
         let content_text = line

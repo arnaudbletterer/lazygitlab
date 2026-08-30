@@ -7,7 +7,7 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     app.set_rect("popup_search", area);
     f.render_widget(Clear, area);
     let block = Block::default()
-        .bg(Color::Black)
+        .bg(app.theme.code_bg)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(
@@ -34,14 +34,14 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
     let search_style = if app.input_target == InputTarget::Search {
         Style::default().fg(app.theme.accent)
     } else {
-        Style::default()
+        Style::default().fg(app.theme.inactive_border)
     };
     let search_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(" Search Query (Esc to close) ")
+        .title(Span::styled(" Search Query (Esc to close) ", Style::default().fg(app.theme.title_fg)))
         .border_style(search_style);
-    let search_para = Paragraph::new(app.search_query.as_str()).block(search_block);
+    let search_para = Paragraph::new(app.search_query.as_str()).style(Style::default().fg(app.theme.title_fg)).block(search_block);
     f.render_widget(search_para, chunks[0]);
 
     if app.input_target == InputTarget::Search {
@@ -78,11 +78,13 @@ pub fn render_search_popup(f: &mut Frame, app: &mut App) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .title(format!(" Results ({}) ", app.search_results.len())),
+                .border_style(Style::default().fg(app.theme.inactive_border))
+                .title(Span::styled(format!(" Results ({}) ", app.search_results.len()), Style::default().fg(app.theme.title_fg))),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▎ ");

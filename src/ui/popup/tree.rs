@@ -6,7 +6,7 @@ pub fn render_tree_branch_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 45, f.area());
     app.set_rect("popup_tree_branch", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let current = app.repository_ref.as_deref().unwrap_or("default");
     let branches: Vec<ListItem> = app
@@ -62,6 +62,7 @@ pub fn render_tree_branch_popup(f: &mut Frame, app: &mut App) {
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▎ ");

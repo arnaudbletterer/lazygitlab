@@ -6,7 +6,7 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 60, f.area());
     app.set_rect("popup_label", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let project_id = app
         .selected_mr
@@ -32,7 +32,7 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
             let text_color = hex_to_color(l.text_color());
 
             ListItem::new(Line::from(vec![
-                Span::raw(prefix),
+                Span::styled(prefix, Style::default().fg(app.theme.title_fg)),
                 Span::styled(
                     format!(" {} ", l.name()),
                     Style::default().bg(color).fg(text_color),
@@ -45,11 +45,14 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Edit Labels (Space to toggle, Enter to save) "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Edit Labels (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -60,7 +63,7 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 60, f.area());
     app.set_rect("popup_assignee", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let project_id = app
         .selected_mr
@@ -82,7 +85,7 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
             } else {
                 "[ ] "
             };
-            ListItem::new(format!("{}{}", prefix, m.username))
+            ListItem::new(Span::styled(format!("{}{}", prefix, m.username), Style::default().fg(app.theme.title_fg)))
         })
         .collect();
 
@@ -90,11 +93,14 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Edit Assignees (Space to toggle, Enter to save) "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Edit Assignees (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -105,7 +111,7 @@ pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 60, f.area());
     app.set_rect("popup_reviewer", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let project_id = app
         .selected_mr
@@ -127,7 +133,7 @@ pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
             } else {
                 "[ ] "
             };
-            ListItem::new(format!("{}{}", prefix, m.username))
+            ListItem::new(Span::styled(format!("{}{}", prefix, m.username), Style::default().fg(app.theme.title_fg)))
         })
         .collect();
 
@@ -135,11 +141,14 @@ pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Edit Reviewers (Space to toggle, Enter to save) "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Edit Reviewers (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -150,7 +159,7 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 40, f.area());
     app.set_rect("popup_milestone", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let project_id = app
         .selected_mr
@@ -166,20 +175,23 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
 
     let mut milestones: Vec<ListItem> = milestones_source
         .iter()
-        .map(|m| ListItem::new(m.title.clone()))
+        .map(|m| ListItem::new(Span::styled(m.title.clone(), Style::default().fg(app.theme.title_fg))))
         .collect();
 
-    milestones.insert(0, ListItem::new("None (Clear Milestone)"));
+    milestones.insert(0, ListItem::new(Span::styled("None (Clear Milestone)", Style::default().fg(app.theme.dim))));
 
     let list = List::new(milestones)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Select Milestone (Enter to save) "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Select Milestone (Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -190,19 +202,22 @@ pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(30, 40, f.area());
     app.set_rect("popup_weight", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
-    let weights: Vec<ListItem> = (0..=20).map(|w| ListItem::new(w.to_string())).collect();
+    let weights: Vec<ListItem> = (0..=20).map(|w| ListItem::new(Span::styled(w.to_string(), Style::default().fg(app.theme.title_fg)))).collect();
 
     let list = List::new(weights)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Select Weight "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Select Weight ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -213,23 +228,26 @@ pub fn render_target_branch_popup(f: &mut Frame, app: &mut App) {
     let area = centered_rect(50, 40, f.area());
     app.set_rect("popup_target_branch", area);
     f.render_widget(Clear, area);
-    f.render_widget(Block::default().bg(Color::Black), area);
+    f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
     let branches: Vec<ListItem> = app
         .project_branches
         .iter()
-        .map(|b| ListItem::new(b.name.clone()))
+        .map(|b| ListItem::new(Span::styled(b.name.clone(), Style::default().fg(app.theme.title_fg))))
         .collect();
 
     let list = List::new(branches)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Select Target Branch (Enter to save) "),
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.active_border))
+                .title(Span::styled(" Select Target Branch (Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
         )
         .highlight_style(
             Style::default()
                 .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
 

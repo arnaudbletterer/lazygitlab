@@ -8,7 +8,7 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
 
     let block = Block::default()
-        .bg(Color::Black)
+        .bg(app.theme.code_bg)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(
@@ -34,9 +34,9 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         let filter_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(" 🔍 Search Commands ")
+            .title(Span::styled(" 🔍 Search Commands ", Style::default().fg(app.theme.title_fg)))
             .border_style(Style::default().fg(app.theme.accent));
-        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str()).block(filter_block);
+        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str()).style(Style::default().fg(app.theme.title_fg)).block(filter_block);
         f.render_widget(filter_paragraph, chunks[0]);
 
         f.set_cursor_position(Position::new(
@@ -72,7 +72,12 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         .collect();
 
     let list = List::new(items)
-        .highlight_style(Style::default().bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(app.theme.highlight_bg)
+                .fg(app.theme.title_fg)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▎ ");
     f.render_stateful_widget(list, chunks[1], &mut app.help_state);
 }

@@ -212,7 +212,7 @@ fn render_nav_panel(
             .highlight_style(if is_focused {
                 Style::default()
                     .bg(theme.highlight_bg)
-                    .fg(theme.accent)
+                    .fg(theme.title_fg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -1188,6 +1188,7 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
             let highlight = if is_selected {
                 Style::default()
                     .bg(app.theme.highlight_bg)
+                    .fg(app.theme.title_fg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -1373,6 +1374,7 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let mut lines = Vec::new();
     let highlight = Style::default()
         .bg(app.theme.highlight_bg)
+        .fg(app.theme.title_fg)
         .add_modifier(Modifier::BOLD);
     let field_style = |f| {
         if is_meta_focused && app.selected_metadata_field == f {

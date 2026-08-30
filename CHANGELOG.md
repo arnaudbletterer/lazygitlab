@@ -7,11 +7,16 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- **Gruvbox Light Theme:** Added built-in Gruvbox Light preset with authentic Gruvbox palette and high contrast.
+- **Dynamic Contrast Helpers:** Added luminance-based `get_contrast_color` and updated `get_contrasting_text_color` to select dark text (`#11111b`) or light text (`#cdd6f4`) based on WCAG perceived luminance.
 - **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project.
 - **Smart Project Selection:** Automatically selects the project if it is the only one available for the user/service account.
 - **CLI Arguments:** Added support for --help, --version, --project, --url, --token, --config, and --insecure.
 - **Security:** Redacted GitLab personal access tokens and Bearer tokens in application logs and error messages.
 - **Setup Wizard:** Friendly styled terminal wizard if GITLAB_TOKEN is missing.
+
+### Changed
+- **Theme & Color Contrast Optimization:** Audited all theme presets (Catppuccin Mocha/Latte, Tokyo Night, Nord, Dracula, Gruvbox Dark/Light, GitHub Dark/Light, Default) for WCAG compliance. Replaced hardcoded black popup backgrounds and clashing button/badge foregrounds with theme surfaces and luminance-adaptive foregrounds across lists, metadata inspector, diffs, boards, job logs, and modals.
 
 ## [0.16.0] - 2026-08-24
 
