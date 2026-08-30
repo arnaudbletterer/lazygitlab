@@ -34,15 +34,4 @@ Switch between any accessible GitLab project in seconds without restarting `lazy
 
 ---
 
-## Repository Shortcuts Cheatsheet
-
-| Key | Action |
-| --- | --- |
-| <kbd>g</kbd> <kbd>r</kbd> | Go to Repository tree |
-| <kbd>Enter</kbd> | Open directory / View file content |
-| <kbd>b</kbd> | Open Branch Switcher popup |
-| <kbd>p</kbd> | Open Project Quick Switcher |
-| <kbd>j</kbd> / <kbd>k</kbd> | Scroll file content down / up |
-| <kbd>Ctrl+D</kbd> / <kbd>Ctrl+U</kbd> | Page scroll half-screen down / up |
-| <kbd>o</kbd> | Open file / repository in web browser |
-| <kbd>Esc</kbd> | Return to repository tree navigation |
+💡 *For the complete keymap list, see the [Keybindings & Cheatsheet](../reference/keybindings.md).*

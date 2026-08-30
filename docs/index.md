@@ -5,8 +5,6 @@
   <em>Manage your merge requests, issues, Kanban boards, CI/CD pipelines, and repositories directly from the comfort of your terminal.</em>
 </p>
 
-
-
 ![lazygitlab Personal Dashboard](assets/screenshots/dashboard.svg#only-dark)
 ![lazygitlab Personal Dashboard (Light)](assets/screenshots/dashboard-light.svg#only-light)
 *Click any screenshot to zoom in full resolution.*
@@ -44,29 +42,19 @@
 
 ## 🚀 Quick Start
 
-### 1. Installation
-
 ```bash
+# 1. Install via Cargo
 cargo install lazygitlab
-```
 
-### 2. Configuration
-
-Create a GitLab Personal Access Token with `api` and `read_user` scopes.
-
-```bash
-# In your ~/.bashrc, ~/.zshrc, or .env
+# 2. Configure credentials
 export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
-export GITLAB_URL="https://gitlab.com" # Or your self-hosted GitLab instance
-```
+export GITLAB_URL="https://gitlab.com"
 
-### 3. Launch
-
-```bash
+# 3. Launch (auto-connects to the current git repository)
 lazygitlab
 ```
 
-When run inside any local git repository whose origin is on GitLab, `lazygitlab` automatically connects and selects that project for you!
+👉 See the complete **[Getting Started Guide](getting-started.md)** for configuration options and self-hosted instances.
 
 ---
 
@@ -77,9 +65,13 @@ When run inside any local git repository whose origin is on GitLab, `lazygitlab`
 | <kbd>?</kbd> | Open Interactive Help / Command Palette |
 | <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> | Cycle through active panels |
 | <kbd>j</kbd> / <kbd>k</kbd> | Move cursor down / up |
+| <kbd>g</kbd> <kbd>t</kbd> | Jump to To-Dos |
 | <kbd>g</kbd> <kbd>m</kbd> | Jump to Merge Requests |
 | <kbd>g</kbd> <kbd>i</kbd> | Jump to Issues |
 | <kbd>g</kbd> <kbd>b</kbd> | Jump to Kanban Boards |
 | <kbd>g</kbd> <kbd>p</kbd> | Jump to CI/CD Pipelines |
+| <kbd>g</kbd> <kbd>r</kbd> | Jump to Repository Tree |
 | <kbd>p</kbd> | Open Project Quick Switcher |
 | <kbd>q</kbd> | Quit application |
+
+👉 See the full **[Keybindings Reference & Cheatsheet](reference/keybindings.md)** for all shortcut tables and printable PDF cheatsheet.

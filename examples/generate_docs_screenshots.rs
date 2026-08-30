@@ -744,8 +744,8 @@ fn generate_cheatsheet_file(app: &mut App) {
     }
 
     let mut doc = String::new();
-    doc.push_str("# lazygitlab Keyboard Cheatsheet\n\n");
-    doc.push_str("> **Note:** This cheatsheet is **automatically generated from the application's keymap definitions** to ensure it remains 100% synchronized with the latest release.\n\n");
+    doc.push_str("# Keybindings & Cheatsheet\n\n");
+    doc.push_str("`lazygitlab` is fully keyboard-driven. This reference is **automatically generated from the application keymap** to ensure 100% synchronization with the latest release.\n\n");
     doc.push_str("[📥 Download Printable 1-Page Landscape PDF Cheatsheet](../assets/lazygitlab-cheatsheet.pdf){ .md-button .md-button--primary }\n\n");
     doc.push_str("### 📄 1-Page Quick Reference Preview\n\n");
     doc.push_str("Click on the preview to open the high-resolution lightbox or download the vector PDF above:\n\n");
@@ -777,6 +777,7 @@ fn generate_cheatsheet_file(app: &mut App) {
         ("Repository", "🌲 Repository & Files"),
         ("Filter", "🔍 Filters & Search"),
         ("Discussion", "💬 Discussions & Notes"),
+        ("Detail", "📋 Work Item & MR Detail"),
     ];
 
     for (cat_key, cat_title) in ordered_cats {
@@ -802,6 +803,6 @@ fn generate_cheatsheet_file(app: &mut App) {
     doc.push_str("| <kbd>g</kbd> <kbd>p</kbd> | CI/CD Pipelines |\n");
     doc.push_str("| <kbd>g</kbd> <kbd>r</kbd> | Repository Tree |\n");
 
-    let mut file = File::create("docs/reference/cheatsheet.md").unwrap();
+    let mut file = File::create("docs/reference/keybindings.md").unwrap();
     file.write_all(doc.as_bytes()).unwrap();
 }

@@ -16,7 +16,7 @@ Track pipeline progress across branches and merge requests with status pills (`[
 
 * **Trigger New Pipeline**: Press <kbd>n</kbd> to launch a pipeline on any branch or ref, with optional CI environment variables.
 * **Retry Pipeline / Job**: Press <kbd>r</kbd> on a failed pipeline or job to retry execution.
-* **Cancel Running Pipeline**: Press <kbd>x</kbd> to cancel a currently active pipeline run.
+* **Cancel Running Pipeline**: Press <kbd>c</kbd> to cancel a currently active pipeline run.
 * **Pipeline Schedules**: Press <kbd>S</kbd> to open and trigger configured pipeline schedules.
 * **CI Variables Management**: Press <kbd>V</kbd> to view and manage project CI/CD variables directly.
 
@@ -40,18 +40,4 @@ Drill into any job to view colorized terminal logs in real-time.
 
 ---
 
-## CI/CD Shortcuts Cheatsheet
-
-| Key | Action |
-| --- | --- |
-| <kbd>g</kbd> <kbd>p</kbd> | Go to Pipelines list |
-| <kbd>Enter</kbd> | Inspect pipeline stages / Open job log viewer |
-| <kbd>n</kbd> | Launch new pipeline (with custom ref & variables) |
-| <kbd>r</kbd> | Retry failed pipeline / job |
-| <kbd>x</kbd> | Cancel running pipeline / job |
-| <kbd>S</kbd> | Open Pipeline Schedules popup |
-| <kbd>V</kbd> | Open CI/CD Variables popup |
-| <kbd>/</kbd> | Search in Job Log |
-| <kbd>Space</kbd> | Toggle collapse on log section |
-| <kbd>y</kbd> | Copy selected log or entire log to clipboard |
-| <kbd>Esc</kbd> | Return from Job Log to pipeline jobs list |
+💡 *For the complete keymap list, see the [Keybindings & Cheatsheet](../reference/keybindings.md).*

@@ -14,7 +14,7 @@ The **Personal Dashboard** is your unified inbox and central command center acro
 
 Lists all action items requiring your input: mentions, review requests, issue assignments, and pipeline failures.
 
-* Press <kbd>d</kbd> or <kbd>e</kbd> to mark a To-Do as done.
+* Press <kbd>d</kbd> to mark a To-Do as completed.
 * Press <kbd>Enter</kbd> to jump straight into the underlying MR or Issue.
 * Press <kbd>s</kbd> to snooze a To-Do for later.
 
@@ -35,22 +35,11 @@ Consolidates all issues assigned to you across all repositories:
 
 ### 4. Cross-Project Pipelines (`g p`)
 
-Live status of recent CI/CD pipeline runs across your GitLab projects.
+Live status of recent CI/CD pipeline runs across your GitLab projects:
 
-* Real-time refresh with adaptive polling.
+* Real-time status indicators with adaptive polling.
 * Press <kbd>Enter</kbd> to drill into the pipeline's stages and individual jobs.
 
 ---
 
-## Helpful Dashboard Shortcuts
-
-| Key | Action |
-| --- | --- |
-| <kbd>g</kbd> <kbd>t</kbd> | Jump to To-Dos |
-| <kbd>g</kbd> <kbd>m</kbd> | Jump to Merge Requests |
-| <kbd>g</kbd> <kbd>i</kbd> | Jump to Issues |
-| <kbd>g</kbd> <kbd>p</kbd> | Jump to Pipelines |
-| <kbd>d</kbd> | Mark selected To-Do as completed |
-| <kbd>[</kbd> / <kbd>]</kbd> | Cycle filter segments (e.g. Needs Review / Assigned) |
-| <kbd>/</kbd> | Open real-time search filter |
-| <kbd>r</kbd> | Force refresh active data |
+💡 *For the complete keymap list, see the [Keybindings & Cheatsheet](../reference/keybindings.md).*

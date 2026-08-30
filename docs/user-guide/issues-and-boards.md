@@ -15,11 +15,11 @@ Inspect issue metadata, discussion threads, linked merge requests, milestones, a
 ### Key Actions on Issues:
 
 * **Create Issue**: Press <kbd>n</kbd> to open the New Issue modal (title, description, labels, milestone).
-* **Close / Reopen**: Press <kbd>x</kbd> to close an open issue or reopen a closed issue.
-* **Assign / Review**: Press <kbd>a</kbd> to open the user assignment modal.
-* **Edit Labels**: Press <kbd>l</kbd> to select and toggle label badges.
-* **Set Milestone**: Press <kbd>m</kbd> to assign the issue to a milestone.
-* **Discussions & Comments**: Switch to the Discussions tab to read or post replies with <kbd>c</kbd>.
+* **Close / Reopen**: Press <kbd>c</kbd> to close an open issue or reopen a closed issue.
+* **Assignees**: Press <kbd>a</kbd> or navigate to the Assignees field in the Metadata Inspector to assign team members.
+* **Labels**: Press <kbd>l</kbd> to open the label selector popup.
+* **Milestones**: Press <kbd>m</kbd> to assign the issue to a milestone.
+* **Discussions & Comments**: Switch to the Discussions tab (`Tab` / `]`) to read threads or reply with <kbd>r</kbd>.
 
 ---
 
@@ -40,17 +40,4 @@ Visual Kanban board view with horizontal column scrolling and instant card drag-
 
 ---
 
-## Shortcuts Summary
-
-| Key | Action |
-| --- | --- |
-| <kbd>g</kbd> <kbd>i</kbd> | Go to Issues view |
-| <kbd>g</kbd> <kbd>b</kbd> | Go to Kanban Boards view |
-| <kbd>n</kbd> | Create new issue |
-| <kbd>x</kbd> | Toggle Close / Reopen issue |
-| <kbd>l</kbd> | Open Label picker popup |
-| <kbd>m</kbd> | Open Milestone picker popup |
-| <kbd>a</kbd> | Open Assignee picker popup |
-| <kbd>h</kbd> / <kbd>l</kbd> | Switch Kanban list column (Left / Right) |
-| <kbd>H</kbd> / <kbd>L</kbd> | Move selected issue to previous / next Kanban list |
-| <kbd>o</kbd> | Open issue in browser |
+💡 *For the complete keymap list, see the [Keybindings & Cheatsheet](../reference/keybindings.md).*
