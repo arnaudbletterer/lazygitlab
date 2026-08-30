@@ -109,6 +109,29 @@ def generate_assets():
         print("PyMuPDF not installed, skipping thumbnail generation.")
 
 
+def inject_version_into_site_html(version_info):
+    """Bakes the version badge directly into compiled static HTML files for zero-blink instant rendering."""
+    site_dir = ROOT_DIR / "site"
+    if not site_dir.exists():
+        return
+
+    display_version = version_info["display"]
+    is_dirty = version_info.get("is_dirty", False) or "-dirty" in display_version
+    badge_class = "header-version-badge badge-dirty" if is_dirty else "header-version-badge badge-tag"
+    badge_html = f'<span class="header-version-container"><span class="{badge_class}"><code>{display_version}</code></span></span>'
+
+    for html_path in site_dir.glob("**/*.html"):
+        content = html_path.read_text(encoding="utf-8")
+        
+        # Target primary header topic
+        target_topic = '<div class="md-header__topic">\n          <span class="md-ellipsis">\n            lazygitlab'
+        if target_topic in content and "header-version-container" not in content:
+            replacement = f'<div class="md-header__topic">\n          <span class="md-ellipsis">\n            lazygitlab\n            {badge_html}'
+            content = content.replace(target_topic, replacement, 1)
+
+        html_path.write_text(content, encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build lazygitlab documentation suite.")
     parser.add_argument("--serve", action="store_true", help="Start local development server.")
@@ -128,6 +151,7 @@ def main():
     else:
         print("📦 Building static documentation site with Zensical...")
         subprocess.check_call([sys.executable, "-m", "zensical", "build"], cwd=ROOT_DIR)
+        inject_version_into_site_html(version_info)
         print("✅ Documentation build complete.")
 
 

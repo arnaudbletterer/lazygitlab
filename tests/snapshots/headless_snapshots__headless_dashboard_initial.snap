@@ -42,4 +42,4 @@ expression: frame
                         │                                                                                              │
                         │                                                                                              │
                         ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
- LIST  ? help  q quit    Fetching Todos...                                                      v0.16.0-9-gc0a9611-dirty
+ LIST  ? help  q quit    Fetching Todos...

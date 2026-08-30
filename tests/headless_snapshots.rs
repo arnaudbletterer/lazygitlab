@@ -13,7 +13,7 @@ use lazygitlab::models::{App, DataUpdate};
 use lazygitlab::run_app;
 
 fn sanitize(frame: String) -> String {
-    let re = regex::Regex::new(r"v\d+\.\d+\.\d+ \([0-9a-f]+(-DIRTY)?\)").unwrap();
+    let re = regex::Regex::new(r"v\d+\.\d+\.\d+.*").unwrap();
     frame
         .lines()
         .map(|line| match re.find(line) {
