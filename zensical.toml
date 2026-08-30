@@ -38,6 +38,8 @@ nav = [
 name = "material"
 language = "en"
 features = [
+    "navigation.instant",
+    "navigation.instant.progress",
     "navigation.sections",
     "navigation.path",
     "navigation.top",
