@@ -60,88 +60,20 @@ kbd {
   display: none !important;
 }
 
-/* Layout & Container Max Widths */
-:root {
-  --md-sidebar-width: 17rem;
-  --md-sidebar-width--secondary: 15rem;
+/* Prevent keyboard shortcut keys and table headers from wrapping awkwardly */
+kbd {
+  white-space: nowrap;
 }
 
-.md-grid {
-  max-width: 86rem;
-}
-
-.md-sidebar--primary {
-  width: 17rem;
-}
-
-.md-sidebar--secondary {
-  width: 15rem;
-}
-
-/* Side Menu Nav Links: Generous spacing and clean wrapping */
-.md-nav__link {
-  font-size: 0.84rem;
-  line-height: 1.45;
-  padding-top: 0.32rem;
-  padding-bottom: 0.32rem;
-}
-
-.md-nav__item {
-  padding-top: 0.08rem;
-  padding-bottom: 0.08rem;
-}
-
-/* Content Width & Typography */
-.md-typeset {
-  max-width: 60rem;
-  font-size: 0.88rem;
-  line-height: 1.68;
-}
-
-/* Tables: Full-width layout, clean padding, prevent keys from wrapping */
-.md-typeset table:not([class]) {
-  display: table;
-  width: 100%;
-  max-width: 100%;
-  margin: 1.2em 0;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.md-typeset table:not([class]) th,
-.md-typeset table:not([class]) td {
-  padding: 0.6em 0.9em;
-  vertical-align: middle;
-  line-height: 1.45;
-}
-
-/* Keep shortcuts, key tags, and flag columns together */
 .md-typeset table:not([class]) td:first-child,
 .md-typeset table:not([class]) th:first-child {
   white-space: nowrap;
 }
 
-/* Tabs: Clean padding & nowrap labels */
-.tabbed-set > .tabbed-labels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 0.5rem;
-}
-
 .tabbed-set > .tabbed-labels > label {
   white-space: nowrap;
-  padding: 0.4em 0.85em;
-  font-size: 0.84rem;
 }
 
-/* Clean Admonitions / Callouts */
-.md-typeset .admonition,
-.md-typeset details {
-  margin: 1.2em 0;
-  border-radius: 8px;
-  font-size: 0.86rem;
-}
 
 /* Documentation Version Banner */
 .version-banner {

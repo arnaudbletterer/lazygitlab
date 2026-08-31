@@ -17,14 +17,14 @@ nav = [
     { "Overview" = "index.md" },
     { "Getting Started" = "getting-started.md" },
     { "User Guide" = [
-        { "Personal Dashboard" = "user-guide/dashboard.md" },
-        { "Code Review & Diffs" = "user-guide/code-review.md" },
-        { "Issues & Kanban Boards" = "user-guide/issues-and-boards.md" },
-        { "CI/CD & Job Logs" = "user-guide/ci-cd.md" },
-        { "Repository & Files" = "user-guide/repository.md" }
+        { "Dashboard" = "user-guide/dashboard.md" },
+        { "Code Review" = "user-guide/code-review.md" },
+        { "Issues & Boards" = "user-guide/issues-and-boards.md" },
+        { "CI/CD Pipelines" = "user-guide/ci-cd.md" },
+        { "Repository" = "user-guide/repository.md" }
     ]},
     { "Reference" = [
-        { "Keybindings & Cheatsheet" = "reference/keybindings.md" },
+        { "Keybindings" = "reference/keybindings.md" },
         { "CLI Options" = "reference/cli.md" },
         { "Theming" = "reference/theming.md" }
     ]}
