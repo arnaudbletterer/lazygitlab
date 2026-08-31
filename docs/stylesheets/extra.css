@@ -74,6 +74,15 @@ kbd {
   white-space: nowrap;
 }
 
+/* Table of Contents (On this page) styling */
+.md-nav--secondary .md-nav__link {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+
 
 /* Documentation Version Banner */
 .version-banner {

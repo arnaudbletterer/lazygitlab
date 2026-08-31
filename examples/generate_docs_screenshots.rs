@@ -1030,7 +1030,7 @@ fn generate_cheatsheet_file(app: &mut App) {
     }
 
     doc.push_str("---\n\n");
-    doc.push_str("## 🧭 Quick Jump (`g` prefix)\n\n");
+    doc.push_str("## 🧭 Quick Jump Navigation\n\n");
     doc.push_str("| Key Combination | Target View |\n");
     doc.push_str("| :--- | :--- |\n");
     doc.push_str("| <kbd>g</kbd> <kbd>t</kbd> | Personal To-Dos |\n");

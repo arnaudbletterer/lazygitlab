@@ -131,7 +131,7 @@ Click on the preview to open the high-resolution lightbox or download the vector
 
 ---
 
-## 🧭 Quick Jump (`g` prefix)
+## 🧭 Quick Jump Navigation
 
 | Key Combination | Target View |
 | :--- | :--- |

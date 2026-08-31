@@ -8,7 +8,7 @@ Browse directory structures, inspect source code with syntax highlighting, switc
 
 ---
 
-## 🌲 Repository Tree & File Viewer (<kbd>g</kbd> <kbd>r</kbd>)
+## 🌲 Repository Tree & File Viewer
 
 Explore the project's codebase directly from your terminal with fast asynchronous tree loading and rich syntax highlighting.
 
@@ -55,7 +55,7 @@ Explore the project's codebase directly from your terminal with fast asynchronou
 
 ---
 
-## 🔀 Project Quick Switcher (<kbd>p</kbd>)
+## 🔀 Project Quick Switcher
 
 Switch seamlessly between any accessible GitLab project in seconds without exiting `lazygitlab`.
 

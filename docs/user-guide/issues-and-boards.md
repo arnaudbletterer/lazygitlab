@@ -8,7 +8,7 @@ Organize, triage, and track project work with `lazygitlab`'s keyboard-centric Is
 
 ---
 
-## 📋 Issue Triage & Management (<kbd>g</kbd> <kbd>i</kbd>)
+## 📋 Issue Triage & Management
 
 Inspect issue details, metadata fields, discussions, and linked merge requests without opening a browser.
 
@@ -61,7 +61,7 @@ Inspect issue details, metadata fields, discussions, and linked merge requests w
 
 ---
 
-## 📊 Sprint Kanban Boards (<kbd>g</kbd> <kbd>b</kbd>)
+## 📊 Sprint Kanban Boards
 
 Manage project workflows visually with horizontal column navigation and instant card movement.
 

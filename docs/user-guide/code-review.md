@@ -54,7 +54,7 @@ Review merge requests efficiently using this 4-step workflow:
 
 ## 🔍 Feature Deep Dives
 
-### 1. High-Performance Diff Viewer (<kbd>d</kbd> / <kbd>Enter</kbd>)
+### 1. High-Performance Diff Viewer
 
 The diff viewer features full terminal syntax highlighting, intelligent hunk folding, and side-by-side diffing.
 

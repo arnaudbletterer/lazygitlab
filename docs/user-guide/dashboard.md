@@ -50,7 +50,7 @@ Process your daily GitLab notifications and tasks in seconds without leaving you
 
 ## 📬 Deep Dive: Dashboard Sections
 
-### 1. Unified To-Dos Inbox (<kbd>g</kbd> <kbd>t</kbd>)
+### 1. Unified To-Dos Inbox
 
 The To-Do inbox consolidates notifications from all GitLab projects into one clean action queue.
 
@@ -67,7 +67,7 @@ The To-Do inbox consolidates notifications from all GitLab projects into one cle
 
 ---
 
-### 2. Merge Requests Queue (<kbd>g</kbd> <kbd>m</kbd>)
+### 2. Merge Requests Queue
 
 Never lose track of code reviews waiting on you or branches you need to merge.
 
@@ -84,7 +84,7 @@ Never lose track of code reviews waiting on you or branches you need to merge.
 
 ---
 
-### 3. Cross-Project Issues (<kbd>g</kbd> <kbd>i</kbd>)
+### 3. Cross-Project Issues
 
 Aggregates all open issues assigned to you across all repositories in your organization.
 
@@ -98,7 +98,7 @@ Aggregates all open issues assigned to you across all repositories in your organ
 
 ---
 
-### 4. CI/CD Pipelines Monitor (<kbd>g</kbd> <kbd>p</kbd>)
+### 4. CI/CD Pipelines Monitor
 
 Monitors live pipeline execution across projects with adaptive polling that backs off automatically when builds complete.
 
