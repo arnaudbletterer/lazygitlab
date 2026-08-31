@@ -601,28 +601,205 @@ impl Theme {
     }
 
     pub fn load() -> Self {
-        let config_path = "theme.toml";
-        if let Ok(content) = std::fs::read_to_string(config_path) {
-            // First check if there is a preset theme = "name"
-            #[derive(Deserialize)]
-            struct ThemeConfig {
-                theme: Option<String>,
-                #[serde(flatten)]
-                custom: Option<Theme>,
-            }
-            if let Ok(cfg) = toml::from_str::<ThemeConfig>(&content) {
-                if let Some(preset) = cfg.theme.as_deref().and_then(Self::from_name) {
-                    return preset;
+        // Search locations: local theme.toml, ~/.config/lazygitlab/theme.toml, or config.toml
+        let mut candidates = Vec::new();
+        candidates.push(std::path::PathBuf::from("theme.toml"));
+
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            let config_dir = std::path::PathBuf::from(&home).join(".config").join("lazygitlab");
+            candidates.push(config_dir.join("theme.toml"));
+            candidates.push(config_dir.join("config.toml"));
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let config_dir = std::path::PathBuf::from(appdata).join("lazygitlab");
+            candidates.push(config_dir.join("theme.toml"));
+            candidates.push(config_dir.join("config.toml"));
+        }
+
+        for path in candidates {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Some(t) = Self::parse_theme_content(&content) {
+                    return t;
                 }
-                if let Some(custom) = cfg.custom {
-                    return custom;
-                }
-            }
-            if let Ok(t) = toml::from_str::<Theme>(&content) {
-                return t;
             }
         }
+
         Self::default()
+    }
+
+    pub fn parse_theme_content(content: &str) -> Option<Self> {
+        #[derive(Deserialize)]
+        struct ThemeConfigFile {
+            theme: Option<String>,
+            #[serde(flatten)]
+            custom: Option<PartialTheme>,
+        }
+
+        #[derive(Deserialize)]
+        struct AppConfigWithTheme {
+            theme: Option<String>,
+        }
+
+        if let Ok(cfg) = toml::from_str::<ThemeConfigFile>(content) {
+            let mut base = cfg.theme.as_deref().and_then(Self::from_name).unwrap_or_default();
+            if let Some(custom) = cfg.custom {
+                custom.apply_to(&mut base);
+            }
+            return Some(base);
+        }
+
+        if let Ok(cfg) = toml::from_str::<AppConfigWithTheme>(content) {
+            if let Some(preset) = cfg.theme.as_deref().and_then(Self::from_name) {
+                return Some(preset);
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PartialTheme {
+    // 8 Core Base Colors
+    pub accent: Option<Color>,
+    pub border: Option<Color>,
+    pub title_fg: Option<Color>,
+    pub dim: Option<Color>,
+    pub highlight_bg: Option<Color>,
+    pub code_bg: Option<Color>,
+    pub success: Option<Color>,
+    pub failed: Option<Color>,
+
+    // Secondary Base Colors
+    pub running: Option<Color>,
+    pub pending: Option<Color>,
+    pub author: Option<Color>,
+    pub project: Option<Color>,
+    pub issue: Option<Color>,
+    pub mr: Option<Color>,
+    pub header: Option<Color>,
+    pub header1: Option<Color>,
+    pub header2: Option<Color>,
+    pub shortcut_key: Option<Color>,
+    pub shortcut_desc: Option<Color>,
+    pub keyword: Option<Color>,
+    pub code: Option<Color>,
+    pub range_highlight: Option<Color>,
+    pub active_border: Option<Color>,
+    pub inactive_border: Option<Color>,
+    pub status_success: Option<Color>,
+    pub status_failed: Option<Color>,
+    pub status_running: Option<Color>,
+    pub status_pending: Option<Color>,
+    pub status_draft: Option<Color>,
+    pub status_merged: Option<Color>,
+    pub open_mr: Option<Color>,
+    pub merged_mr: Option<Color>,
+    pub closed_mr: Option<Color>,
+    pub label_bg: Option<Color>,
+    pub label_fg: Option<Color>,
+    pub badge_bg: Option<Color>,
+    pub badge_fg: Option<Color>,
+    pub chip_bg: Option<Color>,
+    pub chip_fg: Option<Color>,
+    pub line_number_fg: Option<Color>,
+    pub hunk_header_bg: Option<Color>,
+    pub hunk_header_fg: Option<Color>,
+    pub diff_add_bg: Option<Color>,
+    pub diff_add_fg: Option<Color>,
+    pub diff_del_bg: Option<Color>,
+    pub diff_del_fg: Option<Color>,
+}
+
+impl PartialTheme {
+    pub fn apply_to(&self, base: &mut Theme) {
+        if let Some(c) = self.border {
+            base.border = c;
+            base.active_border = c;
+        }
+        if let Some(c) = self.active_border { base.active_border = c; }
+        if let Some(c) = self.inactive_border { base.inactive_border = c; }
+        if let Some(c) = self.title_fg {
+            base.title_fg = c;
+            base.shortcut_desc = c;
+            base.label_fg = c;
+        }
+        if let Some(c) = self.dim {
+            base.dim = c;
+            base.inactive_border = c;
+            base.line_number_fg = c;
+            base.status_draft = c;
+        }
+        if let Some(c) = self.accent {
+            base.accent = c;
+            base.header = c;
+            base.running = c;
+            base.status_running = c;
+            base.open_mr = c;
+            base.shortcut_key = c;
+            base.badge_fg = c;
+            base.hunk_header_fg = c;
+        }
+        if let Some(c) = self.highlight_bg {
+            base.highlight_bg = c;
+            base.range_highlight = c;
+            base.label_bg = c;
+            base.badge_bg = c;
+            base.chip_bg = c;
+            base.hunk_header_bg = c;
+        }
+        if let Some(c) = self.code_bg { base.code_bg = c; }
+        if let Some(c) = self.success {
+            base.success = c;
+            base.status_success = c;
+            base.issue = c;
+            base.code = c;
+            base.chip_fg = c;
+            base.diff_add_fg = c;
+        }
+        if let Some(c) = self.failed {
+            base.failed = c;
+            base.status_failed = c;
+            base.closed_mr = c;
+            base.keyword = c;
+            base.diff_del_fg = c;
+        }
+        if let Some(c) = self.running { base.running = c; base.status_running = c; }
+        if let Some(c) = self.pending { base.pending = c; base.status_pending = c; }
+        if let Some(c) = self.author { base.author = c; }
+        if let Some(c) = self.project { base.project = c; }
+        if let Some(c) = self.issue { base.issue = c; }
+        if let Some(c) = self.mr { base.mr = c; }
+        if let Some(c) = self.header { base.header = c; }
+        if let Some(c) = self.header1 { base.header1 = c; }
+        if let Some(c) = self.header2 { base.header2 = c; }
+        if let Some(c) = self.shortcut_key { base.shortcut_key = c; }
+        if let Some(c) = self.shortcut_desc { base.shortcut_desc = c; }
+        if let Some(c) = self.keyword { base.keyword = c; }
+        if let Some(c) = self.code { base.code = c; }
+        if let Some(c) = self.range_highlight { base.range_highlight = c; }
+        if let Some(c) = self.status_success { base.status_success = c; }
+        if let Some(c) = self.status_failed { base.status_failed = c; }
+        if let Some(c) = self.status_running { base.status_running = c; }
+        if let Some(c) = self.status_pending { base.status_pending = c; }
+        if let Some(c) = self.status_draft { base.status_draft = c; }
+        if let Some(c) = self.status_merged { base.status_merged = c; }
+        if let Some(c) = self.open_mr { base.open_mr = c; }
+        if let Some(c) = self.merged_mr { base.merged_mr = c; }
+        if let Some(c) = self.closed_mr { base.closed_mr = c; }
+        if let Some(c) = self.label_bg { base.label_bg = c; }
+        if let Some(c) = self.label_fg { base.label_fg = c; }
+        if let Some(c) = self.badge_bg { base.badge_bg = c; }
+        if let Some(c) = self.badge_fg { base.badge_fg = c; }
+        if let Some(c) = self.chip_bg { base.chip_bg = c; }
+        if let Some(c) = self.chip_fg { base.chip_fg = c; }
+        if let Some(c) = self.line_number_fg { base.line_number_fg = c; }
+        if let Some(c) = self.hunk_header_bg { base.hunk_header_bg = c; }
+        if let Some(c) = self.hunk_header_fg { base.hunk_header_fg = c; }
+        if let Some(c) = self.diff_add_bg { base.diff_add_bg = c; }
+        if let Some(c) = self.diff_add_fg { base.diff_add_fg = c; }
+        if let Some(c) = self.diff_del_bg { base.diff_del_bg = c; }
+        if let Some(c) = self.diff_del_fg { base.diff_del_fg = c; }
     }
 }
 
