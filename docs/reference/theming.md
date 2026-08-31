@@ -4,32 +4,108 @@
 
 ---
 
-## 🎨 Built-in Presets
+## 🎨 Built-in Presets Gallery
 
-To activate a built-in theme, specify its name in `~/.config/lazygitlab/theme.toml` (or `~/.config/lazygitlab/config.toml`):
+Select any preset tab below to preview how it looks directly in `lazygitlab`:
 
-```toml
-theme = "tokyo-night"
-```
+=== "Catppuccin Mocha"
 
-=== "Dark Themes"
+    ![Catppuccin Mocha Theme](../assets/screenshots/theme_catppuccin_mocha.svg)
 
-    | Preset | Description | Key Characteristic |
-    | :--- | :--- | :--- |
-    | `catppuccin-mocha` | Soothing pastel dark palette *(Default)* | Soft mauve & blue accents |
-    | `tokyo-night` | Tokyo Night aesthetic | Clean dark blue & cyan |
-    | `nord` | Arctic, north-bluish palette | Frost teal & calm slate |
-    | `dracula` | High-contrast dark theme | Vibrant purple & pink |
-    | `gruvbox-dark` | Retro groove dark palette | Warm amber, forest green & orange |
-    | `github-dark` | Official GitHub Dark UI palette | High-contrast gray & blue |
+    *Soothing pastel dark palette (Default)*
 
-=== "Light Themes"
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "catppuccin-mocha"
+    ```
 
-    | Preset | Description | Key Characteristic |
-    | :--- | :--- | :--- |
-    | `catppuccin-latte` | Soft warm pastel light theme | High-contrast purple on cream |
-    | `gruvbox-light` | Retro groove light palette | Warm parchment with dark text |
-    | `github-light` | Official GitHub Light UI palette | Crisp white & cobalt blue |
+=== "Tokyo Night"
+
+    ![Tokyo Night Theme](../assets/screenshots/theme_tokyo_night.svg)
+
+    *Clean dark blue & cyan aesthetic*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "tokyo-night"
+    ```
+
+=== "Nord"
+
+    ![Nord Theme](../assets/screenshots/theme_nord.svg)
+
+    *Arctic, north-bluish calm slate palette*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "nord"
+    ```
+
+=== "Dracula"
+
+    ![Dracula Theme](../assets/screenshots/theme_dracula.svg)
+
+    *High-contrast vibrant purple & pink dark theme*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "dracula"
+    ```
+
+=== "Gruvbox Dark"
+
+    ![Gruvbox Dark Theme](../assets/screenshots/theme_gruvbox_dark.svg)
+
+    *Retro groove warm dark palette*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "gruvbox-dark"
+    ```
+
+=== "GitHub Dark"
+
+    ![GitHub Dark Theme](../assets/screenshots/theme_github_dark.svg)
+
+    *Official GitHub Dark UI palette*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "github-dark"
+    ```
+
+=== "Catppuccin Latte (Light)"
+
+    ![Catppuccin Latte Theme](../assets/screenshots/theme_catppuccin_latte.svg)
+
+    *Soft, warm pastel light theme*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "catppuccin-latte"
+    ```
+
+=== "Gruvbox Light (Light)"
+
+    ![Gruvbox Light Theme](../assets/screenshots/theme_gruvbox_light.svg)
+
+    *Warm parchment retro groove light theme*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "gruvbox-light"
+    ```
+
+=== "GitHub Light (Light)"
+
+    ![GitHub Light Theme](../assets/screenshots/theme_github_light.svg)
+
+    *Official crisp GitHub Light UI palette*
+
+    ```toml
+    # ~/.config/lazygitlab/theme.toml
+    theme = "github-light"
+    ```
 
 ---
 

@@ -1,6 +1,6 @@
 use gitlab::GitlabBuilder;
 use lazygitlab::models::*;
-use lazygitlab::ui::ui;
+use lazygitlab::ui::{Theme, ui};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -690,9 +690,246 @@ async fn main() {
     generate_pair_svg(terminal.backend().buffer(), "project_switch");
     app.show_project_popup = false;
 
-    // 10. Generate Automated Cheatsheet Markdown
+    // 10. Render Theme Showcase Screenshots for All Built-in Presets
+    let theme_presets = [
+        ("theme_catppuccin_mocha", Theme::catppuccin_mocha(), false, "#181825", "#1e1e2e"),
+        ("theme_tokyo_night", Theme::tokyo_night(), false, "#16161e", "#1a1b26"),
+        ("theme_nord", Theme::nord(), false, "#242933", "#2e3440"),
+        ("theme_dracula", Theme::dracula(), false, "#21222c", "#282a36"),
+        ("theme_gruvbox_dark", Theme::gruvbox_dark(), false, "#1d2021", "#282828"),
+        ("theme_github_dark", Theme::github_dark(), false, "#0d1117", "#161b22"),
+        ("theme_catppuccin_latte", Theme::catppuccin_latte(), true, "#e6e9ef", "#eff1f5"),
+        ("theme_gruvbox_light", Theme::gruvbox_light(), true, "#f2e5bc", "#fbf1c7"),
+        ("theme_github_light", Theme::github_light(), true, "#f6f8fa", "#ffffff"),
+    ];
+
+    app.view_mode = ViewMode::List;
+    app.active_selection = MenuSelection::Todos;
+    for (filename, theme, is_light, container_bg, header_bg) in theme_presets {
+        app.theme = theme;
+        terminal.draw(|f| ui(f, &mut app)).unwrap();
+        generate_theme_svg(terminal.backend().buffer(), filename, is_light, container_bg, header_bg);
+    }
+    app.theme = Theme::default();
+
+    // 11. Generate Automated Cheatsheet Markdown
     generate_cheatsheet_file(&mut app);
     println!("Vector screenshots and cheatsheet markdown generated successfully.");
+}
+
+fn generate_theme_svg(
+    buffer: &Buffer,
+    filename: &str,
+    is_light: bool,
+    container_bg: &str,
+    header_bg: &str,
+) {
+    let cols = buffer.area().width as usize;
+    let rows = buffer.area().height as usize;
+
+    let cell_w = 9;
+    let cell_h = 19;
+    let header_h = 36;
+    let pad = 24;
+
+    let term_w = cols * cell_w;
+    let term_h = rows * cell_h;
+    let total_w = term_w + pad * 2;
+    let total_h = term_h + header_h + pad * 2;
+
+    use base64::Engine;
+    let b64_regular =
+        base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_REGULAR);
+    let b64_bold =
+        base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_BOLD);
+
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">\n",
+        total_w, total_h, total_w, total_h
+    ));
+
+    let shadow_opacity = if is_light { "0.18" } else { "0.6" };
+    let shadow_color = "#000000";
+    let container_stroke = if is_light {
+        "rgba(0, 0, 0, 0.12)"
+    } else {
+        "rgba(255, 255, 255, 0.12)"
+    };
+    let header_line = if is_light { "#d0d7de" } else { "#13141a" };
+
+    svg.push_str("<defs>\n");
+    svg.push_str("  <filter id=\"macos-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"120%\">\n");
+    svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"20\" stdDeviation=\"24\" flood-color=\"{}\" flood-opacity=\"{}\"/>\n", shadow_color, shadow_opacity));
+    svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"4\" stdDeviation=\"8\" flood-color=\"{}\" flood-opacity=\"0.12\"/>\n", shadow_color));
+    svg.push_str("  </filter>\n");
+    svg.push_str("  <style>\n");
+    svg.push_str(&format!(
+        "    @font-face {{ font-family: 'JetBrains Mono'; src: url('data:font/truetype;charset=utf-8;base64,{}') format('truetype'); font-weight: normal; font-style: normal; }}\n",
+        b64_regular
+    ));
+    svg.push_str(&format!(
+        "    @font-face {{ font-family: 'JetBrains Mono'; src: url('data:font/truetype;charset=utf-8;base64,{}') format('truetype'); font-weight: bold; font-style: normal; }}\n",
+        b64_bold
+    ));
+    svg.push_str("    text { font-family: 'JetBrains Mono', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Segoe UI Symbol', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, monospace; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }\n");
+    svg.push_str("  </style>\n");
+    svg.push_str("</defs>\n");
+
+    // Transparent outer canvas
+    svg.push_str(&format!(
+        "<rect width=\"{}\" height=\"{}\" fill=\"none\"/>\n",
+        total_w, total_h
+    ));
+
+    // Terminal Container with Shadow & Rounded Corners
+    svg.push_str(&format!(
+        "<g filter=\"url(#macos-shadow)\">\n  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"12\" ry=\"12\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n</g>\n",
+        pad, pad, term_w, term_h + header_h, container_bg, container_stroke
+    ));
+
+    // Sleek Title Bar Header with Rounded Top Corners
+    svg.push_str(&format!(
+        "<path d=\"M {} {} a 12 12 0 0 1 12 -12 h {} a 12 12 0 0 1 12 12 v {} h -{} z\" fill=\"{}\"/>\n",
+        pad, pad + 12, term_w - 24, header_h - 12, term_w, header_bg
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        pad,
+        pad + header_h,
+        pad + term_w,
+        pad + header_h,
+        header_line
+    ));
+
+    // macOS Traffic Light Buttons
+    let btn_y = pad + 18;
+    svg.push_str(&format!(
+        "<circle cx=\"{}\" cy=\"{}\" r=\"6\" fill=\"#ff5f57\" stroke=\"#e0443e\" stroke-width=\"0.5\"/>\n",
+        pad + 20, btn_y
+    ));
+    svg.push_str(&format!(
+        "<circle cx=\"{}\" cy=\"{}\" r=\"6\" fill=\"#febc2e\" stroke=\"#d89e24\" stroke-width=\"0.5\"/>\n",
+        pad + 40, btn_y
+    ));
+    svg.push_str(&format!(
+        "<circle cx=\"{}\" cy=\"{}\" r=\"6\" fill=\"#28c840\" stroke=\"#1aab29\" stroke-width=\"0.5\"/>\n",
+        pad + 60, btn_y
+    ));
+
+    // Terminal Screen Background Spans
+    let screen_x = pad;
+    let screen_y = pad + header_h;
+    let empty_bg = container_bg;
+
+    for y in 0..rows {
+        let mut x = 0;
+        while x < cols {
+            let cell = &buffer[(x as u16, y as u16)];
+            let bg = cell.bg;
+            let color_hex = color_to_hex(bg, true, is_light);
+            if color_hex != empty_bg {
+                let start_x = x;
+                while x < cols
+                    && color_to_hex(
+                        buffer[(x as u16, y as u16)].bg,
+                        true,
+                        is_light,
+                    ) == color_hex
+                {
+                    x += 1;
+                }
+                let span_len = x - start_x;
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
+                    screen_x + start_x * cell_w,
+                    screen_y + y * cell_h,
+                    span_len * cell_w,
+                    cell_h,
+                    color_hex
+                ));
+            } else {
+                x += 1;
+            }
+        }
+    }
+
+    // High-Resolution Smooth Text Rendering
+    let default_fg = if is_light { "#24292f" } else { "#cdd6f4" };
+    svg.push_str(&format!(
+        "<g font-family=\"'JetBrains Mono', 'SF Mono', monospace\" font-size=\"13px\" fill=\"{}\">\n",
+        default_fg
+    ));
+    for y in 0..rows {
+        let mut x = 0;
+        while x < cols {
+            let cell = &buffer[(x as u16, y as u16)];
+            let symbol = cell.symbol();
+            if symbol == " " && cell.modifier.is_empty() {
+                x += 1;
+                continue;
+            }
+            if symbol.trim().is_empty() && symbol != " " {
+                x += 1;
+                continue;
+            }
+
+            let start_x = x;
+            let fg = cell.fg;
+            let is_bold =
+                cell.modifier.contains(ratatui::style::Modifier::BOLD);
+            let fg_hex = color_to_hex(fg, false, is_light);
+            let mut text_buf = String::new();
+
+            while x < cols {
+                let cur_cell = &buffer[(x as u16, y as u16)];
+                let cur_sym = cur_cell.symbol();
+                let cur_fg_hex = color_to_hex(cur_cell.fg, false, is_light);
+                let cur_bold =
+                    cur_cell.modifier.contains(ratatui::style::Modifier::BOLD);
+
+                if cur_fg_hex != fg_hex || cur_bold != is_bold {
+                    break;
+                }
+
+                let mut esc = cur_sym
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;");
+                if esc == " " {
+                    esc = "&#160;".to_string();
+                }
+                text_buf.push_str(&esc);
+                x += 1;
+            }
+
+            let fill_attr = if fg_hex == default_fg {
+                String::new()
+            } else {
+                format!(" fill=\"{}\"", fg_hex)
+            };
+            let weight_attr = if is_bold {
+                " font-weight=\"bold\""
+            } else {
+                ""
+            };
+
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\"{}{}>{}</text>\n",
+                screen_x + start_x * cell_w,
+                screen_y + y * cell_h + 14,
+                fill_attr,
+                weight_attr,
+                text_buf
+            ));
+        }
+    }
+    svg.push_str("</g>\n</svg>\n");
+
+    let out_path = format!("docs/assets/screenshots/{}.svg", filename);
+    let mut file = File::create(&out_path).unwrap();
+    file.write_all(svg.as_bytes()).unwrap();
 }
 
 fn format_shortcut_kbd(shortcut: &str) -> String {
