@@ -74,7 +74,7 @@ Select any preset tab below to preview how it looks directly in `lazygitlab`:
     theme = "github-dark"
     ```
 
-=== "Catppuccin Latte (Light)"
+=== "Catppuccin Latte"
 
     ![Catppuccin Latte Theme](../assets/screenshots/theme_catppuccin_latte.svg)
 
@@ -85,7 +85,7 @@ Select any preset tab below to preview how it looks directly in `lazygitlab`:
     theme = "catppuccin-latte"
     ```
 
-=== "Gruvbox Light (Light)"
+=== "Gruvbox Light"
 
     ![Gruvbox Light Theme](../assets/screenshots/theme_gruvbox_light.svg)
 
@@ -96,7 +96,7 @@ Select any preset tab below to preview how it looks directly in `lazygitlab`:
     theme = "gruvbox-light"
     ```
 
-=== "GitHub Light (Light)"
+=== "GitHub Light"
 
     ![GitHub Light Theme](../assets/screenshots/theme_github_light.svg)
 

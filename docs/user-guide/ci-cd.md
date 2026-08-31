@@ -14,7 +14,7 @@ Track pipeline status across branches, tags, and merge requests with real-time s
 
 ### Interactive Pipeline Control Journey
 
-=== "Step 1: Monitor Status & Stages"
+=== "1. Status & Stages"
 
     Jump to the Pipelines view with <kbd>g</kbd> <kbd>p</kbd>:
 
@@ -23,7 +23,7 @@ Track pipeline status across branches, tags, and merge requests with real-time s
     3. Review the stage breakdown pills (*build*, *test*, *security*, *deploy*) in the detail pane.
     4. Press <kbd>Tab</kbd> to focus the jobs list within the selected pipeline.
 
-=== "Step 2: Trigger & Control Runs"
+=== "2. Trigger & Control"
 
     Manage execution of pipelines and jobs on the fly:
 
@@ -32,7 +32,7 @@ Track pipeline status across branches, tags, and merge requests with real-time s
     3. Press <kbd>C</kbd> to abort and cancel a running pipeline.
     4. Highlight an individual job and press <kbd>r</kbd> to retry only that specific job.
 
-=== "Step 3: Schedules & CI Variables"
+=== "3. Schedules & Variables"
 
     Inspect automated schedules and configuration secrets:
 
@@ -66,7 +66,7 @@ Drill into any job to view colorized terminal logs with live streaming and ANSI 
 
 ### Interactive Log Inspection Workflow
 
-=== "Step 1: Real-Time Streaming & Navigation"
+=== "1. Streaming Logs"
 
     Press <kbd>Enter</kbd> on any job in the pipeline detail pane:
 

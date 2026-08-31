@@ -13,27 +13,27 @@
 
 ## ⚡ Highlights
 
-=== "Personal Dashboard"
+=== "Dashboard"
     ![Personal Dashboard](assets/screenshots/dashboard.svg#only-dark)
     ![Personal Dashboard (Light)](assets/screenshots/dashboard-light.svg#only-light)
     Consolidated view of all your assigned To-Dos, Merge Requests awaiting your review, active Issues, and cross-project CI/CD pipelines.
 
-=== "Code Review & Diffs"
+=== "Code Review"
     ![MR Code Review & Diffs](assets/screenshots/mr_diff.svg#only-dark)
     ![MR Code Review & Diffs (Light)](assets/screenshots/mr_diff-light.svg#only-light)
     Full split/unified diffs, syntax highlighting, range comments, approval status, one-key merge, squash, and rebase.
 
-=== "Sprint Kanban Boards"
+=== "Kanban Boards"
     ![Sprint Kanban Board](assets/screenshots/kanban.svg#only-dark)
     ![Sprint Kanban Board (Light)](assets/screenshots/kanban-light.svg#only-light)
     Multi-column Kanban boards with fast issue drag-and-drop, label assignment, milestone filters, and epic tracking.
 
-=== "CI/CD & Live Job Logs"
+=== "CI/CD Pipelines"
     ![CI/CD Live Job Logs](assets/screenshots/job_log.svg#only-dark)
     ![CI/CD Live Job Logs (Light)](assets/screenshots/job_log-light.svg#only-light)
     Monitor live pipelines, inspect colorized job logs with ANSI support, section collapsing, and search.
 
-=== "Repository Explorer"
+=== "Repository"
     ![Repository Tree & File Viewer](assets/screenshots/repo_tree.svg#only-dark)
     ![Repository Tree & File Viewer (Light)](assets/screenshots/repo_tree-light.svg#only-light)
     Browse repository directory trees, switch branches on the fly, and inspect file contents with syntect syntax highlighting.

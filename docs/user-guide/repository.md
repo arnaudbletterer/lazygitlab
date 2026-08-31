@@ -14,7 +14,7 @@ Explore the project's codebase directly from your terminal with fast asynchronou
 
 ### Interactive Repository Browsing Journey
 
-=== "Step 1: Traverse Directory Trees"
+=== "1. Directory Tree"
 
     Navigate to the Repository Explorer with <kbd>g</kbd> <kbd>r</kbd>:
 
@@ -23,7 +23,7 @@ Explore the project's codebase directly from your terminal with fast asynchronou
     3. Press <kbd>Enter</kbd> on any file to open it in the built-in syntax-highlighted viewer.
     4. Press <kbd>h</kbd> to jump back to parent folder.
 
-=== "Step 2: Syntax-Highlighted Code Inspection"
+=== "2. Syntax Viewer"
 
     Inspect source code with automatic language detection:
 
@@ -32,7 +32,7 @@ Explore the project's codebase directly from your terminal with fast asynchronou
     3. Press <kbd>y</kbd> to copy the file contents, selected snippet, or file path to your clipboard.
     4. Press <kbd>o</kbd> to view the file on GitLab web.
 
-=== "Step 3: Switch Branches & Refs"
+=== "3. Switch Branch"
 
     Pivot your repository view to any branch or tag:
 
@@ -65,7 +65,7 @@ Switch seamlessly between any accessible GitLab project in seconds without exiti
 
 ### Interactive Project Switching Workflow
 
-=== "Step 1: Summon Switcher Anywhere"
+=== "1. Summon Switcher (p)"
 
     Press <kbd>p</kbd> from any view or screen in `lazygitlab`:
 

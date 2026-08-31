@@ -12,7 +12,7 @@
 
 Review merge requests efficiently using this 4-step workflow:
 
-=== "Step 1: Inspect Overview & Commits"
+=== "1. Overview & Commits"
 
     From the Merge Request list (<kbd>g</kbd> <kbd>m</kbd>):
 
@@ -22,7 +22,7 @@ Review merge requests efficiently using this 4-step workflow:
     4. Press <kbd>P</kbd> to inspect the latest CI/CD pipeline jobs for this MR.
     5. Press <kbd>Y</kbd> to copy the source branch name to your clipboard for local testing.
 
-=== "Step 2: Navigate Split & Unified Diffs"
+=== "2. Split & Unified Diffs"
 
     Press <kbd>d</kbd> or <kbd>Enter</kbd> to open the **Diff Viewer**:
 
@@ -31,7 +31,7 @@ Review merge requests efficiently using this 4-step workflow:
     3. Press <kbd>Space</kbd> or <kbd>e</kbd> to collapse or expand large files.
     4. Scroll through lines smoothly with <kbd>j</kbd> and <kbd>k</kbd>, or jump hunks with <kbd>Ctrl+D</kbd> / <kbd>Ctrl+U</kbd>.
 
-=== "Step 3: Multi-Line Comments & Threads"
+=== "3. Inline Comments"
 
     Add precise feedback directly on changed lines:
 
@@ -41,7 +41,7 @@ Review merge requests efficiently using this 4-step workflow:
     4. Write your feedback and press <kbd>Ctrl+S</kbd> to submit (or <kbd>Esc</kbd> to discard).
     5. Navigate existing review threads with <kbd>n</kbd> (next) and <kbd>N</kbd> (previous), reply with <kbd>r</kbd>, or resolve with <kbd>s</kbd>.
 
-=== "Step 4: Approvals, Rebasing & Merging"
+=== "4. Approvals & Merging"
 
     Finalize and merge the MR once discussions are resolved:
 

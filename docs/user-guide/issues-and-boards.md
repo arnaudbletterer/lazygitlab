@@ -14,7 +14,7 @@ Inspect issue details, metadata fields, discussions, and linked merge requests w
 
 ### Interactive Issue Triage Journey
 
-=== "Step 1: Filter & Organize"
+=== "1. Filter & Search"
 
     Navigate to the Issues list using <kbd>g</kbd> <kbd>i</kbd>:
 
@@ -23,7 +23,7 @@ Inspect issue details, metadata fields, discussions, and linked merge requests w
     3. Press <kbd>V</kbd> to toggle grouping by upcoming milestone or target release.
     4. Press <kbd>I</kbd> to toggle the filter between all project issues and items where you are assigned or mentioned.
 
-=== "Step 2: Inspect Metadata & Tabs"
+=== "2. Metadata Inspector"
 
     Inspect and edit work item details in the multi-tab inspector:
 
@@ -32,7 +32,7 @@ Inspect issue details, metadata fields, discussions, and linked merge requests w
     3. Press <kbd>d</kbd> to focus the Markdown Description preview.
     4. Press <kbd>e</kbd> or <kbd>Enter</kbd> on a metadata field to edit values directly.
 
-=== "Step 3: Collaborate & Update"
+=== "3. Comments & Updates"
 
     Update issue lifecycle and reply to team comments:
 
@@ -71,7 +71,7 @@ Manage project workflows visually with horizontal column navigation and instant 
 
 ### Interactive Sprint Workflow
 
-=== "Step 1: Select Board & Columns"
+=== "1. Board & Columns"
 
     Press <kbd>g</kbd> <kbd>b</kbd> to open the **Kanban Boards** view:
 

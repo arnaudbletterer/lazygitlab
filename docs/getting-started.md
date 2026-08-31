@@ -12,7 +12,7 @@ Welcome to **lazygitlab**! Get up and running with a lightning-fast, keyboard-dr
 
 Choose the installation method that best fits your workflow:
 
-=== "Cargo (Recommended)"
+=== "Cargo"
 
     If you have Rust and Cargo installed, install `lazygitlab` directly from [crates.io](https://crates.io):
 
@@ -25,7 +25,7 @@ Choose the installation method that best fits your workflow:
     cargo install lazygitlab --force
     ```
 
-=== "Build from Source"
+=== "Source"
 
     To build the latest bleeding-edge version from source (requires Rust 1.75+):
 
@@ -52,7 +52,7 @@ Choose the installation method that best fits your workflow:
 
 ### Configuration Methods
 
-=== "Method 1: Environment Variables"
+=== "Environment Variables"
 
     The quickest way to configure credentials is by exporting environment variables in your shell profile (`~/.bashrc`, `~/.zshrc`, or `.env`):
 
@@ -61,7 +61,7 @@ Choose the installation method that best fits your workflow:
     export GITLAB_URL="https://gitlab.com" # Or your organization's self-hosted URL
     ```
 
-=== "Method 2: Configuration File (`config.toml`)"
+=== "Config File (config.toml)"
 
     For persistent settings across sessions, create a configuration file at `~/.config/lazygitlab/config.toml` (Linux/macOS) or `%APPDATA%\lazygitlab\config.toml` (Windows):
 
@@ -73,7 +73,7 @@ Choose the installation method that best fits your workflow:
     # theme = "catppuccin-mocha"
     ```
 
-=== "Method 3: CLI Flags"
+=== "CLI Flags"
 
     You can also pass credentials dynamically via command-line arguments:
 
@@ -93,7 +93,7 @@ Choose the installation method that best fits your workflow:
 
 Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
-=== "Step 1: Launch in a Local Git Repo"
+=== "1. Local Git Repo"
 
     Navigate to any local Git repository cloned from your GitLab instance:
 
@@ -104,7 +104,7 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
     `lazygitlab` automatically inspects your `.git/config` remote origin, matches the repository path on GitLab, and opens the project dashboard immediately.
 
-=== "Step 2: Target a Specific Project"
+=== "2. Target Project (-p)"
 
     Open any repository directly by providing its path or numeric ID without switching directories:
 
@@ -116,7 +116,7 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
     lazygitlab -p 81221057
     ```
 
-=== "Step 3: Open the Personal Dashboard"
+=== "3. Personal Dashboard"
 
     Launch `lazygitlab` outside of any git repository to enter the unified **Personal Dashboard**:
 
@@ -127,7 +127,7 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
     This consolidates all your pending To-Dos, assigned Merge Requests, review requests, and active issues across the entire GitLab organization.
 
-=== "Step 4: Explore with the Help Palette"
+=== "4. Command Palette (?)"
 
     Press <kbd>?</kbd> at any time to open the **Command Palette & Shortcut Finder**. Type to filter actions, or use the global navigation shortcuts below.
 

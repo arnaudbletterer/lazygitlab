@@ -12,7 +12,7 @@ The **Personal Dashboard** is your unified inbox and central command center acro
 
 Process your daily GitLab notifications and tasks in seconds without leaving your terminal:
 
-=== "Step 1: Triage Your To-Dos"
+=== "1. To-Dos"
 
     Jump directly to your Personal To-Dos with <kbd>g</kbd> <kbd>t</kbd>:
 
@@ -21,7 +21,7 @@ Process your daily GitLab notifications and tasks in seconds without leaving you
     3. Press <kbd>d</kbd> to mark the To-Do as done (completed).
     4. Press <kbd>s</kbd> to snooze items you want to handle later.
 
-=== "Step 2: Review Requests & Authored MRs"
+=== "2. Merge Requests"
 
     Jump to your global Merge Requests queue with <kbd>g</kbd> <kbd>m</kbd>:
 
@@ -29,7 +29,7 @@ Process your daily GitLab notifications and tasks in seconds without leaving you
     2. Inspect status indicators: pipeline health, merge conflict flags, approval counts, and draft status.
     3. Press <kbd>d</kbd> or <kbd>Enter</kbd> to jump straight into the full Diff Viewer.
 
-=== "Step 3: Track Assigned Issues"
+=== "3. Issues"
 
     Jump to your cross-project Issues view with <kbd>g</kbd> <kbd>i</kbd>:
 
@@ -38,7 +38,7 @@ Process your daily GitLab notifications and tasks in seconds without leaving you
     3. Press <kbd>I</kbd> to restrict the list strictly to involved items.
     4. Press <kbd>c</kbd> to close or reopen an issue directly from the list.
 
-=== "Step 4: Monitor Cross-Project CI/CD"
+=== "4. CI/CD"
 
     Jump to the cross-project Pipelines monitor with <kbd>g</kbd> <kbd>p</kbd>:
 
