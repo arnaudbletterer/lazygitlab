@@ -319,7 +319,8 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
-            let squash = mr.squash.unwrap_or(false);
+            let squash = self.merge_squash;
+            let should_remove_source_branch = self.merge_remove_source_branch;
             self.status_message = Some(format!("Merging MR !{}...", iid));
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
@@ -329,7 +330,7 @@ impl App {
                     project: pid,
                     merge_request: iid,
                     squash,
-                    should_remove_source_branch: true,
+                    should_remove_source_branch,
                 };
                 let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
                     std::time::Duration::from_secs(30),

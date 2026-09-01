@@ -653,6 +653,7 @@ impl App {
                         {
                             let name = branch.name.clone();
                             self.show_tree_branch_popup = false;
+                            self.view_mode = ViewMode::List;
                             let _ = self.select_repository_ref(name).await;
                         } else {
                             self.show_tree_branch_popup = false;
@@ -694,6 +695,11 @@ impl App {
                         if processed_key.modifiers.contains(KeyModifiers::CONTROL)
                             || processed_key.modifiers.contains(KeyModifiers::SHIFT) =>
                     {
+                        if self.input_target == InputTarget::PipelineVariableKey {
+                            self.pipeline_variable_key_input = self.textarea.lines().join("\n");
+                        } else if self.input_target == InputTarget::PipelineVariableValue {
+                            self.pipeline_variable_value_input = self.textarea.lines().join("\n");
+                        }
                         let key_name = self.pipeline_variable_key_input.trim().to_string();
                         let value = self.pipeline_variable_value_input.clone();
                         let update_existing = self
@@ -715,6 +721,11 @@ impl App {
                     }
                     _ => {
                         self.textarea.input(processed_key);
+                        if self.input_target == InputTarget::PipelineVariableKey {
+                            self.pipeline_variable_key_input = self.textarea.lines().join("\n");
+                        } else if self.input_target == InputTarget::PipelineVariableValue {
+                            self.pipeline_variable_value_input = self.textarea.lines().join("\n");
+                        }
                     }
                 }
                 return true;
@@ -747,6 +758,7 @@ impl App {
                         .and_then(|i| self.project_variables.get(i))
                     {
                         let key_name = v.key.clone();
+                        self.pipeline_variable_key_input = key_name.clone();
                         self.pipeline_variable_value_input = v.value.clone();
                         self.ci_var_editing = Some(key_name.clone());
                         self.input_mode = true;
@@ -790,6 +802,12 @@ impl App {
                     self.show_confirm_rebase_popup = false;
                     self.show_confirm_delete_branch_popup = false;
                     self.pending_delete_branch = None;
+                }
+                KeyCode::Char('s') | KeyCode::Char('S') if self.show_confirm_merge_popup => {
+                    self.merge_squash = !self.merge_squash;
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') if self.show_confirm_merge_popup => {
+                    self.merge_remove_source_branch = !self.merge_remove_source_branch;
                 }
                 KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
                     if self.show_confirm_merge_popup {
@@ -997,7 +1015,17 @@ impl App {
                     }
                     _ => self.input_target = InputTarget::PipelineRef,
                 },
-                KeyCode::Char('p') if !self.input_mode || self.show_pipeline_popup => {
+                KeyCode::Char('r') if processed_key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    let _ = self.submit_pipeline_launch_sync().await;
+                }
+                KeyCode::Enter if processed_key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    let _ = self.submit_pipeline_launch_sync().await;
+                }
+                KeyCode::Char('p')
+                    if self.input_target == InputTarget::PipelineVariableList
+                        || (self.input_target == InputTarget::PipelineVariableKey
+                            && self.pipeline_variable_key_input.is_empty()) =>
+                {
                     let _ = self.submit_pipeline_launch_sync().await;
                 }
                 KeyCode::Enter => match self.input_target {

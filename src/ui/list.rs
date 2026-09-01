@@ -56,11 +56,16 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .border_style(Style::default().fg(app.theme.dim));
 
     let status_lines = if let Some(project) = &app.selected_project {
+        let dirty_suffix = if let Some(ref git) = app.local_git_status {
+            if git.is_dirty { "*" } else { "" }
+        } else {
+            ""
+        };
         vec![
             Line::from(vec![
                 Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
                 Span::styled(
-                    crate::ui::widgets::truncate_str(&project.name, 18),
+                    format!("{}{}", crate::ui::widgets::truncate_str(&project.name, 16), dirty_suffix),
                     Style::default().fg(app.theme.title_fg).bold(),
                 ),
             ]),
@@ -775,21 +780,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
-                    Line::from(Span::styled(
-                        "No Projects found.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("/", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to filter or ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
-                    ]),
-                ];
-                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+                crate::ui::banner::Banner::render_empty_state(
+                    f,
+                    list_chunks[1],
+                    &app.theme,
+                    "No Projects found.",
+                    &[("/", "filter"), ("r", "refresh from GitLab")],
+                );
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -823,21 +820,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
-                    Line::from(Span::styled(
-                        "No Groups found.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("/", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to filter or ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
-                    ]),
-                ];
-                f.render_widget(Paragraph::new(msg), list_chunks[1]);
+                crate::ui::banner::Banner::render_empty_state(
+                    f,
+                    list_chunks[1],
+                    &app.theme,
+                    "No Groups found.",
+                    &[("/", "filter"), ("r", "refresh from GitLab")],
+                );
             } else {
                 f.render_stateful_widget(
                     List::new(items)
@@ -853,45 +842,78 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         MenuSelection::Repository => {
-            let mut tree_items: Vec<tui_tree_widget::TreeItem<'static, String>> = Vec::new();
-            for item in &app.repository_tree {
-                let text = if item.r#type == "tree" {
-                    format!("📁 {}", item.name)
-                } else {
-                    format!("📄 {}", item.name)
-                };
-                tree_items.push(tui_tree_widget::TreeItem::new_leaf(item.path.clone(), text));
-            }
             let ref_name = app.repository_ref.as_deref().unwrap_or("default");
-            let tree = tui_tree_widget::Tree::new(&tree_items)
-                .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
-                .block(
-                    Block::default()
-                        .title(Span::styled(
-                            format!(" 📂 Files (🌿 {}) ", ref_name),
-                            Style::default().fg(app.theme.title_fg).bold(),
-                        ))
-                        .title_bottom(Line::from(vec![
-                            Span::styled(" b ", Style::default().fg(app.theme.author).bold()),
-                            Span::styled("switch branch  ", Style::default().fg(app.theme.dim)),
-                            Span::styled("Enter ", Style::default().fg(app.theme.author).bold()),
-                            Span::styled("open file/folder ", Style::default().fg(app.theme.dim)),
-                        ]))
-                        .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
-                        .border_style(if is_main_focused {
-                            Style::default().fg(app.theme.active_border)
-                        } else {
-                            Style::default().fg(app.theme.inactive_border)
-                        }),
-                )
-                .highlight_style(if is_main_focused {
-                    highlight_style
+            let mut title_spans = vec![
+                Span::styled(
+                    format!(" 📂 Files (🌿 {}) ", ref_name),
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
+            ];
+            if let Some(ref git) = app.local_git_status {
+                if git.is_dirty {
+                    title_spans.push(Span::styled("● Dirty ", Style::default().fg(app.theme.pending).bold()));
                 } else {
-                    no_highlight
-                })
-                .highlight_symbol(if is_main_focused { "▎ " } else { "  " });
-            f.render_stateful_widget(tree, list_chunks[1], &mut app.repository_tree_state);
+                    title_spans.push(Span::styled("● Clean ", Style::default().fg(app.theme.status_success).bold()));
+                }
+            }
+            let block = Block::default()
+                .title(Line::from(title_spans))
+                .title_bottom(Line::from(vec![
+                    Span::styled(" b ", Style::default().fg(app.theme.author).bold()),
+                    Span::styled("switch branch  ", Style::default().fg(app.theme.dim)),
+                    Span::styled("Enter/Space ", Style::default().fg(app.theme.author).bold()),
+                    Span::styled("open file/folder ", Style::default().fg(app.theme.dim)),
+                ]))
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(if is_main_focused {
+                    Style::default().fg(app.theme.active_border)
+                } else {
+                    Style::default().fg(app.theme.inactive_border)
+                });
+
+            if app.repository_tree.is_empty() {
+                let empty_lines = vec![
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "  No files found on this branch or repository is empty.",
+                        Style::default().fg(app.theme.title_fg).bold(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("b", Style::default().fg(app.theme.author).bold()),
+                        Span::styled(" to switch to another branch", Style::default().fg(app.theme.dim)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                        Span::styled("r", Style::default().fg(app.theme.author).bold()),
+                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                    ]),
+                ];
+                let p = Paragraph::new(empty_lines).block(block);
+                f.render_widget(p, list_chunks[1]);
+            } else {
+                let mut tree_items: Vec<tui_tree_widget::TreeItem<'static, String>> = Vec::new();
+                for item in &app.repository_tree {
+                    let text = if item.r#type == "tree" {
+                        format!("📁 {}", item.name)
+                    } else {
+                        format!("📄 {}", item.name)
+                    };
+                    tree_items.push(tui_tree_widget::TreeItem::new_leaf(item.path.clone(), text));
+                }
+                let tree = tui_tree_widget::Tree::new(&tree_items)
+                    .unwrap_or_else(|_| tui_tree_widget::Tree::new(&[]).unwrap())
+                    .block(block)
+                    .highlight_style(if is_main_focused {
+                        highlight_style
+                    } else {
+                        no_highlight
+                    })
+                    .highlight_symbol(if is_main_focused { "▎ " } else { "  " });
+                f.render_stateful_widget(tree, list_chunks[1], &mut app.repository_tree_state);
+            }
         }
         MenuSelection::Branches => {
             let items: Vec<ListItem> = app

@@ -617,10 +617,10 @@ impl Theme {
         }
 
         for path in candidates {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Some(t) = Self::parse_theme_content(&content) {
-                    return t;
-                }
+            if let Ok(content) = std::fs::read_to_string(&path)
+                && let Some(t) = Self::parse_theme_content(&content)
+            {
+                return t;
             }
         }
 
@@ -648,10 +648,10 @@ impl Theme {
             return Some(base);
         }
 
-        if let Ok(cfg) = toml::from_str::<AppConfigWithTheme>(content) {
-            if let Some(preset) = cfg.theme.as_deref().and_then(Self::from_name) {
-                return Some(preset);
-            }
+        if let Ok(cfg) = toml::from_str::<AppConfigWithTheme>(content)
+            && let Some(preset) = cfg.theme.as_deref().and_then(Self::from_name)
+        {
+            return Some(preset);
         }
 
         None

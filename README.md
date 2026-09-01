@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="lazygitlab logo" width="160" />
+</p>
+
 # lazygitlab
 
 A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Triage merge requests, review diffs, watch pipelines, and manage issues without leaving the terminal.
@@ -19,6 +23,8 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 
 ### Merge Request review
 - **Diff view with inline comments** scoped to a specific line or line range (`src/app/mrs/review.rs`, shortcut `c` in diff)
+- **Side-by-side vs unified diff viewer** toggleable with `w`, with binary file indicators and file status badges (`src/ui/diff.rs:18`)
+- **Interactive merge dialog** with interactive squash (`s`) and delete source branch (`d`) toggles (`src/ui/popup/confirm.rs:5`)
 - **Approve / Unapprove / Merge / Rebase / Squash / Draft toggle / Open-Close** (`A` / `R` / `M` / `E` / `S` / `D` / `c` in detail) — see `src/app/mrs/review.rs`
 - **Related MRs & closing issues** shown in the metadata panel (lazy-fetched)
 - **Edit metadata in place**: title, description, labels, assignees, reviewers, milestone, target branch
@@ -41,7 +47,7 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 - **Create / delete branches** from the Branches list (`n` / `D`)
 - **Commits history** with pagination (`src/app/global.rs:210`)
 - **Branches** list (`src/app/global.rs:250`)
-- **Kanban boards** with horizontal scroll, multi-column filter, drag issues between columns with `H` / `L` (`src/app/mod.rs:3456`, `src/ui/boards.rs`)
+- **Kanban boards** with horizontal scroll, multi-column filter, instant optimistic card moves with `H` / `L`, quick close/reopen (`c`), and shortcut footer (`src/app/mod.rs:3523`, `src/ui/boards.rs:1`)
 - **Epics** list per group (`src/app/boards.rs:107`)
 
 ### Quality of life

@@ -1055,13 +1055,17 @@ pub fn parse_job_log(log: &str) -> Vec<LogLine> {
 
         if let Some(caps) = section_start_re.captures(&content) {
             is_section_start = true;
-            let name = caps.get(2).map(|m| m.as_str().to_string());
+            let name = caps
+                .get(2)
+                .map(|m| m.as_str().split('[').next().unwrap_or(m.as_str()).trim().to_string());
             current_section = name.clone();
             line_section = name;
             content = section_start_re.replace(&content, "").to_string();
         } else if let Some(caps) = section_end_re.captures(&content) {
             is_section_end = true;
-            let name = caps.get(2).map(|m| m.as_str().to_string());
+            let name = caps
+                .get(2)
+                .map(|m| m.as_str().split('[').next().unwrap_or(m.as_str()).trim().to_string());
             line_section = name.clone();
             content = section_end_re.replace(&content, "").to_string();
             current_section = None;

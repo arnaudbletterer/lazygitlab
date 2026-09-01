@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="lazygitlab logo" width="160" />
+</p>
+
 # lazygitlab
 
 <p align="center">

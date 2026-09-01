@@ -6,7 +6,12 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-### Added
+- **Interactive Merge Confirmation Options:** Added interactive squash commits (`s`) and delete source branch (`d`) toggles inside the merge confirmation popup (`src/ui/popup/confirm.rs`, `src/app/popups.rs`).
+- **Side-by-Side Diff Viewer:** Added side-by-side dual-column diff viewer toggled with `w` in the Diff view (`src/ui/diff.rs`, `src/app/keymap.rs`).
+- **Resilient Diff & File Status Handling:** Added explicit notices for binary files and empty diffs preventing infinite API reload loops, and rendered file status badges (`[-]` deleted, `[+]` added, `[R]` renamed) in the diff file tree (`src/app/mod.rs`, `src/ui/diff.rs`).
+- **Optimistic Kanban Card Movement:** Moving cards across columns (`H` / `L`) now updates board state, card selection, labels, and issue state immediately with optimistic local updates, eliminating server latency and cursor snap-back (`src/app/mod.rs`).
+- **Kanban Quick Issue Close / Reopen:** Added direct issue state toggling with `c` while highlighting any card on a Kanban board (`src/app/keymap.rs`).
+- **Kanban Column Cursor & Footer Polish:** Maintained column selection on board updates and added a dedicated Kanban keyboard shortcuts footer bar (`src/app/mod.rs`, `src/ui/boards.rs`).
 - **Gruvbox Light Theme:** Added built-in Gruvbox Light preset with authentic Gruvbox palette and high contrast.
 - **Dynamic Contrast Helpers:** Added luminance-based `get_contrast_color` and updated `get_contrasting_text_color` to select dark text (`#11111b`) or light text (`#cdd6f4`) based on WCAG perceived luminance.
 - **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project.

@@ -102,8 +102,10 @@ Click on the preview to open the high-resolution lightbox or download the vector
 | :--- | :--- |
 | <kbd>y</kbd> | Copy line or selection |
 | <kbd>Shift</kbd>  +  <kbd>j/k</kbd> | Extend selection |
-| <kbd>Tab</kbd>  /  <kbd>l</kbd> | Toggle section collapse |
+| <kbd>Tab</kbd>  /  <kbd>Space</kbd>  /  <kbd>l</kbd> | Toggle section collapse |
 | <kbd>/</kbd> | Search in log (Enter jumps to next match) |
+| <kbd>n</kbd>  /  <kbd>N</kbd> | Jump to next / previous search match |
+| <kbd>f</kbd> | Toggle auto-follow log |
 | <kbd>G</kbd>  /  <kbd>Home</kbd> | Jump to end / start of log |
 | <kbd>PgUp</kbd>  /  <kbd>PgDn</kbd> | Page through log |
 
@@ -111,6 +113,8 @@ Click on the preview to open the high-resolution lightbox or download the vector
 
 | Shortcut | Description |
 | :--- | :--- |
+| <kbd>b</kbd> | Switch branch |
+| <kbd>Enter</kbd>  /  <kbd>Space</kbd> | Expand/collapse directory or open file |
 | <kbd>b</kbd> | Browse another branch |
 
 ## 🔍 Filters & Search

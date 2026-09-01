@@ -1,3 +1,4 @@
+pub mod banner;
 pub mod boards;
 pub mod detail;
 pub mod diff;
@@ -675,6 +676,10 @@ fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
         }
         match &app.file_highlight_cache {
             Some((_, _, lines)) => {
+                let max_scroll = lines.len().saturating_sub(app.file_viewport_height as usize) as u16;
+                if app.file_scroll > max_scroll {
+                    app.file_scroll = max_scroll;
+                }
                 let p = Paragraph::new(lines.clone())
                     .block(block)
                     .scroll((app.file_scroll, 0));
@@ -698,6 +703,23 @@ fn highlight_and_render(
     text: &str,
     line_number_color: ratatui::style::Color,
 ) -> Vec<Line<'static>> {
+    if text.len() > 500_000 {
+        let mut out = Vec::new();
+        out.push(Line::from(Span::styled(
+            "  [Large file: syntax highlighting disabled for performance]",
+            Style::default().fg(line_number_color).bold(),
+        )));
+        for (i, line) in text.lines().enumerate() {
+            out.push(Line::from(vec![
+                Span::styled(
+                    format!("{:4} ", i + 1),
+                    Style::default().fg(line_number_color),
+                ),
+                Span::raw(line.to_string()),
+            ]));
+        }
+        return out;
+    }
     let extension = std::path::Path::new(file_path)
         .extension()
         .and_then(|e| e.to_str())

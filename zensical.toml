@@ -33,6 +33,8 @@ nav = [
 [project.theme]
 name = "material"
 language = "en"
+logo = "assets/logo.svg"
+favicon = "assets/logo.png"
 features = [
     "navigation.instant",
     "navigation.instant.progress",

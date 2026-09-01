@@ -976,8 +976,15 @@ pub enum DataUpdate {
     CheckPagination,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LocalGitStatus {
+    pub branch: String,
+    pub is_dirty: bool,
+}
+
 pub struct App {
     pub target_project: Option<String>,
+    pub local_git_status: Option<LocalGitStatus>,
     pub should_quit: bool,
     pub active_context: Context,
     pub dashboard_menu_state: ListState,
@@ -1012,6 +1019,7 @@ pub struct App {
     pub mr_diff_state: ListState,
     pub diff_line_state: ListState,
     pub diff_selection_start: Option<usize>,
+    pub diff_side_by_side: bool,
     pub job_log: String,
     pub job_log_lines: Vec<LogLine>,
     pub collapsed_sections: std::collections::HashSet<String>,
@@ -1125,6 +1133,8 @@ pub struct App {
     pub create_issue_description: String,
 
     pub show_confirm_merge_popup: bool,
+    pub merge_squash: bool,
+    pub merge_remove_source_branch: bool,
     pub show_confirm_rebase_popup: bool,
     pub show_confirm_delete_branch_popup: bool,
     pub pending_delete_branch: Option<(u64, String)>,

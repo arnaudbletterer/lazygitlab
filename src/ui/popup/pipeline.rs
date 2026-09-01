@@ -201,7 +201,13 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
             .bg(app.theme.code_bg)
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Pipeline Schedules (Enter = run now) ", Style::default().fg(app.theme.title_fg).bold()))
+            .title(Span::styled(" ⏱ Pipeline Schedules ", Style::default().fg(app.theme.title_fg).bold()))
+            .title_bottom(Line::from(vec![
+                Span::styled(" Enter ", Style::default().fg(app.theme.author).bold()),
+                Span::styled("run now  ", Style::default().fg(app.theme.dim)),
+                Span::styled("Esc ", Style::default().fg(app.theme.author).bold()),
+                Span::styled("close ", Style::default().fg(app.theme.dim)),
+            ]))
             .border_style(Style::default().fg(app.theme.active_border)),
         area,
     );
@@ -226,11 +232,12 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
         })
         .collect();
 
+    let inner = area.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+
     if items.is_empty() {
-        let inner = area.inner(Margin {
-            horizontal: 2,
-            vertical: 1,
-        });
         f.render_widget(
             Paragraph::new("No pipeline schedules configured.")
                 .style(Style::default().fg(app.theme.dim)),
@@ -243,7 +250,7 @@ pub fn render_schedules_popup(f: &mut Frame, app: &mut App) {
                 .fg(app.theme.title_fg)
                 .add_modifier(Modifier::BOLD),
         );
-        f.render_stateful_widget(list, area, &mut app.schedules_state);
+        f.render_stateful_widget(list, inner, &mut app.schedules_state);
     }
 }
 

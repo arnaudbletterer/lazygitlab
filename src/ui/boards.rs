@@ -5,7 +5,27 @@ pub fn render_boards_view(f: &mut Frame, app: &mut App, area: Rect) {
     if app.selected_board.is_none() {
         render_board_list(f, app, area);
     } else {
-        render_kanban_board(f, app, area);
+        let board_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(area);
+        render_kanban_board(f, app, board_chunks[0]);
+
+        let shortcuts_spans = vec![
+            Span::styled("[h/l]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Column  ", Style::default().fg(app.theme.dim)),
+            Span::styled("[j/k]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Card  ", Style::default().fg(app.theme.dim)),
+            Span::styled("[H/L]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Move  ", Style::default().fg(app.theme.dim)),
+            Span::styled("[c]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Close/Reopen  ", Style::default().fg(app.theme.dim)),
+            Span::styled("[Enter]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Detail  ", Style::default().fg(app.theme.dim)),
+            Span::styled("[Esc]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(" Back", Style::default().fg(app.theme.dim)),
+        ];
+        f.render_widget(Paragraph::new(Line::from(shortcuts_spans)), board_chunks[1]);
     }
 }
 

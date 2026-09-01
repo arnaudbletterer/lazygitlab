@@ -34,6 +34,7 @@ impl App {
 
         Self {
             target_project,
+            local_git_status: detect_local_git_status(),
             should_quit: false,
             active_context: Context::Dashboard,
             dashboard_menu_state,
@@ -68,6 +69,7 @@ impl App {
             mr_diff_state: ListState::default(),
             diff_line_state: ListState::default(),
             diff_selection_start: None,
+            diff_side_by_side: false,
             job_log: String::new(),
             job_log_lines: Vec::new(),
             collapsed_sections: std::collections::HashSet::new(),
@@ -147,6 +149,8 @@ impl App {
             pipelines_page: 1,
             pipelines_has_more: true,
             show_confirm_merge_popup: false,
+            merge_squash: false,
+            merge_remove_source_branch: true,
             show_confirm_rebase_popup: false,
             show_confirm_delete_branch_popup: false,
             pending_delete_branch: None,
@@ -1168,13 +1172,13 @@ impl App {
                         .as_ref()
                         .is_some_and(|b| b.id == board_id)
                 {
+                    let prev_sel = self.board_lists_state.selected();
                     self.board_lists = data.clone();
-                    self.board_lists_state
-                        .select(if self.board_lists.is_empty() {
-                            None
-                        } else {
-                            Some(0)
-                        });
+                    self.board_lists_state.select(if self.board_lists.is_empty() {
+                        None
+                    } else {
+                        Some(prev_sel.map(|s| s.min(self.board_lists.len() - 1)).unwrap_or(0))
+                    });
                     let lists_to_fetch = self.board_lists.clone();
                     for list in lists_to_fetch {
                         let _ = self.fetch_board_list_issues(board_id, list.id).await;
@@ -1193,6 +1197,7 @@ impl App {
                     .is_some_and(|p| p.id == project_id)
                 {
                     self.board_issues.insert(list_id, data);
+                    self.filter_lists();
                 }
             }
             DataUpdate::Epics { group_id: _, data } => {
@@ -1337,11 +1342,7 @@ impl App {
         }
 
         for diff in &mut self.mr_diffs {
-            if diff.diff.is_empty() {
-                diff.collapsed = true;
-            }
-
-            if diff.collapsed && diff.diff.is_empty() {
+            if diff.diff.is_empty() && diff.collapsed {
                 if diff.display_lines.is_empty() {
                     diff.display_lines.push(DiffDisplayLine::Code(
                         "@@ [Diff collapsed by GitLab API. File too large or too many files.] @@"
@@ -1351,6 +1352,23 @@ impl App {
                     ));
                     diff.display_lines.push(DiffDisplayLine::Code("@@ Press 'E' or 'e' to force fetch this file's diff from the repository. @@".to_string(), None, None));
                 }
+                continue;
+            } else if diff.diff.is_empty() {
+                diff.display_lines = vec![DiffDisplayLine::Code(
+                    "@@ [Empty diff or binary file: no changes to display] @@".to_string(),
+                    None,
+                    None,
+                )];
+                continue;
+            }
+
+            let is_binary = diff.diff.contains('\0') || diff.diff.starts_with("Binary files ");
+            if is_binary {
+                diff.display_lines = vec![DiffDisplayLine::Code(
+                    format!("@@ [Binary file: {}] @@", diff.new_path),
+                    None,
+                    None,
+                )];
                 continue;
             }
 
@@ -2007,6 +2025,27 @@ impl App {
         let len = self.job_log_lines.len();
         for offset in 1..=len {
             let idx = (self.job_log_cursor + offset) % len;
+            if self.job_log_lines[idx]
+                .content
+                .to_lowercase()
+                .contains(&needle)
+            {
+                self.job_log_cursor = idx;
+                self.ensure_job_log_cursor_visible();
+                return;
+            }
+        }
+        self.status_message = Some(format!("No match for '{}'", self.job_log_search));
+    }
+
+    pub fn job_log_search_prev(&mut self) {
+        if self.job_log_lines.is_empty() || self.job_log_search.is_empty() {
+            return;
+        }
+        let needle = self.job_log_search.to_lowercase();
+        let len = self.job_log_lines.len();
+        for offset in 1..=len {
+            let idx = (self.job_log_cursor + len - (offset % len)) % len;
             if self.job_log_lines[idx]
                 .content
                 .to_lowercase()
@@ -3599,8 +3638,50 @@ impl App {
             let _ = tx.send(DataUpdate::Loading(false));
         });
 
+        // Optimistic local update
+        if let Some(from_issues) = self.board_issues.get_mut(&from_list.id)
+            && let Some(pos) = from_issues.iter().position(|i| i.iid == issue_iid)
+        {
+            let mut moved = from_issues.remove(pos);
+            if let Some(l) = &from_list.label {
+                moved.labels.retain(|label| label.name != l.name);
+            }
+            if let Some(l) = &to_list.label
+                && !moved.labels.iter().any(|label| label.name == l.name)
+            {
+                moved.labels.push(l.clone());
+            }
+            if to_list.list_type == "closed" {
+                moved.state = "closed".to_string();
+            } else if from_list.list_type == "closed" {
+                moved.state = "opened".to_string();
+            }
+            let to_issues = self.board_issues.entry(to_list.id).or_default();
+            to_issues.push(moved);
+        }
+        self.filter_lists();
+        if let Some(state) = self.board_issue_states.get_mut(&from_list.id) {
+            let remaining = self.filtered_board_issues.get(&from_list.id).map(|v| v.len()).unwrap_or(0);
+            if remaining == 0 {
+                state.select(None);
+            } else if let Some(cur) = state.selected() {
+                state.select(Some(cur.min(remaining - 1)));
+            }
+        }
+        let to_count = self.filtered_board_issues.get(&to_list.id).map(|v| v.len()).unwrap_or(0);
+        if to_count > 0 {
+            self.board_issue_states.entry(to_list.id).or_default().select(Some(to_count - 1));
+        }
         self.board_lists_state.select(Some(target_list_idx));
         Ok(())
+    }
+
+    pub fn open_confirm_merge_popup(&mut self) {
+        if let Some(mr) = &self.selected_mr {
+            self.merge_squash = mr.squash.unwrap_or(false);
+            self.merge_remove_source_branch = true;
+            self.show_confirm_merge_popup = true;
+        }
     }
 
     pub async fn back(&mut self) {
@@ -3880,10 +3961,42 @@ impl App {
             self.merge_requests.clear();
             self.issues.clear();
             self.pipelines.clear();
+            self.repository_ref = None;
+            self.repository_tree.clear();
+            self.project_branches.clear();
+            self.selected_file_content = None;
+            self.file_scroll = 0;
+            self.file_highlight_cache = None;
             self.filter_lists();
             let _ = self.refresh().await;
         }
     }
+}
+
+pub fn detect_local_git_status() -> Option<LocalGitStatus> {
+    if std::env::current_exe()
+        .map(|p| p.to_string_lossy().contains("deps"))
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    let branch_output = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !branch_output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+    if branch.is_empty() {
+        return None;
+    }
+    let status_output = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .ok()?;
+    let is_dirty = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
+    Some(LocalGitStatus { branch, is_dirty })
 }
 
 pub fn parse_reactions(reaction_values: Vec<serde_json::Value>) -> Vec<AwardEmoji> {

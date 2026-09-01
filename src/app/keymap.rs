@@ -332,7 +332,7 @@ impl App {
                 category: "Job Log".into(),
             });
             items.push(HelpItem {
-                shortcut: "Tab / l".into(),
+                shortcut: "Tab / Space / l".into(),
                 description: "Toggle section collapse".into(),
                 action: HelpAction::None,
                 category: "Job Log".into(),
@@ -341,6 +341,18 @@ impl App {
                 shortcut: "/".into(),
                 description: "Search in log (Enter jumps to next match)".into(),
                 action: HelpAction::Filter,
+                category: "Job Log".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "n / N".into(),
+                description: "Jump to next / previous search match".into(),
+                action: HelpAction::None,
+                category: "Job Log".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "f".into(),
+                description: "Toggle auto-follow log".into(),
+                action: HelpAction::None,
                 category: "Job Log".into(),
             });
             items.push(HelpItem {
@@ -448,6 +460,20 @@ impl App {
                 description: "Delete selected branch".into(),
                 action: HelpAction::None,
                 category: "Branch".into(),
+            });
+        }
+        if self.active_selection == MenuSelection::Repository {
+            items.push(HelpItem {
+                shortcut: "b".into(),
+                description: "Switch branch".into(),
+                action: HelpAction::None,
+                category: "Repository".into(),
+            });
+            items.push(HelpItem {
+                shortcut: "Enter / Space".into(),
+                description: "Expand/collapse directory or open file".into(),
+                action: HelpAction::None,
+                category: "Repository".into(),
             });
         }
         items.push(HelpItem {
@@ -815,7 +841,7 @@ impl App {
             // JobLog Mode
             if self.view_mode == ViewMode::JobLog {
                 match processed_key.code {
-                    KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                    KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => {
                         self.toggle_job_section();
                         let _ = self.update_preview().await;
                         return;
@@ -858,6 +884,7 @@ impl App {
                         return;
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
+                        self.follow_log = false;
                         if !self.job_log_lines.is_empty() {
                             let current = self.job_log_cursor;
                             self.job_log_cursor = self.job_log_cursor.saturating_sub(1);
@@ -909,6 +936,7 @@ impl App {
                         return;
                     }
                     KeyCode::Home => {
+                        self.follow_log = false;
                         self.job_log_cursor = 0;
                         self.job_log_scroll = 0;
                         let _ = self.update_preview().await;
@@ -925,6 +953,7 @@ impl App {
                         return;
                     }
                     KeyCode::PageUp => {
+                        self.follow_log = false;
                         let page = (self.job_log_viewport_height as usize).max(1);
                         self.job_log_cursor = self.job_log_cursor.saturating_sub(page);
                         self.ensure_job_log_cursor_visible();
@@ -935,6 +964,30 @@ impl App {
                         self.input_mode = true;
                         self.input_target = InputTarget::JobLogSearch;
                         self.job_log_search.clear();
+                        return;
+                    }
+                    KeyCode::Char('n') => {
+                        self.job_log_search_next();
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::Char('N') => {
+                        self.job_log_search_prev();
+                        let _ = self.update_preview().await;
+                        return;
+                    }
+                    KeyCode::Char('f') | KeyCode::Char('F') => {
+                        self.follow_log = !self.follow_log;
+                        self.status_message = Some(if self.follow_log {
+                            "Auto-follow enabled".into()
+                        } else {
+                            "Auto-follow disabled".into()
+                        });
+                        if self.follow_log && !self.job_log_lines.is_empty() {
+                            self.job_log_cursor = self.job_log_lines.len() - 1;
+                            self.ensure_job_log_cursor_visible();
+                        }
+                        let _ = self.update_preview().await;
                         return;
                     }
                     KeyCode::Char('r') | KeyCode::Char('R') => {
@@ -1066,14 +1119,20 @@ impl App {
                     KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter
                         if self.diff_line_state.selected().is_none() =>
                     {
-                        let idx = self
+                        if let Some(mr_diff) = self
                             .mr_diff_state
                             .selected()
                             .and_then(|i| self.mr_diffs.get(i))
-                            .and_then(|d| d.display_lines.iter().position(is_selectable_diff_line))
-                            .unwrap_or(0);
-                        self.diff_line_state.select(Some(idx));
-                        self.diff_selection_start = None;
+                            && !mr_diff.display_lines.is_empty()
+                        {
+                            let idx = mr_diff
+                                .display_lines
+                                .iter()
+                                .position(is_selectable_diff_line)
+                                .unwrap_or(0);
+                            self.diff_line_state.select(Some(idx));
+                            self.diff_selection_start = None;
+                        }
                         let _ = self.update_preview().await;
                         return;
                     }
@@ -1476,9 +1535,7 @@ impl App {
                         return;
                     }
                     KeyCode::Char('M') => {
-                        if self.selected_mr.is_some() {
-                            self.show_confirm_merge_popup = true;
-                        }
+                        self.open_confirm_merge_popup();
                         return;
                     }
                     KeyCode::Char('D') => {
@@ -1497,6 +1554,16 @@ impl App {
                         if self.selected_mr.is_some() {
                             let _ = self.toggle_mr_squash().await;
                         }
+                        return;
+                    }
+                    KeyCode::Char('w') | KeyCode::Char('W') => {
+                        self.diff_side_by_side = !self.diff_side_by_side;
+                        self.status_message = Some(if self.diff_side_by_side {
+                            "Diff view: Side-by-Side".into()
+                        } else {
+                            "Diff view: Unified".into()
+                        });
+                        let _ = self.update_preview().await;
                         return;
                     }
                     _ => {}
@@ -1520,12 +1587,26 @@ impl App {
                             current - 1
                         };
                         self.board_lists_state.select(Some(next));
+                        if let Some(list) = self.board_lists.get(next) {
+                            let count = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let state = self.board_issue_states.entry(list.id).or_default();
+                            if count > 0 && state.selected().is_none() {
+                                state.select(Some(0));
+                            }
+                        }
                         return;
                     }
                     KeyCode::Right | KeyCode::Char('l') => {
                         let current = self.board_lists_state.selected().unwrap_or(0);
                         let next = (current + 1) % self.board_lists.len().max(1);
                         self.board_lists_state.select(Some(next));
+                        if let Some(list) = self.board_lists.get(next) {
+                            let count = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let state = self.board_issue_states.entry(list.id).or_default();
+                            if count > 0 && state.selected().is_none() {
+                                state.select(Some(0));
+                            }
+                        }
                         return;
                     }
                     KeyCode::Char('H') => {
@@ -1534,6 +1615,26 @@ impl App {
                     }
                     KeyCode::Char('L') => {
                         let _ = self.move_board_issue(1).await;
+                        return;
+                    }
+                    KeyCode::Char('c') => {
+                        if let Some(list) = self
+                            .board_lists_state
+                            .selected()
+                            .and_then(|idx| self.board_lists.get(idx))
+                        {
+                            let state = self.board_issue_states.entry(list.id).or_default();
+                            let issue_idx = state.selected().unwrap_or(0);
+                            if let Some(issue) = self
+                                .filtered_board_issues
+                                .get(&list.id)
+                                .and_then(|v| v.get(issue_idx))
+                                .cloned()
+                            {
+                                self.selected_issue = Some(issue);
+                                let _ = self.toggle_issue_state().await;
+                            }
+                        }
                         return;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
@@ -1549,8 +1650,11 @@ impl App {
                                 .unwrap_or(0);
                             if issues > 0 {
                                 let state = self.board_issue_states.entry(list.id).or_default();
-                                let current = state.selected().unwrap_or(0);
-                                state.select(Some((current + 1) % issues));
+                                let next = match state.selected() {
+                                    Some(c) => (c + 1) % issues,
+                                    None => 0,
+                                };
+                                state.select(Some(next));
                             }
                         }
                         return;
@@ -1568,12 +1672,11 @@ impl App {
                                 .unwrap_or(0);
                             if issues > 0 {
                                 let state = self.board_issue_states.entry(list.id).or_default();
-                                let current = state.selected().unwrap_or(0);
-                                state.select(Some(if current == 0 {
-                                    issues - 1
-                                } else {
-                                    current - 1
-                                }));
+                                let next = match state.selected() {
+                                    Some(0) | None => issues - 1,
+                                    Some(c) => c - 1,
+                                };
+                                state.select(Some(next));
                             }
                         }
                         return;
@@ -1585,13 +1688,11 @@ impl App {
                             .and_then(|idx| self.board_lists.get(idx))
                         {
                             let state = self.board_issue_states.entry(list.id).or_default();
-                            if let Some(issue) = state
-                                .selected()
-                                .and_then(|issue_idx| {
-                                    self.filtered_board_issues
-                                        .get(&list.id)
-                                        .and_then(|v| v.get(issue_idx))
-                                })
+                            let issue_idx = state.selected().unwrap_or(0);
+                            if let Some(issue) = self
+                                .filtered_board_issues
+                                .get(&list.id)
+                                .and_then(|v| v.get(issue_idx))
                                 .cloned()
                             {
                                 self.selected_issue = Some(issue);
@@ -1934,6 +2035,21 @@ impl App {
                 self.active_panel = Panel::MainDetail;
                 let _ = self.update_preview().await;
             }
+            KeyCode::Char('b') => {
+                if self.active_selection == MenuSelection::Repository {
+                    if self.project_branches.is_empty()
+                        && let Some(p) = &self.selected_project
+                    {
+                        let _ = self.fetch_branches(p.id).await;
+                    }
+                    let current = self.repository_ref.clone();
+                    let idx = current
+                        .and_then(|r| self.project_branches.iter().position(|b| b.name == r))
+                        .unwrap_or(0);
+                    self.tree_branch_state.select(Some(idx));
+                    self.show_tree_branch_popup = true;
+                }
+            }
             KeyCode::Char('p') => self.switch_project().await,
             KeyCode::Char('r') => {
                 if self.active_panel == Panel::MainDetail
@@ -1948,7 +2064,9 @@ impl App {
                 }
             }
             KeyCode::Char(' ') => {
-                if self.active_panel == Panel::MainDetail
+                if self.active_selection == MenuSelection::Repository && self.active_panel == Panel::Main {
+                    self.go_forward().await;
+                } else if self.active_panel == Panel::MainDetail
                     && self.detail_section == DetailSection::Discussions
                     && let Some(disc) = self
                         .discussion_state
@@ -2102,9 +2220,7 @@ impl App {
                 }
             }
             KeyCode::Char('M') => {
-                if self.selected_mr.is_some() {
-                    self.show_confirm_merge_popup = true;
-                }
+                self.open_confirm_merge_popup();
             }
             KeyCode::Char('C') => {
                 if self.active_panel == Panel::MainDetail

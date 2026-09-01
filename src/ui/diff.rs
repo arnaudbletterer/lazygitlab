@@ -112,7 +112,18 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
     let diff_items: Vec<ListItem> = app
         .mr_diffs
         .iter()
-        .map(|d| ListItem::new(format!(" {}", d.new_path)))
+        .map(|d| {
+            let label = if d.new_path == "/dev/null" || d.new_path.is_empty() {
+                format!(" [-] {}", d.old_path)
+            } else if d.old_path == "/dev/null" || d.old_path.is_empty() {
+                format!(" [+] {}", d.new_path)
+            } else if d.old_path != d.new_path {
+                format!(" [R] {} -> {}", d.old_path, d.new_path)
+            } else {
+                format!(" {}", d.new_path)
+            };
+            ListItem::new(label)
+        })
         .collect();
 
     let diff_list = List::new(diff_items)
@@ -395,12 +406,132 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
 
-            let diff_content = List::new(diff_lines)
-                .block(Block::default().title(format!(" {} ", mr_diff.new_path)))
-                .highlight_style(Style::default()) // Manual highlight logic used above
-                .highlight_symbol("> ");
+            if mr_diff.display_lines.is_empty() {
+                f.render_widget(
+                    Paragraph::new("  (No diff changes to display for this file.)")
+                        .fg(app.theme.dim)
+                        .block(Block::default().title(format!(" {} ", mr_diff.new_path))),
+                    workspace_chunks[1],
+                );
+            } else if app.diff_side_by_side {
+                let sbs_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(workspace_chunks[1]);
 
-            f.render_stateful_widget(diff_content, workspace_chunks[1], &mut app.diff_line_state);
+                let mut left_lines = Vec::new();
+                let mut right_lines = Vec::new();
+
+                for (idx, dl) in mr_diff.display_lines.iter().enumerate() {
+                    let is_cursor = focused_line_idx == Some(idx);
+                    let is_in_manual_selection = if let Some(start) = app.diff_selection_start {
+                        let current = focused_line_idx.unwrap_or(0);
+                        let s = start.min(current);
+                        let e = start.max(current);
+                        idx >= s && idx <= e
+                    } else {
+                        false
+                    };
+
+                    let (left_item, right_item) = match dl {
+                        DiffDisplayLine::Code(line, old_line, new_line) => {
+                            let (l_text, l_style, r_text, r_style) = if line.starts_with('+') {
+                                (
+                                    "".to_string(),
+                                    Style::default(),
+                                    format!("{:4} │ {}", new_line.unwrap_or(0), line),
+                                    Style::default().fg(app.theme.success),
+                                )
+                            } else if line.starts_with('-') {
+                                (
+                                    format!("{:4} │ {}", old_line.unwrap_or(0), line),
+                                    Style::default().fg(app.theme.failed),
+                                    "".to_string(),
+                                    Style::default(),
+                                )
+                            } else if line.starts_with("@@") {
+                                (
+                                    line.clone(),
+                                    Style::default().fg(app.theme.shortcut_key),
+                                    line.clone(),
+                                    Style::default().fg(app.theme.shortcut_key),
+                                )
+                            } else {
+                                (
+                                    format!("{:4} │ {}", old_line.unwrap_or(0), line),
+                                    Style::default(),
+                                    format!("{:4} │ {}", new_line.unwrap_or(0), line),
+                                    Style::default(),
+                                )
+                            };
+
+                            let mut li = ListItem::new(Line::from(Span::styled(l_text, l_style)));
+                            let mut ri = ListItem::new(Line::from(Span::styled(r_text, r_style)));
+                            if !is_file_list_focused {
+                                if is_cursor {
+                                    li = li.style(
+                                        Style::default()
+                                            .bg(app.theme.highlight_bg)
+                                            .add_modifier(Modifier::BOLD),
+                                    );
+                                    ri = ri.style(
+                                        Style::default()
+                                            .bg(app.theme.highlight_bg)
+                                            .add_modifier(Modifier::BOLD),
+                                    );
+                                } else if is_in_manual_selection {
+                                    li = li.style(Style::default().bg(app.theme.range_highlight));
+                                    ri = ri.style(Style::default().bg(app.theme.range_highlight));
+                                }
+                            }
+                            (li, ri)
+                        }
+                        DiffDisplayLine::Discussion(_) => {
+                            let item = diff_lines
+                                .get(idx)
+                                .cloned()
+                                .unwrap_or_else(|| ListItem::new(""));
+                            (item.clone(), item)
+                        }
+                    };
+                    left_lines.push(left_item);
+                    right_lines.push(right_item);
+                }
+
+                let left_list = List::new(left_lines)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_type(BorderType::Rounded)
+                            .title(format!(" Base: {} ", mr_diff.old_path)),
+                    )
+                    .highlight_style(Style::default())
+                    .highlight_symbol("> ");
+                let right_list = List::new(right_lines)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_type(BorderType::Rounded)
+                            .title(format!(" Head: {} ", mr_diff.new_path)),
+                    )
+                    .highlight_style(Style::default())
+                    .highlight_symbol("> ");
+
+                let mut state_clone = app.diff_line_state;
+                f.render_stateful_widget(left_list, sbs_chunks[0], &mut app.diff_line_state);
+                f.render_stateful_widget(right_list, sbs_chunks[1], &mut state_clone);
+            } else {
+                let diff_content = List::new(diff_lines)
+                    .block(Block::default().title(format!(" {} ", mr_diff.new_path)))
+                    .highlight_style(Style::default()) // Manual highlight logic used above
+                    .highlight_symbol("> ");
+
+                f.render_stateful_widget(
+                    diff_content,
+                    workspace_chunks[1],
+                    &mut app.diff_line_state,
+                );
+            }
         }
     } else {
         f.render_widget(
@@ -415,6 +546,8 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
         Span::styled(" Focus  ", Style::default().fg(app.theme.dim)),
         Span::styled("[j/k]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
         Span::styled(" Move  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[w]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+        Span::styled(if app.diff_side_by_side { " Unified  " } else { " Side-by-Side  " }, Style::default().fg(app.theme.dim)),
         Span::styled("[[/]]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
         Span::styled(" File/Hunk  ", Style::default().fg(app.theme.dim)),
         Span::styled("[c]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),

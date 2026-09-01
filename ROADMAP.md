@@ -26,7 +26,8 @@ Grouped by area. File pointers are the canonical location for the implementation
 
 #### Merge Requests
 - **Inline code review on diffs**: line/range-scoped comments with `base/start/head_sha` (`src/app/mrs/review.rs`, shortcut `c`)
-- **Approve / Unapprove** (`A` / `R`), **Merge / Rebase** with confirmation popups (`M` / `E`), **Squash toggle** (`S`), **Draft toggle** (`D`), **Open / Close** (`c`)
+- **Side-by-side vs unified diff viewer** (`w`), file change status badges (`[-]`/`[+]`/`[R]`), and binary/empty diff handling (`src/ui/diff.rs`)
+- **Approve / Unapprove** (`A` / `R`), **Interactive Merge dialog** with squash (`s`) and delete branch (`d`) toggles, **Rebase** (`E`), **Draft toggle** (`D`), **Open / Close** (`c`) (`src/ui/popup/confirm.rs`, `src/app/mrs/review.rs`)
 - **Real approvals display** (`/approvals`): required/left + approver names in the diff header and merge confirmation
 - **Edit metadata**: title, description, labels, assignees, reviewers, milestone, target branch (`src/app/mrs/meta.rs`)
 - **Discussion resolution** on MRs and issues; thread navigation sweeps all files (`n` / `p`)
@@ -55,7 +56,7 @@ Grouped by area. File pointers are the canonical location for the implementation
 - **File viewer** with cached syntect highlighting and independent scroll state
 - **Create / delete branch UI** with delete confirmation popup
 - **Commits history**, **Branches** list, **Project metadata cache**
-- **Kanban boards** with drag between columns; **Epics** per group with child-issue drill-in
+- **Kanban boards** with optimistic card movement (`H` / `L`), quick close/reopen (`c`), cursor column retention, and shortcut footer; **Epics** per group with child-issue drill-in
 
 #### Quality of life
 - **Adaptive refresh**: 2s live / 5s active / 30s idle back-off (`src/runner.rs`)

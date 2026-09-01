@@ -3,7 +3,7 @@ use crate::ui::widgets::{centered_rect, get_contrast_color, get_status_style};
 use ratatui::{prelude::*, widgets::*};
 
 pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
-    let area = centered_rect(60, 35, f.area());
+    let area = centered_rect(65, 55, f.area());
     app.set_rect("popup_confirm_merge", area);
     f.render_widget(Clear, area);
 
@@ -42,12 +42,23 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Squash: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
-            Span::styled(if mr.squash.unwrap_or(false) {
-                "Yes"
-            } else {
-                "No"
-            }, Style::default().fg(app.theme.title_fg)),
+            Span::styled("[s] Squash commits: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                if app.merge_squash { "[X] Yes" } else { "[ ] No" },
+                Style::default()
+                    .fg(if app.merge_squash { app.theme.success } else { app.theme.dim })
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("[d] Delete source branch: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                if app.merge_remove_source_branch { "[X] Yes" } else { "[ ] No" },
+                Style::default()
+                    .fg(if app.merge_remove_source_branch { app.theme.failed } else { app.theme.dim })
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]));
 
         // Pipeline info if available
@@ -102,6 +113,18 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
         }
     }
 
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "[s] Toggle Squash",
+            Style::default().fg(app.theme.shortcut_key),
+        ),
+        Span::raw("   "),
+        Span::styled(
+            "[d] Toggle Delete Branch",
+            Style::default().fg(app.theme.shortcut_key),
+        ),
+    ]));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         Span::styled(
