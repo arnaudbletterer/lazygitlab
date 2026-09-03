@@ -8,7 +8,7 @@ Welcome to **lazygitlab**! Get up and running with a lightning-fast, keyboard-dr
 
 ---
 
-## 📦 Installation
+## Installation
 
 Choose the installation method that best fits your workflow:
 
@@ -40,7 +40,7 @@ Choose the installation method that best fits your workflow:
 
 ---
 
-## 🔑 Authentication & Tokens
+## Authentication & Tokens
 
 `lazygitlab` connects securely to GitLab using a **Personal Access Token** (or Project Access Token).
 
@@ -89,7 +89,7 @@ Choose the installation method that best fits your workflow:
 
 ---
 
-## 🚀 Interactive Launch Journey
+## Interactive Launch Journey
 
 Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
@@ -133,7 +133,7 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
 ---
 
-## 🧭 Essential First Shortcuts
+## Essential First Shortcuts
 
 | Shortcut | Destination / Action | Description |
 | :--- | :--- | :--- |
@@ -151,7 +151,7 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
 ---
 
-## 📚 Next Steps
+## Next Steps
 
 Dive deeper into specific workflows with our dedicated user guides:
 

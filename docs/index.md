@@ -15,7 +15,7 @@
 
 ---
 
-## ⚡ Highlights
+## Highlights
 
 === "Dashboard"
     ![Personal Dashboard](assets/screenshots/dashboard.svg#only-dark)
@@ -44,7 +44,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # 1. Install via Cargo
@@ -58,11 +58,11 @@ export GITLAB_URL="https://gitlab.com"
 lazygitlab
 ```
 
-👉 See the complete **[Getting Started Guide](getting-started.md)** for configuration options and self-hosted instances.
+See the complete **[Getting Started Guide](getting-started.md)** for configuration options and self-hosted instances.
 
 ---
 
-## 🧭 Navigation & Shortcuts
+## Navigation & Shortcuts
 
 | Key | Action |
 | --- | --- |
@@ -78,4 +78,4 @@ lazygitlab
 | <kbd>p</kbd> | Open Project Quick Switcher |
 | <kbd>q</kbd> | Quit application |
 
-👉 See the full **[Keybindings Reference & Cheatsheet](reference/keybindings.md)** for all shortcut tables and printable PDF cheatsheet.
+See the full **[Keybindings Reference & Cheatsheet](reference/keybindings.md)** for all shortcut tables and printable PDF cheatsheet.

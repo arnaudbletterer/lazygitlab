@@ -8,7 +8,7 @@ The **Personal Dashboard** is your unified inbox and central command center acro
 
 ---
 
-## ⚡ Daily Triage Workflow
+## Daily Triage Workflow
 
 Process your daily GitLab notifications and tasks in seconds without leaving your terminal:
 
@@ -42,13 +42,13 @@ Process your daily GitLab notifications and tasks in seconds without leaving you
 
     Jump to the cross-project Pipelines monitor with <kbd>g</kbd> <kbd>p</kbd>:
 
-    1. View real-time status pills across all recent builds (`[ ✔ PASSED ]`, `[ ✖ FAILED ]`, `[ ⏳ RUNNING ]`).
+    1. View real-time status pills across all recent builds (`[ PASSED ]`, `[ FAILED ]`, `[ ⏳ RUNNING ]`).
     2. Press <kbd>Enter</kbd> to drill into the pipeline's stages and individual jobs.
     3. Press <kbd>R</kbd> to immediately retry a failed pipeline, or <kbd>C</kbd> to cancel a running build.
 
 ---
 
-## 📬 Deep Dive: Dashboard Sections
+## Deep Dive: Dashboard Sections
 
 ### 1. Unified To-Dos Inbox
 
@@ -112,7 +112,7 @@ Monitors live pipeline execution across projects with adaptive polling that back
 
 ---
 
-## 🧭 Global Navigation Shortcuts
+## Global Navigation Shortcuts
 
 | Shortcut | Destination / Action |
 | :--- | :--- |
@@ -125,7 +125,7 @@ Monitors live pipeline execution across projects with adaptive polling that back
 
 ---
 
-## 📚 Related Guides
+## Related Guides
 
 * **[Code Review & Diffs](code-review.md)**: Deep dive into keyboard-driven MR reviews, split diffs, and range comments.
 * **[Issues & Kanban Boards](issues-and-boards.md)**: Sprint planning, column drag-and-drop, and issue triage.

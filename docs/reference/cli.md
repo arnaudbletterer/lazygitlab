@@ -4,7 +4,7 @@
 
 ---
 
-## 🛠️ Command-Line Flags
+## Command-Line Flags
 
 | Flag | Description |
 | --- | --- |
@@ -18,7 +18,7 @@
 
 ---
 
-## 💡 Usage Examples
+## Usage Examples
 
 ### Launch directly into a specific project:
 ```bash

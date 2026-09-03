@@ -1,7 +1,37 @@
-/* macOS Sequoia Typography & Aesthetics */
+/* Brand Palette matching lazygitlab logo:
+   Chevron (Prompt): #38BDF8 (Electric Sky Blue)
+   Branch Node:     #10B981 (Git Emerald Green)
+   Canvas:          #0D1117 (Obsidian Slate)
+*/
 :root {
+  --md-primary-fg-color: #0284c7;
+  --md-primary-fg-color--light: #38bdf8;
+  --md-primary-fg-color--dark: #0369a1;
+  --md-accent-fg-color: #10b981;
+  --md-accent-fg-color--transparent: rgba(16, 185, 129, 0.15);
   --md-text-font: -apple-system, BlinkMacSystemFont,  SF Pro Text, SF Pro Display, Helvetica Neue, Segoe UI, sans-serif;
   --md-code-font: SF Mono, SFMono-Regular, ui-monospace, Menlo, Monaco, JetBrains Mono, Consolas, monospace;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0d1117;
+  --md-default-bg-color--light: #161b22;
+  --md-default-bg-color--lighter: #21262d;
+  --md-default-bg-color--lightest: #30363d;
+  --md-primary-fg-color: #0d1117;
+  --md-primary-fg-color--light: #161b22;
+  --md-primary-fg-color--dark: #010409;
+  --md-typeset-a-color: #38bdf8;
+  --md-accent-fg-color: #10b981;
+  --md-accent-fg-color--transparent: rgba(16, 185, 129, 0.15);
+  --md-footer-bg-color: #090d12;
+  --md-footer-bg-color--dark: #06090c;
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #0284c7;
+  --md-accent-fg-color: #059669;
+  --md-accent-fg-color--transparent: rgba(5, 150, 105, 0.15);
 }
 
 body, input {
@@ -158,14 +188,33 @@ kbd {
 }
 
 .header-version-badge.badge-tag {
-  background-color: rgba(255, 110, 64, 0.18);
-  border-color: var(--md-accent-fg-color);
-  color: var(--md-accent-fg-color);
+  background-color: rgba(56, 189, 248, 0.16);
+  border-color: #38bdf8;
+  color: #38bdf8;
   font-weight: 600;
 }
+
 
 @media screen and (max-width: 60em) {
   .header-version-container {
     display: none;
   }
+}
+
+/* ==========================================================================
+   Monochrome Icon Enforcement
+   Ensure all icons, twemoji, and buttons use a clean monochrome style
+   ========================================================================== */
+.twemoji,
+.twemoji svg,
+.emojione,
+img.emoji,
+.md-icon svg,
+.md-typeset .admonition-icon svg,
+.md-typeset summary .admonition-icon svg,
+.md-button svg,
+.md-nav__link svg,
+.md-header svg {
+  filter: grayscale(100%);
+  fill: currentColor !important;
 }

@@ -8,7 +8,7 @@
 
 ---
 
-## ⚡ Interactive Review Lifecycle
+## Interactive Review Lifecycle
 
 Review merge requests efficiently using this 4-step workflow:
 
@@ -52,7 +52,7 @@ Review merge requests efficiently using this 4-step workflow:
 
 ---
 
-## 🔍 Feature Deep Dives
+## Feature Deep Dives
 
 ### 1. High-Performance Diff Viewer
 
@@ -110,7 +110,7 @@ Manage the complete MR lifecycle from review to landing into `main`.
 
 ---
 
-## 📚 Related Guides
+## Related Guides
 
 * **[Personal Dashboard](dashboard.md)**: Review requests inbox and notification triage.
 * **[CI/CD & Job Logs](ci-cd.md)**: Inspect pipeline checks before merging.

@@ -8,9 +8,9 @@ Monitor, debug, and manage GitLab CI/CD pipelines, stages, and live streaming jo
 
 ---
 
-## 🚀 Pipelines Overview
+## Pipelines Overview
 
-Track pipeline status across branches, tags, and merge requests with real-time status indicators (`[ ✔ PASSED ]`, `[ ✖ FAILED ]`, `[ ⏳ RUNNING ]`, `[ ⏸ MANUAL ]`).
+Track pipeline status across branches, tags, and merge requests with real-time status indicators (`[ PASSED ]`, `[ FAILED ]`, `[ ⏳ RUNNING ]`, `[ ⏸ MANUAL ]`).
 
 ### Interactive Pipeline Control Journey
 
@@ -56,7 +56,7 @@ Track pipeline status across branches, tags, and merge requests with real-time s
 
 ---
 
-## 📜 Live Job Log Viewer
+## Live Job Log Viewer
 
 Drill into any job to view colorized terminal logs with live streaming and ANSI formatting.
 
@@ -113,7 +113,7 @@ Drill into any job to view colorized terminal logs with live streaming and ANSI 
 
 ---
 
-## 📚 Related Guides
+## Related Guides
 
 * **[Code Review & Diffs](code-review.md)**: Inspect head pipeline results directly on Merge Requests (<kbd>P</kbd>).
 * **[Personal Dashboard](dashboard.md)**: Monitor cross-project pipelines on your home screen.

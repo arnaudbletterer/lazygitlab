@@ -4,7 +4,7 @@
 
 ---
 
-## 🎨 Built-in Presets Gallery
+## Built-in Presets Gallery
 
 Select any preset tab below to preview how it looks directly in `lazygitlab`:
 
@@ -109,7 +109,7 @@ Select any preset tab below to preview how it looks directly in `lazygitlab`:
 
 ---
 
-## 🛠️ Custom Themes
+## Custom Themes
 
 You can easily define your own theme by creating `~/.config/lazygitlab/theme.toml`.
 
@@ -137,7 +137,7 @@ failed       = "#f7768e"   # Red: failed CI/CD, closed items, deletions
 
 ---
 
-## 📋 Core Color Reference
+## Core Color Reference
 
 | Color Key | Role | What It Colors |
 | :--- | :--- | :--- |
@@ -159,7 +159,7 @@ failed       = "#f7768e"   # Red: failed CI/CD, closed items, deletions
 
 ---
 
-## 🎨 Supported Color Formats
+## Supported Color Formats
 
 Colors can be specified in three flexible formats:
 
