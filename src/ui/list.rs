@@ -35,7 +35,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Status (Top)
-            Constraint::Length(5), // Dashboard (3 items + title/border)
+            Constraint::Length(7), // Dashboard (5 items: Home, To-Dos, MRs, Issues, Pipelines + borders)
             Constraint::Length(4), // Explore (2 items + title/border)
             if app.selected_project.is_some() {
                 Constraint::Min(10)
@@ -50,7 +50,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(
-            " 🦊 GitLab ",
+            " ⚡ lazygitlab ",
             Style::default().fg(app.theme.accent).bold(),
         ))
         .border_style(Style::default().fg(app.theme.dim));
@@ -117,6 +117,7 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         "🏠 Dashboard",
         &mut app.dashboard_menu_state,
         vec![
+            "  › Home".to_string(),
             format!("  › To-Dos{}", todo_badge),
             format!("  › Merge Requests{}", mr_badge),
             format!("  › Issues{}", issue_badge),
@@ -231,6 +232,7 @@ fn render_nav_panel(
 fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     let is_main_focused = app.active_panel == Panel::Main;
     let list_title = match app.active_selection {
+        MenuSelection::Home => " ⚡ Home • Quick Launchpad ".to_string(),
         MenuSelection::Todos => " To-Do List ".to_string(),
         MenuSelection::MergeRequests => {
             if app.show_involved_only {
@@ -353,6 +355,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
     let no_highlight = Style::default();
 
     match app.active_selection {
+        MenuSelection::Home => {
+            render_home_view(f, app, list_chunks[1], is_main_focused);
+        }
         MenuSelection::Todos => {
             let items: Vec<ListItem> = app
                 .filtered_todos
@@ -1804,3 +1809,163 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
 
     f.render_widget(Paragraph::new(lines).block(block), area);
 }
+
+fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) {
+    if area.height < 6 || area.width < 25 {
+        return;
+    }
+
+    let banner_h = crate::ui::banner::Banner::height_for(area.width, area.height);
+    let show_banner = banner_h > 0 && area.height >= 18;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(if show_banner {
+            vec![
+                Constraint::Length(banner_h),
+                Constraint::Length(3), // Context box
+                Constraint::Min(8),    // Action Launchpad
+                Constraint::Length(1), // Footer
+            ]
+        } else {
+            vec![
+                Constraint::Length(0),
+                Constraint::Length(3), // Context box
+                Constraint::Min(6),    // Action Launchpad
+                Constraint::Length(1), // Footer
+            ]
+        })
+        .split(area);
+
+    if show_banner {
+        crate::ui::banner::Banner::render(f, chunks[0], &app.theme);
+    }
+
+    // 1. Session & Project Context Bar
+    let git_dirty = if let Some(ref git) = app.local_git_status {
+        if git.is_dirty {
+            Span::styled(" ● Dirty", Style::default().fg(app.theme.status_failed))
+        } else {
+            Span::styled(" ● Clean", Style::default().fg(app.theme.status_success))
+        }
+    } else {
+        Span::raw("")
+    };
+
+    let user_name = if let Some(ref u) = app.current_user {
+        format!("@{}", u.username)
+    } else {
+        "Connected".to_string()
+    };
+
+    let proj_text = if let Some(p) = &app.selected_project {
+        format!("📂 Project: {} ({})", p.name, p.default_branch.as_deref().unwrap_or("main"))
+    } else {
+        "📂 Project: None (press P to select)".to_string()
+    };
+
+    let context_lines = vec![Line::from(vec![
+        Span::styled(" 👤 User: ", Style::default().fg(app.theme.dim)),
+        Span::styled(user_name, Style::default().fg(app.theme.title_fg).bold()),
+        Span::styled("  │  ", Style::default().fg(app.theme.dim)),
+        Span::styled(proj_text, Style::default().fg(app.theme.accent).bold()),
+        git_dirty,
+    ])];
+
+    let context_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.inactive_border));
+    f.render_widget(Paragraph::new(context_lines).block(context_block), chunks[1]);
+
+    // 2. Action Launchpad Cards (8 cards in 4 rows × 2 cols)
+    let cards = [
+        ("m", "Merge Requests", "Review open MRs, split/unified diffs & approvals", if !app.merge_requests.is_empty() { format!("{} open", app.merge_requests.len()) } else { "Review queue".to_string() }),
+        ("t", "To-Dos Inbox", "Triage mentions, review requests & notifications", if !app.todos.is_empty() { format!("{} pending", app.todos.len()) } else { "Zero inbox".to_string() }),
+        ("i", "Issues & Bugs", "Triage work items, milestones, weights & labels", if !app.issues.is_empty() { format!("{} active", app.issues.len()) } else { "Work items".to_string() }),
+        ("b", "Kanban Boards", "Interactive sprint workflow & card movement", "Sprint boards".to_string()),
+        ("p", "CI/CD Pipelines", "Monitor builds, stages & streaming job logs", if !app.pipelines.is_empty() { format!("{} builds", app.pipelines.len()) } else { "Builds & logs".to_string() }),
+        ("r", "Repository", "Browse directory tree, syntax viewer & branches", "Code & tree".to_string()),
+        ("P", "Switch Project", "Fuzzy search and switch across GitLab projects", "Fuzzy picker".to_string()),
+        ("?", "Command Palette", "Interactive action finder & keymap reference", "Help & keys".to_string()),
+    ];
+
+    let row_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Ratio(1, 4),
+            Constraint::Ratio(1, 4),
+            Constraint::Ratio(1, 4),
+            Constraint::Ratio(1, 4),
+        ])
+        .split(chunks[2]);
+
+    for row in 0..4 {
+        let col_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(row_chunks[row]);
+
+        for col in 0..2 {
+            let idx = row * 2 + col;
+            let (key, title, desc, badge) = &cards[idx];
+            let is_selected = is_focused && app.home_card_index == idx;
+
+            let card_block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(if is_selected {
+                    Style::default().fg(app.theme.active_border).bold()
+                } else {
+                    Style::default().fg(app.theme.inactive_border)
+                });
+
+            let prefix = if is_selected { "▶ " } else { "  " };
+
+            let mut card_lines = vec![
+                Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(app.theme.accent).bold()),
+                    Span::styled(format!("[{}] ", key), Style::default().fg(app.theme.shortcut_key).bold()),
+                    Span::styled(title.to_string(), Style::default().fg(app.theme.title_fg).bold()),
+                    Span::styled(format!("  ({})", badge), Style::default().fg(app.theme.dim)),
+                ]),
+            ];
+
+            if col_chunks[col].height > 2 {
+                card_lines.push(Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(
+                        crate::ui::widgets::truncate_str(desc, col_chunks[col].width.saturating_sub(6) as usize),
+                        Style::default().fg(app.theme.dim),
+                    ),
+                ]));
+            }
+
+            let card_widget = Paragraph::new(card_lines)
+                .block(card_block)
+                .style(if is_selected {
+                    Style::default().bg(app.theme.highlight_bg)
+                } else {
+                    Style::default()
+                });
+
+            f.render_widget(card_widget, col_chunks[col]);
+        }
+    }
+
+    // 3. Footer
+    let footer_spans = vec![
+        Span::styled(" [h/j/k/l/arrows] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled("Select Card  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[Enter] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled("Launch  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[m/t/i/b/p/r/P/?] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled("Direct Jump  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[g h] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled("Home  ", Style::default().fg(app.theme.dim)),
+        Span::styled("[q] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled("Quit", Style::default().fg(app.theme.dim)),
+    ];
+    f.render_widget(Paragraph::new(Line::from(footer_spans)).alignment(Alignment::Center), chunks[3]);
+}
+

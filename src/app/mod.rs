@@ -40,7 +40,8 @@ impl App {
             dashboard_menu_state,
             explore_menu_state,
             project_menu_state,
-            active_selection: MenuSelection::Todos,
+            active_selection: MenuSelection::Home,
+            home_card_index: 0,
             gitlab,
             projects: Vec::new(),
             projects_state: ListState::default(),
@@ -1804,6 +1805,11 @@ impl App {
 
         match self.active_context {
             Context::Dashboard | Context::Explore => match self.active_selection {
+                MenuSelection::Home => {
+                    // Pre-fetch todos & MRs in background so badges populate on Home
+                    let _ = self.fetch_todos().await;
+                    let _ = self.fetch_global_merge_requests().await;
+                }
                 MenuSelection::Todos => {
                     if should_fetch_lists {
                         if self.todos_etag.is_some() || !self.todos.is_empty() {
@@ -2098,9 +2104,10 @@ impl App {
                 self.active_context = Context::Dashboard;
                 let idx = self.dashboard_menu_state.selected().unwrap_or(0);
                 self.active_selection = match idx {
-                    0 => MenuSelection::Todos,
-                    1 => MenuSelection::MergeRequests,
-                    2 => MenuSelection::Issues,
+                    0 => MenuSelection::Home,
+                    1 => MenuSelection::Todos,
+                    2 => MenuSelection::MergeRequests,
+                    3 => MenuSelection::Issues,
                     _ => MenuSelection::Pipelines,
                 };
             }
@@ -3815,7 +3822,8 @@ impl App {
                     self.fetch_next_groups().await?;
                 }
             }
-            MenuSelection::Repository
+            MenuSelection::Home
+            | MenuSelection::Repository
             | MenuSelection::Branches
             | MenuSelection::Boards
             | MenuSelection::Epics => {}

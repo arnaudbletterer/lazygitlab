@@ -1,45 +1,44 @@
 ---
 source: tests/headless_snapshots.rs
-assertion_line: 83
 expression: frame
 ---
  🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
-╭ 🦊  GitLab ───────────╮╭ To-Do List ──────────────────────────────────────────────────────────────────────────────────╮
-│ 🏠  Personal Dashboard││ Pending  │  Snoozed  │  Done                                                                 │
-╰──────────────────────╯│No todos match this view or filter.                                                           │
-╭ 🏠  Dashboard ────────╮│                                                                                              │
-│▎   › To-Dos          ││  • Press [ / ] to cycle Pending, Snoozed, Done                                               │
-│    › Merge Requests  ││  • Press r to refresh from GitLab                                                            │
-│    › Issues          ││                                                                                              │
-╰──────────────────────╯│                                                                                              │
-╭ 🌐  Explore ──────────╮│                                                                                              │
-│    › Projects        ││                                                                                              │
-│    › Groups          ││                                                                                              │
-╰──────────────────────╯│                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
+╭ ⚡  lazygitlab ───────╮╭ ⚡  Home • Quick Launchpad ───────────────────────────────────────────────────────────────────╮
+│ 🏠  Personal Dashboard││                           _                       _ _   _       _                            │
+╰──────────────────────╯│                          | | __ _ _____   _  __ _(_) |_| | __ _| |__                         │
+╭ 🏠  Dashboard ────────╮│                          | |/ _` |_  / | | |/ _` | | __| |/ _` | '_ \                        │
+│▎   › Home            ││                          | | (_| |/ /| |_| | (_| | | |_| | (_| | |_) |                       │
+│    › To-Dos          ││                          |_|\__,_/___|\__, |\__, |_|\__|_|\__,_|_.__/                        │
+│    › Merge Requests  ││                                       |___/ |___/                                            │
+│    › Issues          ││                       > The fast, keyboard-driven Terminal UI for GitLab                     │
+│    › Pipelines       ││╭────────────────────────────────────────────────────────────────────────────────────────────╮│
+╰──────────────────────╯││ 👤  User: Connected  │  📂  Project: None (press P to select)                                ││
+╭ 🌐  Explore ──────────╮│╰────────────────────────────────────────────────────────────────────────────────────────────╯│
+│    › Projects        ││╭─────────────────────────────────────────────╮╭─────────────────────────────────────────────╮│
+│    › Groups          │││  [m] Merge Requests  (Review queue)         ││  [t] To-Dos Inbox  (Zero inbox)             ││
+╰──────────────────────╯││    Review open MRs, split/unified diffs & a…││    Triage mentions, review requests & notif…││
+                        ││                                             ││                                             ││
+                        ││                                             ││                                             ││
+                        │╰─────────────────────────────────────────────╯╰─────────────────────────────────────────────╯│
+                        │╭─────────────────────────────────────────────╮╭─────────────────────────────────────────────╮│
+                        ││  [i] Issues & Bugs  (Work items)            ││  [b] Kanban Boards  (Sprint boards)         ││
+                        ││    Triage work items, milestones, weights &…││    Interactive sprint workflow & card movem…││
+                        ││                                             ││                                             ││
+                        ││                                             ││                                             ││
+                        ││                                             ││                                             ││
+                        │╰─────────────────────────────────────────────╯╰─────────────────────────────────────────────╯│
+                        │╭─────────────────────────────────────────────╮╭─────────────────────────────────────────────╮│
+                        ││  [p] CI/CD Pipelines  (Builds & logs)       ││  [r] Repository  (Code & tree)              ││
+                        ││    Monitor builds, stages & streaming job l…││    Browse directory tree, syntax viewer & b…││
+                        ││                                             ││                                             ││
+                        ││                                             ││                                             ││
+                        │╰─────────────────────────────────────────────╯╰─────────────────────────────────────────────╯│
+                        │╭─────────────────────────────────────────────╮╭─────────────────────────────────────────────╮│
+                        ││  [P] Switch Project  (Fuzzy picker)         ││  [?] Command Palette  (Help & keys)         ││
+                        ││    Fuzzy search and switch across GitLab pr…││    Interactive action finder & keymap refer…││
+                        ││                                             ││                                             ││
+                        ││                                             ││                                             ││
+                        │╰─────────────────────────────────────────────╯╰─────────────────────────────────────────────╯│
+                        │ [h/j/k/l/arrows] Select Card  [Enter] Launch  [m/t/i/b/p/r/P/?] Direct Jump  [g h] Home  [q] │
                         ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
- LIST  ? help  q quit    Fetching Todos...
+ LIST  ? help  q quit    Fetching Merge Requests...

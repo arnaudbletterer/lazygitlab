@@ -23,7 +23,7 @@ impl App {
         match self.active_panel {
             Panel::Dashboard => {
                 let current = self.dashboard_menu_state.selected().unwrap_or(0);
-                if current >= 2 {
+                if current >= 4 {
                     self.active_panel = Panel::Explore;
                     self.explore_menu_state.select(Some(0));
                 } else {
@@ -64,6 +64,7 @@ impl App {
             }
             Panel::Main => {
                 match self.active_selection {
+                    MenuSelection::Home => {}
                     MenuSelection::Todos => {
                         if !self.filtered_todos.is_empty() {
                             let i = (self.todos_state.selected().unwrap_or(0) + 1)
@@ -248,7 +249,7 @@ impl App {
                 let current = self.explore_menu_state.selected().unwrap_or(0);
                 if current == 0 {
                     self.active_panel = Panel::Dashboard;
-                    self.dashboard_menu_state.select(Some(2));
+                    self.dashboard_menu_state.select(Some(4));
                 } else {
                     self.explore_menu_state.select(Some(current - 1));
                 }
@@ -263,6 +264,7 @@ impl App {
                 }
             }
             Panel::Main => match self.active_selection {
+                MenuSelection::Home => {}
                 MenuSelection::Todos => {
                     if !self.filtered_todos.is_empty() {
                         let i = if self.todos_state.selected().unwrap_or(0) == 0 {

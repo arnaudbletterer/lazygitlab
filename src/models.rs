@@ -257,6 +257,7 @@ pub struct Commit {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum MenuSelection {
+    Home,
     Todos,
     MergeRequests,
     Issues,
@@ -269,6 +270,7 @@ pub enum MenuSelection {
     Boards,
     Epics,
 }
+
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Todo {
@@ -621,6 +623,7 @@ pub enum HelpAction {
     NextDiscussion,
     PrevDiscussion,
     EditField,
+    GotoHome,
     GotoTodos,
     GotoMRs,
     GotoIssues,
@@ -991,6 +994,7 @@ pub struct App {
     pub explore_menu_state: ListState,
     pub project_menu_state: ListState,
     pub active_selection: MenuSelection,
+    pub home_card_index: usize,
     pub gitlab: AsyncGitlab,
     pub projects: Vec<Project>,
     pub projects_state: ListState,

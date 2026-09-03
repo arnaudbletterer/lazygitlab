@@ -34,9 +34,9 @@ fn key_event(code: KeyCode) -> KeyEvent {
 async fn test_g_prefix_shortcuts() {
     let (_server, mut app) = setup_app().await;
 
-    // Initial state
+    // Initial state (starts on Home Launchpad)
     assert_eq!(app.active_context, Context::Dashboard);
-    assert_eq!(app.active_selection, MenuSelection::Todos);
+    assert_eq!(app.active_selection, MenuSelection::Home);
     assert!(!app.pending_g_prefix);
 
     // Press 'g'
@@ -53,6 +53,11 @@ async fn test_g_prefix_shortcuts() {
     app.handle_key(key_event(KeyCode::Char('g'))).await;
     app.handle_key(key_event(KeyCode::Char('t'))).await;
     assert_eq!(app.active_selection, MenuSelection::Todos);
+
+    // Press 'g' then 'h' -> Should return to Home
+    app.handle_key(key_event(KeyCode::Char('g'))).await;
+    app.handle_key(key_event(KeyCode::Char('h'))).await;
+    assert_eq!(app.active_selection, MenuSelection::Home);
 
     // In project context: test 'g b' (Branches) and 'g r' (Repository)
     app.selected_project = Some(lazygitlab::models::Project {

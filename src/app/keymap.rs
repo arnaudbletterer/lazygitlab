@@ -519,6 +519,12 @@ impl App {
             category: "Navigation".into(),
         });
         items.push(HelpItem {
+            shortcut: "g h".into(),
+            description: "Go to Home / Launchpad".into(),
+            action: HelpAction::GotoHome,
+            category: "Jump".into(),
+        });
+        items.push(HelpItem {
             shortcut: "g t".into(),
             description: "Go to Todos".into(),
             action: HelpAction::GotoTodos,
@@ -620,10 +626,17 @@ impl App {
             }
             HelpAction::OpenBrowser => self.open_in_browser(),
             HelpAction::CopyUrl => self.copy_url(),
+            HelpAction::GotoHome => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::Home;
+                self.dashboard_menu_state.select(Some(0));
+                self.active_panel = Panel::Main;
+                self.view_mode = ViewMode::List;
+            }
             HelpAction::GotoTodos => {
                 self.active_context = Context::Dashboard;
                 self.active_selection = MenuSelection::Todos;
-                self.dashboard_menu_state.select(Some(0));
+                self.dashboard_menu_state.select(Some(1));
                 self.active_panel = Panel::Main;
                 let _ = self.refresh().await;
             }
@@ -635,7 +648,7 @@ impl App {
                 } else {
                     self.active_context = Context::Dashboard;
                     self.active_selection = MenuSelection::MergeRequests;
-                    self.dashboard_menu_state.select(Some(1));
+                    self.dashboard_menu_state.select(Some(2));
                 }
                 self.active_panel = Panel::Main;
                 let _ = self.refresh().await;
@@ -648,7 +661,7 @@ impl App {
                 } else {
                     self.active_context = Context::Dashboard;
                     self.active_selection = MenuSelection::Issues;
-                    self.dashboard_menu_state.select(Some(2));
+                    self.dashboard_menu_state.select(Some(3));
                 }
                 self.active_panel = Panel::Main;
                 let _ = self.refresh().await;
@@ -660,8 +673,15 @@ impl App {
                     self.project_menu_state.select(Some(2));
                     self.active_panel = Panel::Main;
                     let _ = self.refresh().await;
+                } else {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Pipelines;
+                    self.dashboard_menu_state.select(Some(4));
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
                 }
             }
+
             HelpAction::GotoRepository => {
                 if self.selected_project.is_some() {
                     self.active_context = Context::Project;
@@ -766,11 +786,18 @@ impl App {
         if self.pending_g_prefix {
             self.pending_g_prefix = false;
             match processed_key.code {
+                KeyCode::Char('h') => {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Home;
+                    self.active_panel = Panel::Main;
+                    self.dashboard_menu_state.select(Some(0));
+                    self.view_mode = ViewMode::List;
+                }
                 KeyCode::Char('t') => {
                     self.active_context = Context::Dashboard;
                     self.active_selection = MenuSelection::Todos;
                     self.active_panel = Panel::Main;
-                    self.dashboard_menu_state.select(Some(0));
+                    self.dashboard_menu_state.select(Some(1));
                     let _ = self.refresh().await;
                 }
                 KeyCode::Char('m') => {
@@ -780,7 +807,7 @@ impl App {
                     } else {
                         self.active_context = Context::Dashboard;
                         self.active_selection = MenuSelection::MergeRequests;
-                        self.dashboard_menu_state.select(Some(1));
+                        self.dashboard_menu_state.select(Some(2));
                     }
                     self.active_panel = Panel::Main;
                     let _ = self.refresh().await;
@@ -792,7 +819,7 @@ impl App {
                     } else {
                         self.active_context = Context::Dashboard;
                         self.active_selection = MenuSelection::Issues;
-                        self.dashboard_menu_state.select(Some(2));
+                        self.dashboard_menu_state.select(Some(3));
                     }
                     self.active_panel = Panel::Main;
                     let _ = self.refresh().await;
@@ -807,7 +834,7 @@ impl App {
                     } else {
                         self.active_context = Context::Dashboard;
                         self.active_selection = MenuSelection::Pipelines;
-                        self.dashboard_menu_state.select(Some(3));
+                        self.dashboard_menu_state.select(Some(4));
                         self.active_panel = Panel::Main;
                         let _ = self.refresh().await;
                     }
@@ -1845,6 +1872,81 @@ impl App {
             }
         }
 
+        // Home view launchpad interactive navigation
+        if self.active_panel == Panel::Main && self.active_selection == MenuSelection::Home {
+            match processed_key.code {
+                KeyCode::Left | KeyCode::Char('h') => {
+                    self.home_card_index = self.home_card_index.saturating_sub(1);
+                    return;
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    self.home_card_index = (self.home_card_index + 1).min(7);
+                    return;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.home_card_index = self.home_card_index.saturating_sub(2);
+                    return;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.home_card_index = (self.home_card_index + 2).min(7);
+                    return;
+                }
+                KeyCode::Enter => {
+                    self.execute_home_card_action().await;
+                    return;
+                }
+                KeyCode::Char('m') => {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::MergeRequests;
+                    self.dashboard_menu_state.select(Some(2));
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('t') => {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Todos;
+                    self.dashboard_menu_state.select(Some(1));
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('i') => {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Issues;
+                    self.dashboard_menu_state.select(Some(3));
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('b') => {
+                    self.active_selection = MenuSelection::Boards;
+                    self.view_mode = ViewMode::Board;
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('p') => {
+                    self.active_context = Context::Dashboard;
+                    self.active_selection = MenuSelection::Pipelines;
+                    self.dashboard_menu_state.select(Some(4));
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('r') => {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Repository;
+                    let _ = self.refresh().await;
+                    return;
+                }
+                KeyCode::Char('P') => {
+                    self.show_project_popup = true;
+                    return;
+                }
+                KeyCode::Char('?') => {
+                    self.show_help_popup = true;
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         match processed_key.code {
             KeyCode::Tab => {
                 if self.active_panel == Panel::MainDetail {
@@ -2452,4 +2554,51 @@ impl App {
         }
         let _ = self.update_preview().await;
     }
+
+    pub async fn execute_home_card_action(&mut self) {
+        match self.home_card_index {
+            0 => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::MergeRequests;
+                self.dashboard_menu_state.select(Some(2));
+                let _ = self.refresh().await;
+            }
+            1 => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::Todos;
+                self.dashboard_menu_state.select(Some(1));
+                let _ = self.refresh().await;
+            }
+            2 => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::Issues;
+                self.dashboard_menu_state.select(Some(3));
+                let _ = self.refresh().await;
+            }
+            3 => {
+                self.active_selection = MenuSelection::Boards;
+                self.view_mode = ViewMode::Board;
+                let _ = self.refresh().await;
+            }
+            4 => {
+                self.active_context = Context::Dashboard;
+                self.active_selection = MenuSelection::Pipelines;
+                self.dashboard_menu_state.select(Some(4));
+                let _ = self.refresh().await;
+            }
+            5 => {
+                self.active_context = Context::Project;
+                self.active_selection = MenuSelection::Repository;
+                let _ = self.refresh().await;
+            }
+            6 => {
+                self.show_project_popup = true;
+            }
+            7 => {
+                self.show_help_popup = true;
+            }
+            _ => {}
+        }
+    }
 }
+

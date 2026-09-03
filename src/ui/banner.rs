@@ -89,54 +89,48 @@ impl Banner {
 
     fn full_banner_lines(theme: &Theme) -> Vec<Line<'static>> {
         let accent = Style::default().fg(theme.accent).bold();
-        let accent_normal = Style::default().fg(theme.accent);
         let title_bold = Style::default().fg(theme.title_fg).bold();
         let dim = Style::default().fg(theme.dim);
 
         vec![
             // Line 0
             Line::from(vec![
-                Span::styled("    /\\       /\\      ", accent),
+                Span::raw("  "),
                 Span::styled(" _                       ", title_bold),
                 Span::styled("_ _   _       _     ", accent),
             ]),
             // Line 1
             Line::from(vec![
-                Span::styled("   /  \\_____/  \\    ", accent),
+                Span::raw("  "),
                 Span::styled("| | __ _ _____   _  ", title_bold),
                 Span::styled("__ _(_) |_| | __ _| |__  ", accent),
             ]),
-            // Line 2 (with terminal prompt in fox visor)
+            // Line 2
             Line::from(vec![
-                Span::styled("  /   / ", accent),
-                Span::styled(">", title_bold),
-                Span::styled(" _ ", accent),
-                Span::styled("\\   \\   ", accent),
+                Span::raw("  "),
                 Span::styled("| |/ _` |_  / | | ", title_bold),
                 Span::styled("|/ _` | | __| |/ _` | '_ \\ ", accent),
             ]),
             // Line 3
             Line::from(vec![
-                Span::styled("  \\   \\__", accent),
-                Span::styled("v", dim),
-                Span::styled("__/   /   ", accent),
+                Span::raw("  "),
                 Span::styled("| | (_| |/ /| |_| ", title_bold),
                 Span::styled("| (_| | | |_| | (_| | |_) |", accent),
             ]),
             // Line 4
             Line::from(vec![
-                Span::styled("   \\___________/    ", accent),
+                Span::raw("  "),
                 Span::styled("|_|\\__,_/___|\\__, ", title_bold),
                 Span::styled("|\\__, |_|\\__|_|\\__,_|_.__/ ", accent),
             ]),
             // Line 5
             Line::from(vec![
-                Span::raw("                                     "),
-                Span::styled("|___/ |___/                     ", accent_normal),
+                Span::raw("                |___/ "),
+                Span::styled("|___/                     ", accent),
             ]),
             // Line 6 (Tagline)
             Line::from(vec![
-                Span::styled("  › ", accent),
+                Span::styled("  > ", accent),
                 Span::styled("The fast, keyboard-driven Terminal UI for GitLab", dim),
             ]),
         ]
@@ -151,24 +145,15 @@ impl Banner {
         vec![
             // Line 0
             Line::from(vec![
-                Span::styled("   /\\_/\\    ", accent),
+                Span::styled("   > ", accent),
                 Span::styled("lazy", title_bold),
                 Span::styled("gitlab", accent),
+                Span::styled("  •  ", dim),
+                Span::styled("The fast Terminal UI for GitLab", dim),
             ]),
             // Line 1
             Line::from(vec![
-                Span::styled("  / ", accent),
-                Span::styled(">", title_bold),
-                Span::styled(" _ ", accent),
-                Span::styled("\\   ", accent),
-                Span::styled("The fast Terminal UI for GitLab", dim),
-            ]),
-            // Line 2
-            Line::from(vec![
-                Span::styled("  \\__", accent),
-                Span::styled("v", dim),
-                Span::styled("__/   ", accent),
-                Span::styled("[", dim),
+                Span::styled("     [", dim),
                 Span::styled("?", key_style),
                 Span::styled("] Help  ", dim),
                 Span::styled("[", dim),
@@ -177,6 +162,10 @@ impl Banner {
                 Span::styled("[", dim),
                 Span::styled("q", key_style),
                 Span::styled("] Quit", dim),
+            ]),
+            // Line 2
+            Line::from(vec![
+                Span::raw(""),
             ]),
         ]
     }
@@ -187,8 +176,7 @@ impl Banner {
         let dim = Style::default().fg(theme.dim);
 
         vec![Line::from(vec![
-            Span::styled("🦊 ", accent),
-            Span::styled(">_ ", title_bold),
+            Span::styled(">_ o-o ", accent),
             Span::styled("lazy", title_bold),
             Span::styled("gitlab", accent),
             Span::styled(" — Terminal UI for GitLab", dim),
