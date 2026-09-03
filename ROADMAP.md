@@ -15,7 +15,7 @@ Grouped by area. File pointers are the canonical location for the implementation
 - **Personal dashboard tabs**: Todos, MRs, Issues, Pipelines (cross-project), Projects, Groups (`src/app/mod.rs`)
 - **Cross-project Pipelines tab** with project labels and status segments (`src/app/pipelines.rs::fetch_cross_pipelines`)
 - **Membership-scoped project listing** (`src/app/global.rs`)
-- **Jump shortcuts** `g t` / `g m` / `g i` / `g p` / `g r` (`src/app/keymap.rs`)
+- **Home Launchpad & Jump shortcuts** `g h` / `g t` / `g m` / `g i` / `g b` / `g p` / `g r` (`src/app/keymap.rs`, `src/ui/list.rs:358`)
 - **3-column tabbed layout** (sidebar / list / detail) with focus toggling (`src/ui/mod.rs`, `src/ui/list.rs`)
 - **Global filter** per list (`src/app/mod.rs::filter_lists`, shortcut `/`) that types `j`/`k` correctly
 - **Group multi-project elements** in dashboard views; issues groupable by project or milestone with counts (`V`)

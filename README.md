@@ -17,7 +17,7 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 ### Dashboard & Navigation
 - **Personal dashboard** with tabs for Todos, Merge Requests, Issues, Projects, Groups (`src/app/mod.rs:1`)
 - **Membership-scoped listing** so you only see projects you belong to (`src/app/mod.rs:266`, fixed in 0.14.4)
-- **Jump shortcuts** (`g t` / `g m` / `g i` / `g p` / `g r`) and contextual sidebar/list/detail focus (`1`/`2`/`3` / `Tab`)
+- **Home Launchpad & Jump shortcuts** (`g h` / `g t` / `g m` / `g i` / `g b` / `g p` / `g r`) with 8 quick-access cards and contextual focus (`src/models.rs`, `src/ui/list.rs:358`, `src/app/keymap.rs`)
 - **Global search** with a dual-strategy (Elasticsearch + scoped) hybrid (`src/app/search.rs:6`, shortcut `f`)
 - **Filter-as-you-type** per list (`/`)
 

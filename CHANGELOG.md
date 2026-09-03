@@ -6,6 +6,11 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+- **In-App Home Launchpad & Quick Access**: Added `MenuSelection::Home` as the default launchpad on startup with live project/branch context and 8 interactive shortcut cards (MRs, To-Dos, Issues, Boards, CI/CD, Repository, Switch Project, Help/Command Palette) navigable via `h`/`j`/`k`/`l`/arrows or direct hotkeys, plus global `g h` shortcut (`src/models.rs`, `src/app/mod.rs`, `src/ui/list.rs`, `src/app/keymap.rs`).
+- **Brand Identity & TUI Geometric Logo**: Redesigned logo as an independent geometric vector mark combining terminal velocity (`>`) in Electric Sky Blue and Git branch node (`ᚴ`) in Git Emerald Green without third-party mascots or window decorations (`docs/assets/logo.svg`, `docs/assets/logo.png`, `favicon.png`, `favicon.ico`).
+- **Documentation Theme & Monochrome Aesthetic**: Aligned documentation palette with logo brand colors (Electric Sky Blue primary, Git Emerald Green accent, Obsidian Slate dark canvas), removed colored emojis, and enforced strict monochrome icon styling across all guides (`zensical.toml`, `docs/stylesheets/extra.css`, `docs/*.md`).
+- **Printable Cheatsheet Redesign**: Overhauled landscape printable PDF cheatsheet with uniform keycap button dimensions (`14.5mm x 3.6mm`), razor-straight left-aligned descriptions, balanced 4×2 card grid symmetry, and embedded logo mark (`scripts/generate_cheatsheet_pdf.py`).
+- **In-Terminal ASCII Banner Polish**: Cleaned in-terminal banner to a pure FIGlet wordmark with theme-aware styling and prompt tagline (`src/ui/banner.rs`).
 - **Interactive Merge Confirmation Options:** Added interactive squash commits (`s`) and delete source branch (`d`) toggles inside the merge confirmation popup (`src/ui/popup/confirm.rs`, `src/app/popups.rs`).
 - **Side-by-Side Diff Viewer:** Added side-by-side dual-column diff viewer toggled with `w` in the Diff view (`src/ui/diff.rs`, `src/app/keymap.rs`).
 - **Resilient Diff & File Status Handling:** Added explicit notices for binary files and empty diffs preventing infinite API reload loops, and rendered file status badges (`[-]` deleted, `[+]` added, `[R]` renamed) in the diff file tree (`src/app/mod.rs`, `src/ui/diff.rs`).
