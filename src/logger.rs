@@ -6,7 +6,7 @@ pub fn init() -> tracing_appender::non_blocking::WorkerGuard {
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let format = fmt::layer()
-        .with_writer(non_blocking)
+        .with_writer(crate::redaction::redacting(non_blocking))
         .with_ansi(false)
         .with_thread_ids(true)
         .with_target(false);

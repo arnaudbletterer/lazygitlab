@@ -4,6 +4,7 @@ pub mod events;
 pub mod headless;
 pub mod logger;
 pub mod models;
+pub mod redaction;
 pub mod runner;
 pub mod ui;
 

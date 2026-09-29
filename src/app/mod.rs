@@ -959,6 +959,7 @@ impl App {
                 }
             }
             DataUpdate::Error(e) => {
+                let e = crate::redaction::redact_secrets(&e).into_owned();
                 if e.contains("Diffs") {
                     self.is_fetching_diffs = false;
                 }

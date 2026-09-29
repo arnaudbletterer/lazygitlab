@@ -21,6 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     let _guard = crate::logger::init();
     let config = Config::from_env();
+    lazygitlab::redaction::register_secret(&config.token);
     let mut builder = GitlabBuilder::new(config.url, config.token);
     if config.insecure {
         builder.insecure();
