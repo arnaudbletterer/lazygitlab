@@ -263,7 +263,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ### Fixed
 - Restore MR navigation state after tab switches; improve theme coherence across views.
 
-[Unreleased]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.15.0...HEAD
+[Unreleased]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.16.0...HEAD
+[0.16.0]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.15.0...v0.16.0
 [0.15.0]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.8...v0.15.0
 [0.14.8]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.7...v0.14.8
 [0.14.7]: https://git.abletterer.synology.me/abletterer/lazygitlab/compare/v0.14.6...v0.14.7
