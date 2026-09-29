@@ -848,15 +848,14 @@ impl App {
                         let _ = self.refresh().await;
                     }
                 }
-                KeyCode::Char('b') => {
-                    if self.selected_project.is_some() {
+                KeyCode::Char('b')
+                    if self.selected_project.is_some() => {
                         self.active_context = Context::Project;
                         self.active_selection = MenuSelection::Branches;
                         self.project_menu_state.select(Some(4));
                         self.active_panel = Panel::Main;
                         let _ = self.refresh().await;
                     }
-                }
                 _ => {}
             }
             return;

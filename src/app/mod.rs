@@ -468,7 +468,7 @@ impl App {
                     }
                     self.mrs_has_more = has_more;
                     if added {
-                        self.merge_requests.sort_by(|a, b| b.iid.cmp(&a.iid));
+                        self.merge_requests.sort_by_key(|b| std::cmp::Reverse(b.iid));
                         self.filter_lists();
                     }
                 }
@@ -564,7 +564,7 @@ impl App {
                     }
                     self.issues_has_more = has_more;
                     if added {
-                        self.issues.sort_by(|a, b| b.iid.cmp(&a.iid));
+                        self.issues.sort_by_key(|b| std::cmp::Reverse(b.iid));
                         self.filter_lists();
                     }
                 }
@@ -1845,11 +1845,10 @@ impl App {
                         let _ = self.fetch_projects().await;
                     }
                 }
-                MenuSelection::Groups => {
-                    if should_fetch_lists {
+                MenuSelection::Groups
+                    if should_fetch_lists => {
                         let _ = self.fetch_groups().await;
                     }
-                }
                 _ => {}
             },
             Context::Project => {
@@ -1900,11 +1899,10 @@ impl App {
                                 let _ = self.fetch_boards().await;
                             }
                         }
-                        MenuSelection::Epics => {
-                            if should_fetch_lists {
+                        MenuSelection::Epics
+                            if should_fetch_lists => {
                                 let _ = self.fetch_epics().await;
                             }
-                        }
                         _ => {}
                     }
                 }

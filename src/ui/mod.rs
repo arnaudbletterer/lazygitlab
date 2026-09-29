@@ -731,8 +731,7 @@ fn highlight_and_render(
     let theme = theme_set.themes.values().next().cloned().unwrap();
     let mut highlighter = syntect::easy::HighlightLines::new(&syntax, &theme);
     let mut out = Vec::new();
-    let mut line_number = 1;
-    for line in syntect::util::LinesWithEndings::from(text) {
+    for (line_number, line) in (1..).zip(syntect::util::LinesWithEndings::from(text)) {
         let ranges = highlighter
             .highlight_line(line, syntax_set)
             .unwrap_or_default();
@@ -748,7 +747,6 @@ fn highlight_and_render(
             spans.push(Span::raw(line.trim_end_matches(['\n', '\r']).to_string()));
         }
         out.push(Line::from(spans));
-        line_number += 1;
     }
     if out.is_empty() {
         for (i, line) in text.lines().enumerate() {

@@ -487,16 +487,13 @@ impl App {
                 )
                 .await;
                 match res {
-                    Ok(Ok(data)) => {
-                        if !data.is_empty() {
+                    Ok(Ok(data))
+                        if !data.is_empty() => {
                             let _ = tx.send(DataUpdate::AppendCommits {
                                 project_id: pid,
                                 data,
                             });
-                        } else {
-                            let _ = tx.send(DataUpdate::Loading(false));
                         }
-                    }
                     _ => {
                         let _ = tx.send(DataUpdate::Loading(false));
                     }
