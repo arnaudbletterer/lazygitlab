@@ -26,7 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if config.insecure {
         builder.insecure();
     }
-    let client = builder.build_async().await?;
+    let client = builder
+        .build_async()
+        .await
+        .map_err(|e| lazygitlab::redaction::redact_secrets(&e.to_string()).into_owned())?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx, None);
 
@@ -151,7 +154,10 @@ pub async fn run_with_terminal(
     )?;
     terminal.show_cursor()?;
     if let Err(err) = res {
-        eprintln!("Application Error: {err}");
+        eprintln!(
+            "Application Error: {}",
+            lazygitlab::redaction::redact_secrets(&err.to_string())
+        );
     }
     Ok(())
 }

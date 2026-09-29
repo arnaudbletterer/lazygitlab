@@ -1,4 +1,4 @@
-use regex::Regex;
+use regex::{Captures, Regex};
 use std::borrow::Cow;
 use std::io::{self, Write};
 use std::sync::OnceLock;
@@ -6,26 +6,28 @@ use tracing_subscriber::fmt::MakeWriter;
 
 pub const REDACTED: &str = "[REDACTED]";
 
+const MIN_SECRET_LEN: usize = 8;
+
 static CONFIGURED_TOKEN: OnceLock<String> = OnceLock::new();
 static PATTERNS: OnceLock<Vec<(Regex, &'static str)>> = OnceLock::new();
+static BEARER: OnceLock<Option<Regex>> = OnceLock::new();
 
 pub fn register_secret(token: &str) {
     let token = token.trim();
-    if !token.is_empty() {
+    if token.len() >= MIN_SECRET_LEN {
         let _ = CONFIGURED_TOKEN.set(token.to_string());
     }
 }
 
 fn patterns() -> &'static Vec<(Regex, &'static str)> {
     PATTERNS.get_or_init(|| {
-        let specs: [(&str, &'static str); 3] = [
+        let specs: [(&str, &'static str); 2] = [
             (
-                r"\bgl(?:pat|dt|ptt|rt|cbt|imt|ft|soat|agent|oas|ffct|rtr)-[A-Za-z0-9_-]{8,}",
-                REDACTED,
+                r"(^|[^A-Za-z0-9])gl(?:pat|dt|ptt|rt|cbt|imt|ft|soat|agent|oas|ffct|rtr)-[A-Za-z0-9_.-]{8,}",
+                "${1}[REDACTED]",
             ),
-            (r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer [REDACTED]"),
             (
-                r#"(?i)((?:private[-_]token|access_token)"?\s*[:=]\s*"?)[^\s"&,;]+"#,
+                r#"(?i)((?:private[-_]token|access_token)(?:\\?"|%22)?\s*(?:[:=]|%3D|%3A)\s*(?:\\?"|%22)?)[^\s"&,;\\]+"#,
                 "${1}[REDACTED]",
             ),
         ];
@@ -34,6 +36,23 @@ fn patterns() -> &'static Vec<(Regex, &'static str)> {
             .filter_map(|(re, rep)| Regex::new(re).ok().map(|r| (r, rep)))
             .collect()
     })
+}
+
+fn redact_bearer(input: &str) -> Cow<'_, str> {
+    let re = BEARER.get_or_init(|| Regex::new(r"\bBearer\s+([A-Za-z0-9._~+/=-]{8,})").ok());
+    match re {
+        Some(re) => re.replace_all(input, |caps: &Captures| {
+            let tokenish = caps[1]
+                .chars()
+                .any(|c| c.is_ascii_digit() || "._~+/=-".contains(c));
+            if tokenish {
+                "Bearer [REDACTED]".to_string()
+            } else {
+                caps[0].to_string()
+            }
+        }),
+        None => Cow::Borrowed(input),
+    }
 }
 
 pub fn redact_secrets(input: &str) -> Cow<'_, str> {
@@ -47,6 +66,11 @@ pub fn redact_secrets(input: &str) -> Cow<'_, str> {
         if re.is_match(&out) {
             out = Cow::Owned(re.replace_all(&out, *rep).into_owned());
         }
+    }
+    if let Cow::Owned(s) = redact_bearer(&out)
+        && s != out
+    {
+        out = Cow::Owned(s);
     }
     out
 }

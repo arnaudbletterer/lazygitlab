@@ -179,7 +179,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     if let Some(err) = &app.last_error {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
-            format!(" Error: {} ", err),
+            format!(" Error: {} ", crate::redaction::redact_secrets(err)),
             Style::default().bg(app.theme.failed).fg(widgets::get_contrast_color(app.theme.failed)).add_modifier(Modifier::BOLD),
         ));
     }

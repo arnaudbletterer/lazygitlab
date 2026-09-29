@@ -101,5 +101,39 @@ fn registered_token_never_reaches_log_output() {
     assert!(written.contains("request failed"));
     assert!(!written.contains(SELF_HOSTED));
     assert!(!written.contains(PAT));
-    assert!(!written.contains("abcdefghijkl"));
+    assert!(!written.contains("abcdefghij12"));
+}
+
+#[test]
+fn masks_pat_after_newline_and_routable_form() {
+    let out = redact_secrets("error:\nglpat-X.01.abcdefgh12 end");
+    assert_eq!(out, "error:\n[REDACTED] end");
+    assert_eq!(redact_secrets("glpat-abcdefgh1234"), "[REDACTED]");
+}
+
+#[test]
+fn masks_escaped_json_and_url_encoded_keys() {
+    let a = redact_secrets(r#"body: {\"private_token\": \"s3cretvalue\"}"#);
+    assert!(!a.contains("s3cretvalue"), "{a}");
+    let b = redact_secrets("GET /x?private_token%3Ds3cretvalue&a=1");
+    assert_eq!(b, "GET /x?private_token%3D[REDACTED]&a=1");
+}
+
+#[test]
+fn short_secrets_are_not_registered() {
+    register_secret("abc");
+    assert!(matches!(
+        redact_secrets("abc abc abc"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+}
+
+#[test]
+fn bearer_prose_is_untouched() {
+    for s in ["Bearer authentication is required", "bearer abcdefghij12"] {
+        assert!(
+            matches!(redact_secrets(s), std::borrow::Cow::Borrowed(_)),
+            "{s}"
+        );
+    }
 }
