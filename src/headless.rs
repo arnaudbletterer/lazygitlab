@@ -273,47 +273,6 @@ pub struct HeadlessOptions {
     pub frames_dir: Option<PathBuf>,
 }
 
-pub fn parse_options(args: &[String]) -> Result<HeadlessOptions, String> {
-    let mut opts = HeadlessOptions {
-        width: 120,
-        height: 40,
-        script_path: None,
-        frames_dir: None,
-    };
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--headless" => {}
-            "--width" => {
-                opts.width = iter
-                    .next()
-                    .ok_or("--width requires an argument")?
-                    .parse()
-                    .map_err(|_| "invalid width")?;
-            }
-            "--height" => {
-                opts.height = iter
-                    .next()
-                    .ok_or("--height requires an argument")?
-                    .parse()
-                    .map_err(|_| "invalid height")?;
-            }
-            "--script" => {
-                opts.script_path = Some(PathBuf::from(
-                    iter.next().ok_or("--script requires a path")?,
-                ));
-            }
-            "--frames-dir" => {
-                opts.frames_dir = Some(PathBuf::from(
-                    iter.next().ok_or("--frames-dir requires a path")?,
-                ));
-            }
-            other => return Err(format!("unknown argument: {other}")),
-        }
-    }
-    Ok(opts)
-}
-
 pub fn load_script(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("failed to read script {}: {}", path.display(), e))
 }

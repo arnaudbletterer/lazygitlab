@@ -1,4 +1,4 @@
-use lazygitlab::headless::{parse_options, parse_script};
+use lazygitlab::headless::parse_script;
 
 #[test]
 fn test_parse_script_basic_keys() {
@@ -103,46 +103,6 @@ fn test_parse_script_mouse() {
 fn test_parse_script_comments_and_blank_lines() {
     let events = parse_script("# a comment\n\n   \nq\n# another\n").unwrap();
     assert_eq!(events.len(), 1);
-}
-
-#[test]
-fn test_parse_options_default() {
-    let opts = parse_options(&[]).unwrap();
-    assert_eq!(opts.width, 120);
-    assert_eq!(opts.height, 40);
-    assert!(opts.script_path.is_none());
-    assert!(opts.frames_dir.is_none());
-}
-
-#[test]
-fn test_parse_options_with_flags() {
-    let args: Vec<String> = [
-        "--width",
-        "200",
-        "--height",
-        "50",
-        "--script",
-        "foo.txt",
-        "--frames-dir",
-        "out",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    let opts = parse_options(&args).unwrap();
-    assert_eq!(opts.width, 200);
-    assert_eq!(opts.height, 50);
-    assert_eq!(
-        opts.script_path.as_deref().unwrap().to_str().unwrap(),
-        "foo.txt"
-    );
-    assert_eq!(opts.frames_dir.as_deref().unwrap().to_str().unwrap(), "out");
-}
-
-#[test]
-fn test_parse_options_unknown() {
-    let args = vec!["--unknown".to_string()];
-    assert!(parse_options(&args).is_err());
 }
 
 #[tokio::test]
