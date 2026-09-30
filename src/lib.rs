@@ -8,6 +8,7 @@ pub mod logger;
 pub mod models;
 pub mod redaction;
 pub mod runner;
+pub mod setup;
 pub mod ui;
 
 pub use api::*;
