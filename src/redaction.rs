@@ -23,7 +23,7 @@ fn patterns() -> &'static Vec<(Regex, &'static str)> {
     PATTERNS.get_or_init(|| {
         let specs: [(&str, &'static str); 2] = [
             (
-                r"(^|[^A-Za-z0-9])gl(?:pat|dt|ptt|rt|cbt|imt|ft|soat|agent|oas|ffct|rtr)-[A-Za-z0-9_.-]{8,}",
+                r"(^|[^A-Za-z0-9]|%[0-9A-Fa-f]{2}|\\[nrt])gl(?:pat|dt|ptt|rt|cbt|imt|ft|soat|agent|oas|ffct|rtr)-[A-Za-z0-9_.-]{8,}",
                 "${1}[REDACTED]",
             ),
             (

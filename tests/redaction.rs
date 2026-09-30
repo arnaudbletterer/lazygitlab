@@ -137,3 +137,11 @@ fn bearer_prose_is_untouched() {
         );
     }
 }
+
+#[test]
+fn masks_tokens_after_url_encoding_and_escapes() {
+    let url = redact_secrets("GET /x?q=a%20glpat-AbCdEf0123456789xy");
+    assert!(!url.contains("glpat-AbCdEf0123456789xy"), "{url}");
+    let debug = redact_secrets(r"line\nglpat-AbCdEf0123456789xy");
+    assert!(!debug.contains("glpat-AbCdEf0123456789xy"), "{debug}");
+}

@@ -184,7 +184,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ));
     }
     if app.is_loading || app.status_message.is_some() {
-        let msg = app.status_message.as_deref().unwrap_or("Loading");
+        let redacted_msg = crate::redaction::redact_secrets(app.status_message.as_deref().unwrap_or("Loading"));
+        let msg: &str = &redacted_msg;
         let lower = msg.to_lowercase();
         let bg = if lower.contains("failed") || lower.contains("timed out") {
             app.theme.failed
