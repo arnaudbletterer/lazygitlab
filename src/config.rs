@@ -162,7 +162,7 @@ fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
         .unwrap_or_else(|| "config.toml".into());
     let tmp = path.with_file_name(format!(".{name}.tmp-{}", std::process::id()));
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
