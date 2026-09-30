@@ -1,5 +1,6 @@
 pub mod api;
 pub mod app;
+pub mod cli;
 pub mod events;
 pub mod headless;
 pub mod logger;
