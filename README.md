@@ -11,8 +11,10 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 ## Features
 - **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project (src/main.rs:100).
 - **Smart Project Selection:** Automatically selects the project if it is the only one available (src/app/mod.rs:350).
-- **CLI Arguments:** Added support for --help, --version, --project, --url, --token, --config, and --insecure (src/main.rs:130).
-- **Security:** Redacted GitLab personal access tokens and Bearer tokens in logs and error messages (src/logger.rs:40).
+- **CLI Arguments:** `--help`, `--version`, `--project`, `--url`, `--token`, `--config` and `--insecure` (src/cli.rs:81).
+- **Config file:** `[gitlab]` table in `~/.config/lazygitlab/config.toml`; precedence is CLI, then environment / `.env`, then file (src/config.rs:90).
+- **Setup Wizard:** first-run prompt for URL and token when none is configured, optionally saved to `config.toml` with `0600` permissions (src/setup.rs:19).
+- **Security:** GitLab tokens, Bearer tokens and the configured token are redacted in logs, error messages and the status bar (src/redaction.rs:58).
 
 ### Dashboard & Navigation
 - **Personal dashboard** with tabs for Todos, Merge Requests, Issues, Projects, Groups (`src/app/mod.rs:1`)

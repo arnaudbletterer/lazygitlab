@@ -66,6 +66,8 @@ Grouped by area. File pointers are the canonical location for the implementation
 - **Self-expiring footer feedback** with outcome-colored status messages
 - **GFM markdown**: aligned tables, task lists, blockquotes, footnotes (`src/ui/markdown.rs`)
 - **Mouse support**, themable via `theme.toml`, persistent tracing logs, searchable help popup
+- **Startup**: CLI flags (`src/cli.rs`), `[gitlab]` config file (`src/config.rs`), first-run setup wizard (`src/setup.rs`)
+- **Token redaction** in logs, errors and the status bar (`src/redaction.rs`)
 
 ## What's Next
 

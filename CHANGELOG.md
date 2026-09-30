@@ -21,9 +21,10 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - **Dynamic Contrast Helpers:** Added luminance-based `get_contrast_color` and updated `get_contrasting_text_color` to select dark text (`#11111b`) or light text (`#cdd6f4`) based on WCAG perceived luminance.
 - **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project.
 - **Smart Project Selection:** Automatically selects the project if it is the only one available for the user/service account.
-- **CLI Arguments:** Added support for --help, --version, --project, --url, --token, --config, and --insecure.
-- **Security:** Redacted GitLab personal access tokens and Bearer tokens in application logs and error messages.
-- **Setup Wizard:** Friendly styled terminal wizard if GITLAB_TOKEN is missing.
+- **CLI Arguments:** Added `--help`, `--version`, `--project`, `--url`, `--token`, `--config` and `--insecure`; headless flags accept `--flag=value` (`src/cli.rs`).
+- **Config File:** `[gitlab]` table (`url`, `token`, `insecure`, `project`) in `~/.config/lazygitlab/config.toml` or `--config`, with CLI > environment > file precedence (`src/config.rs`).
+- **Security:** Redacted GitLab personal access tokens, Bearer tokens and the configured token in application logs, error messages, the status bar and stderr (`src/redaction.rs`).
+- **Setup Wizard:** First-run terminal wizard when no token is configured; the token can be saved to `config.toml` (written atomically, mode `0600`). Without a terminal, lazygitlab now exits with a clear message instead of panicking (`src/setup.rs`).
 
 ### Changed
 - **Theme & Color Contrast Optimization:** Audited all theme presets (Catppuccin Mocha/Latte, Tokyo Night, Nord, Dracula, Gruvbox Dark/Light, GitHub Dark/Light, Default) for WCAG compliance. Replaced hardcoded black popup backgrounds and clashing button/badge foregrounds with theme surfaces and luminance-adaptive foregrounds across lists, metadata inspector, diffs, boards, job logs, and modals.
