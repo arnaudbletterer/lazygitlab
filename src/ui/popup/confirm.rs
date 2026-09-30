@@ -11,7 +11,10 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
         .bg(app.theme.code_bg)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(Span::styled(" Confirm Merge Request ", Style::default().fg(app.theme.title_fg).bold()))
+        .title(Span::styled(
+            " Confirm Merge Request ",
+            Style::default().fg(app.theme.title_fg).bold(),
+        ))
         .border_style(Style::default().fg(app.theme.shortcut_key));
 
     f.render_widget(block, area);
@@ -30,33 +33,69 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
 
     if let Some(mr) = &app.selected_mr {
         lines.push(Line::from(vec![
-            Span::styled("Title: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Title: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&mr.title, Style::default().fg(app.theme.title_fg)),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Branches: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Branches: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
             Span::styled(" -> ", Style::default().fg(app.theme.dim)),
             Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("[s] Squash commits: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
             Span::styled(
-                if app.merge_squash { "[X] Yes" } else { "[ ] No" },
+                "[s] Squash commits: ",
                 Style::default()
-                    .fg(if app.merge_squash { app.theme.success } else { app.theme.dim })
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if app.merge_squash {
+                    "[X] Yes"
+                } else {
+                    "[ ] No"
+                },
+                Style::default()
+                    .fg(if app.merge_squash {
+                        app.theme.success
+                    } else {
+                        app.theme.dim
+                    })
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("[d] Delete source branch: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
             Span::styled(
-                if app.merge_remove_source_branch { "[X] Yes" } else { "[ ] No" },
+                "[d] Delete source branch: ",
                 Style::default()
-                    .fg(if app.merge_remove_source_branch { app.theme.failed } else { app.theme.dim })
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if app.merge_remove_source_branch {
+                    "[X] Yes"
+                } else {
+                    "[ ] No"
+                },
+                Style::default()
+                    .fg(if app.merge_remove_source_branch {
+                        app.theme.failed
+                    } else {
+                        app.theme.dim
+                    })
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -64,7 +103,12 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
         // Pipeline info if available
         if let Some(pipeline) = &mr.head_pipeline {
             lines.push(Line::from(vec![
-                Span::styled("Pipeline: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Pipeline: ",
+                    Style::default()
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     &pipeline.status,
                     get_status_style(&pipeline.status, &app.theme),
@@ -72,7 +116,12 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
             ]));
         } else {
             lines.push(Line::from(vec![
-                Span::styled("Pipeline: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Pipeline: ",
+                    Style::default()
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("None", Style::default().fg(app.theme.dim)),
             ]));
         }
@@ -85,7 +134,12 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
             _ => app.theme.pending,
         };
         lines.push(Line::from(vec![
-            Span::styled("Status: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Status: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(detailed_status, Style::default().fg(status_color)),
         ]));
 
@@ -96,11 +150,19 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
                 .filter_map(|a| a.user.as_ref().map(|u| format!("@{}", u.username)))
                 .collect();
             lines.push(Line::from(vec![
-                Span::styled("Approvals: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
-                Span::styled(match (info.approvals_left, info.approvals_required) {
-                    (Some(left), Some(req)) => format!("{}/{} ", req.saturating_sub(left), req),
-                    _ => String::new(),
-                }, Style::default().fg(app.theme.title_fg)),
+                Span::styled(
+                    "Approvals: ",
+                    Style::default()
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    match (info.approvals_left, info.approvals_required) {
+                        (Some(left), Some(req)) => format!("{}/{} ", req.saturating_sub(left), req),
+                        _ => String::new(),
+                    },
+                    Style::default().fg(app.theme.title_fg),
+                ),
                 Span::styled(
                     if approvers.is_empty() {
                         "none".to_string()
@@ -137,7 +199,9 @@ pub fn render_confirm_merge_popup(f: &mut Frame, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             "  [ Esc: Cancel ]  ",
-            Style::default().bg(app.theme.dim).fg(get_contrast_color(app.theme.dim)),
+            Style::default()
+                .bg(app.theme.dim)
+                .fg(get_contrast_color(app.theme.dim)),
         ),
     ]));
 
@@ -154,7 +218,10 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
         .bg(app.theme.code_bg)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(Span::styled(" Confirm Rebase ", Style::default().fg(app.theme.title_fg).bold()))
+        .title(Span::styled(
+            " Confirm Rebase ",
+            Style::default().fg(app.theme.title_fg).bold(),
+        ))
         .border_style(Style::default().fg(app.theme.shortcut_key));
 
     f.render_widget(block, area);
@@ -173,12 +240,22 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
 
     if let Some(mr) = &app.selected_mr {
         lines.push(Line::from(vec![
-            Span::styled("Title: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Title: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&mr.title, Style::default().fg(app.theme.title_fg)),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Branches: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Branches: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&mr.source_branch, Style::default().fg(app.theme.author)),
             Span::styled(" -> ", Style::default().fg(app.theme.dim)),
             Span::styled(&mr.target_branch, Style::default().fg(app.theme.project)),
@@ -187,7 +264,12 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
         // Pipeline info if available
         if let Some(pipeline) = &mr.head_pipeline {
             lines.push(Line::from(vec![
-                Span::styled("Pipeline: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Pipeline: ",
+                    Style::default()
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     &pipeline.status,
                     get_status_style(&pipeline.status, &app.theme),
@@ -195,7 +277,12 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
             ]));
         } else {
             lines.push(Line::from(vec![
-                Span::styled("Pipeline: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Pipeline: ",
+                    Style::default()
+                        .fg(app.theme.title_fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("None", Style::default().fg(app.theme.dim)),
             ]));
         }
@@ -208,7 +295,12 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
             _ => app.theme.pending,
         };
         lines.push(Line::from(vec![
-            Span::styled("Status: ", Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Status: ",
+                Style::default()
+                    .fg(app.theme.title_fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(detailed_status, Style::default().fg(status_color)),
         ]));
     }
@@ -225,7 +317,9 @@ pub fn render_confirm_rebase_popup(f: &mut Frame, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             "  [ Esc: Cancel ]  ",
-            Style::default().bg(app.theme.dim).fg(get_contrast_color(app.theme.dim)),
+            Style::default()
+                .bg(app.theme.dim)
+                .fg(get_contrast_color(app.theme.dim)),
         ),
     ]));
 
@@ -242,7 +336,10 @@ pub fn render_confirm_delete_branch_popup(f: &mut Frame, app: &mut App) {
         .bg(app.theme.code_bg)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(Span::styled(" Confirm Delete Branch ", Style::default().fg(app.theme.title_fg).bold()))
+        .title(Span::styled(
+            " Confirm Delete Branch ",
+            Style::default().fg(app.theme.title_fg).bold(),
+        ))
         .border_style(Style::default().fg(app.theme.failed));
 
     f.render_widget(block, area);
@@ -281,7 +378,9 @@ pub fn render_confirm_delete_branch_popup(f: &mut Frame, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             "  [ Esc: Cancel ]  ",
-            Style::default().bg(app.theme.dim).fg(get_contrast_color(app.theme.dim)),
+            Style::default()
+                .bg(app.theme.dim)
+                .fg(get_contrast_color(app.theme.dim)),
         ),
     ]));
 

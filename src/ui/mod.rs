@@ -34,15 +34,13 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         ])
         .split(f.area());
 
-    let mut header_spans = vec![
-        Span::styled(
-            " 🦊 GitLab ",
-            Style::default()
-                .bg(app.theme.accent)
-                .fg(widgets::get_contrast_color(app.theme.accent))
-                .add_modifier(Modifier::BOLD),
-        ),
-    ];
+    let mut header_spans = vec![Span::styled(
+        " 🦊 GitLab ",
+        Style::default()
+            .bg(app.theme.accent)
+            .fg(widgets::get_contrast_color(app.theme.accent))
+            .add_modifier(Modifier::BOLD),
+    )];
     if let Some(proj) = &app.selected_project {
         header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
         header_spans.push(Span::styled(
@@ -54,7 +52,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         if let Some(ref_name) = &app.repository_ref {
             header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
             header_spans.push(Span::styled("🌿 ", Style::default().fg(app.theme.accent)));
-            header_spans.push(Span::styled(ref_name, Style::default().fg(app.theme.accent)));
+            header_spans.push(Span::styled(
+                ref_name,
+                Style::default().fg(app.theme.accent),
+            ));
         }
     } else {
         header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
@@ -105,20 +106,37 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     };
 
     if let Some(rect) = filter_rect {
-        let mut filter_spans = vec![
-            Span::styled(" [ FILTER ] ", Style::default().bg(app.theme.highlight_bg).fg(widgets::get_contrast_color(app.theme.highlight_bg)).add_modifier(Modifier::BOLD)),
-        ];
+        let mut filter_spans = vec![Span::styled(
+            " [ FILTER ] ",
+            Style::default()
+                .bg(app.theme.highlight_bg)
+                .fg(widgets::get_contrast_color(app.theme.highlight_bg))
+                .add_modifier(Modifier::BOLD),
+        )];
         if job_log_searching {
-            filter_spans.push(Span::styled(" Search log: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
+            filter_spans.push(Span::styled(
+                " Search log: ",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ));
             filter_spans.push(Span::raw(&app.job_log_search));
         } else {
-            filter_spans.push(Span::styled(" Filter: ", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)));
+            filter_spans.push(Span::styled(
+                " Filter: ",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ));
             filter_spans.push(Span::raw(&app.filter_input));
         }
         if job_log_searching || app.show_filter_input {
             filter_spans.push(Span::styled("█", Style::default().fg(app.theme.pending)));
         } else {
-            filter_spans.push(Span::styled(" (Esc to clear)", Style::default().fg(app.theme.dim)));
+            filter_spans.push(Span::styled(
+                " (Esc to clear)",
+                Style::default().fg(app.theme.dim),
+            ));
         }
         f.render_widget(Paragraph::new(Line::from(filter_spans)), rect);
     }
@@ -139,7 +157,13 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     };
 
     let mut footer_spans = vec![
-        Span::styled(mode_str, Style::default().bg(app.theme.shortcut_key).fg(widgets::get_contrast_color(app.theme.shortcut_key)).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            mode_str,
+            Style::default()
+                .bg(app.theme.shortcut_key)
+                .fg(widgets::get_contrast_color(app.theme.shortcut_key))
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" "),
     ];
 
@@ -156,13 +180,25 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         _ => 0,
     };
     if count > 0 {
-        footer_spans.push(Span::styled(format!(" [{}] ", count), Style::default().bg(app.theme.chip_bg).fg(app.theme.chip_fg).bold()));
+        footer_spans.push(Span::styled(
+            format!(" [{}] ", count),
+            Style::default()
+                .bg(app.theme.chip_bg)
+                .fg(app.theme.chip_fg)
+                .bold(),
+        ));
         footer_spans.push(Span::raw(" "));
     }
 
-    footer_spans.push(Span::styled("?", Style::default().fg(app.theme.accent).bold()));
+    footer_spans.push(Span::styled(
+        "?",
+        Style::default().fg(app.theme.accent).bold(),
+    ));
     footer_spans.push(Span::raw(" help  "));
-    footer_spans.push(Span::styled("q", Style::default().fg(app.theme.accent).bold()));
+    footer_spans.push(Span::styled(
+        "q",
+        Style::default().fg(app.theme.accent).bold(),
+    ));
     footer_spans.push(Span::raw(" quit"));
 
     if app.pending_g_prefix {
@@ -180,11 +216,15 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" Error: {} ", crate::redaction::redact_secrets(err)),
-            Style::default().bg(app.theme.failed).fg(widgets::get_contrast_color(app.theme.failed)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .bg(app.theme.failed)
+                .fg(widgets::get_contrast_color(app.theme.failed))
+                .add_modifier(Modifier::BOLD),
         ));
     }
     if app.is_loading || app.status_message.is_some() {
-        let redacted_msg = crate::redaction::redact_secrets(app.status_message.as_deref().unwrap_or("Loading"));
+        let redacted_msg =
+            crate::redaction::redact_secrets(app.status_message.as_deref().unwrap_or("Loading"));
         let msg: &str = &redacted_msg;
         let lower = msg.to_lowercase();
         let bg = if lower.contains("failed") || lower.contains("timed out") {
@@ -205,7 +245,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         footer_spans.push(Span::raw("   "));
         footer_spans.push(Span::styled(
             format!(" {} ", msg),
-            Style::default().bg(bg).fg(widgets::get_contrast_color(bg)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .bg(bg)
+                .fg(widgets::get_contrast_color(bg))
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
@@ -527,18 +570,19 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
         }
 
         let num_style = if is_selected {
-            Style::default().fg(app.theme.dim).bg(app.theme.highlight_bg)
+            Style::default()
+                .fg(app.theme.dim)
+                .bg(app.theme.highlight_bg)
         } else {
             Style::default().fg(app.theme.dim)
         };
-        let mut spans = vec![Span::styled(
-            format!("{:4} ", idx + 1),
-            num_style,
-        )];
+        let mut spans = vec![Span::styled(format!("{:4} ", idx + 1), num_style)];
 
         if !line.timestamp.is_empty() {
             let ts_style = if is_selected {
-                Style::default().fg(app.theme.dim).bg(app.theme.highlight_bg)
+                Style::default()
+                    .fg(app.theme.dim)
+                    .bg(app.theme.highlight_bg)
             } else {
                 Style::default().fg(app.theme.dim)
             };
@@ -569,10 +613,7 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
                     .fg(app.theme.shortcut_key)
                     .add_modifier(Modifier::BOLD)
             };
-            spans.push(Span::styled(
-                symbol,
-                sym_style,
-            ));
+            spans.push(Span::styled(symbol, sym_style));
         } else if line.section.is_some() {
             let indent_style = if is_selected {
                 Style::default().bg(app.theme.highlight_bg)
@@ -677,7 +718,10 @@ fn render_tree_view(f: &mut Frame, app: &mut App, area: Rect) {
         }
         match &app.file_highlight_cache {
             Some((_, _, lines)) => {
-                let max_scroll = lines.len().saturating_sub(app.file_viewport_height as usize) as u16;
+                let max_scroll = lines
+                    .len()
+                    .saturating_sub(app.file_viewport_height as usize)
+                    as u16;
                 if app.file_scroll > max_scroll {
                     app.file_scroll = max_scroll;
                 }

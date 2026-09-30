@@ -47,7 +47,10 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Edit Labels (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Edit Labels (Space to toggle, Enter to save) ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()
@@ -85,7 +88,10 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
             } else {
                 "[ ] "
             };
-            ListItem::new(Span::styled(format!("{}{}", prefix, m.username), Style::default().fg(app.theme.title_fg)))
+            ListItem::new(Span::styled(
+                format!("{}{}", prefix, m.username),
+                Style::default().fg(app.theme.title_fg),
+            ))
         })
         .collect();
 
@@ -95,7 +101,10 @@ pub fn render_assignee_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Edit Assignees (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Edit Assignees (Space to toggle, Enter to save) ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()
@@ -133,7 +142,10 @@ pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
             } else {
                 "[ ] "
             };
-            ListItem::new(Span::styled(format!("{}{}", prefix, m.username), Style::default().fg(app.theme.title_fg)))
+            ListItem::new(Span::styled(
+                format!("{}{}", prefix, m.username),
+                Style::default().fg(app.theme.title_fg),
+            ))
         })
         .collect();
 
@@ -143,7 +155,10 @@ pub fn render_reviewer_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Edit Reviewers (Space to toggle, Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Edit Reviewers (Space to toggle, Enter to save) ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()
@@ -175,10 +190,21 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
 
     let mut milestones: Vec<ListItem> = milestones_source
         .iter()
-        .map(|m| ListItem::new(Span::styled(m.title.clone(), Style::default().fg(app.theme.title_fg))))
+        .map(|m| {
+            ListItem::new(Span::styled(
+                m.title.clone(),
+                Style::default().fg(app.theme.title_fg),
+            ))
+        })
         .collect();
 
-    milestones.insert(0, ListItem::new(Span::styled("None (Clear Milestone)", Style::default().fg(app.theme.dim))));
+    milestones.insert(
+        0,
+        ListItem::new(Span::styled(
+            "None (Clear Milestone)",
+            Style::default().fg(app.theme.dim),
+        )),
+    );
 
     let list = List::new(milestones)
         .block(
@@ -186,7 +212,10 @@ pub fn render_milestone_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Select Milestone (Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Select Milestone (Enter to save) ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()
@@ -204,7 +233,14 @@ pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
     f.render_widget(Clear, area);
     f.render_widget(Block::default().bg(app.theme.code_bg), area);
 
-    let weights: Vec<ListItem> = (0..=20).map(|w| ListItem::new(Span::styled(w.to_string(), Style::default().fg(app.theme.title_fg)))).collect();
+    let weights: Vec<ListItem> = (0..=20)
+        .map(|w| {
+            ListItem::new(Span::styled(
+                w.to_string(),
+                Style::default().fg(app.theme.title_fg),
+            ))
+        })
+        .collect();
 
     let list = List::new(weights)
         .block(
@@ -212,7 +248,10 @@ pub fn render_weight_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Select Weight ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Select Weight ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()
@@ -233,7 +272,12 @@ pub fn render_target_branch_popup(f: &mut Frame, app: &mut App) {
     let branches: Vec<ListItem> = app
         .project_branches
         .iter()
-        .map(|b| ListItem::new(Span::styled(b.name.clone(), Style::default().fg(app.theme.title_fg))))
+        .map(|b| {
+            ListItem::new(Span::styled(
+                b.name.clone(),
+                Style::default().fg(app.theme.title_fg),
+            ))
+        })
         .collect();
 
     let list = List::new(branches)
@@ -242,7 +286,10 @@ pub fn render_target_branch_popup(f: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.active_border))
-                .title(Span::styled(" Select Target Branch (Enter to save) ", Style::default().fg(app.theme.title_fg).bold())),
+                .title(Span::styled(
+                    " Select Target Branch (Enter to save) ",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
         )
         .highlight_style(
             Style::default()

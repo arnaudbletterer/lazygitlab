@@ -57,9 +57,7 @@ pub fn parse_file_config(content: &str) -> Result<FileConfig, String> {
 
 pub fn load_file_config(path: &Path, required: bool) -> Result<FileConfig, String> {
     match std::fs::read_to_string(path) {
-        Ok(content) => {
-            parse_file_config(&content).map_err(|e| format!("{}: {e}", path.display()))
-        }
+        Ok(content) => parse_file_config(&content).map_err(|e| format!("{}: {e}", path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !required => {
             Ok(FileConfig::default())
         }
@@ -107,8 +105,8 @@ impl Settings {
             .or_else(|| non_empty(file.gitlab.token.as_deref()));
         let file_insecure = from_file && file.gitlab.insecure.unwrap_or(false);
         let insecure = cli.insecure || http || file_insecure;
-        let project = non_empty(cli.project.as_deref())
-            .or_else(|| non_empty(file.gitlab.project.as_deref()));
+        let project =
+            non_empty(cli.project.as_deref()).or_else(|| non_empty(file.gitlab.project.as_deref()));
         Self {
             url,
             token,

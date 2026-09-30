@@ -1065,15 +1065,16 @@ impl App {
                         self.input_target = InputTarget::PipelineVariableValue;
                     }
                     InputTarget::PipelineVariableValue
-                        if !self.pipeline_variable_key_input.is_empty() => {
-                            self.pipeline_variables.push(PipelineVariable {
-                                key: self.pipeline_variable_key_input.clone(),
-                                value: self.pipeline_variable_value_input.clone(),
-                            });
-                            self.pipeline_variable_key_input.clear();
-                            self.pipeline_variable_value_input.clear();
-                            self.input_target = InputTarget::PipelineVariableKey;
-                        }
+                        if !self.pipeline_variable_key_input.is_empty() =>
+                    {
+                        self.pipeline_variables.push(PipelineVariable {
+                            key: self.pipeline_variable_key_input.clone(),
+                            value: self.pipeline_variable_value_input.clone(),
+                        });
+                        self.pipeline_variable_key_input.clear();
+                        self.pipeline_variable_value_input.clear();
+                        self.input_target = InputTarget::PipelineVariableKey;
+                    }
                     _ => {}
                 },
                 KeyCode::Delete | KeyCode::Backspace
@@ -1109,13 +1110,12 @@ impl App {
                                 self.branches_state.select(Some(i));
                             }
                         }
-                        KeyCode::Up
-                            if !self.filtered_branches.is_empty() => {
-                                let i = (self.branches_state.selected().unwrap_or(0)
-                                    + self.filtered_branches.len().saturating_sub(1))
-                                    % self.filtered_branches.len();
-                                self.branches_state.select(Some(i));
-                            }
+                        KeyCode::Up if !self.filtered_branches.is_empty() => {
+                            let i = (self.branches_state.selected().unwrap_or(0)
+                                + self.filtered_branches.len().saturating_sub(1))
+                                % self.filtered_branches.len();
+                            self.branches_state.select(Some(i));
+                        }
                         _ => {}
                     },
                     InputTarget::PipelineVariableKey => {
@@ -1144,13 +1144,12 @@ impl App {
                                     self.label_state.select(Some(i));
                                 }
                             }
-                            KeyCode::Up
-                                if !suggested_vars.is_empty() => {
-                                    let i = (self.label_state.selected().unwrap_or(0)
-                                        + suggested_vars.len().saturating_sub(1))
-                                        % suggested_vars.len();
-                                    self.label_state.select(Some(i));
-                                }
+                            KeyCode::Up if !suggested_vars.is_empty() => {
+                                let i = (self.label_state.selected().unwrap_or(0)
+                                    + suggested_vars.len().saturating_sub(1))
+                                    % suggested_vars.len();
+                                self.label_state.select(Some(i));
+                            }
                             _ => {}
                         }
                     }

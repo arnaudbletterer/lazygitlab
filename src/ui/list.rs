@@ -65,13 +65,20 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from(vec![
                 Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
                 Span::styled(
-                    format!("{}{}", crate::ui::widgets::truncate_str(&project.name, 16), dirty_suffix),
+                    format!(
+                        "{}{}",
+                        crate::ui::widgets::truncate_str(&project.name, 16),
+                        dirty_suffix
+                    ),
                     Style::default().fg(app.theme.title_fg).bold(),
                 ),
             ]),
             Line::from(vec![
                 Span::styled(
-                    format!(" 🌿 {}", project.default_branch.as_deref().unwrap_or("main")),
+                    format!(
+                        " 🌿 {}",
+                        project.default_branch.as_deref().unwrap_or("main")
+                    ),
                     Style::default().fg(app.theme.dim),
                 ),
                 Span::styled(" ● Live", Style::default().fg(app.theme.status_success)),
@@ -81,7 +88,10 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         vec![
             Line::from(vec![
                 Span::styled(" 🏠 ", Style::default().fg(app.theme.accent)),
-                Span::styled("Personal Dashboard", Style::default().fg(app.theme.title_fg).bold()),
+                Span::styled(
+                    "Personal Dashboard",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
             ]),
             Line::from(vec![
                 Span::styled(" Global View", Style::default().fg(app.theme.dim)),
@@ -89,7 +99,10 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
             ]),
         ]
     };
-    f.render_widget(Paragraph::new(status_lines).block(status_block), side_chunks[0]);
+    f.render_widget(
+        Paragraph::new(status_lines).block(status_block),
+        side_chunks[0],
+    );
 
     // 2. Modern Navigation Panels
     let todo_badge = if !app.todos.is_empty() {
@@ -365,13 +378,26 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|item| match item {
                     GroupedItem::Item(t) => {
                         let action_style = Style::default().fg(app.theme.accent).bold();
-                        let target_icon = if t.target_type == "MergeRequest" { "🔀 " } else { "📋 " };
+                        let target_icon = if t.target_type == "MergeRequest" {
+                            "🔀 "
+                        } else {
+                            "📋 "
+                        };
                         let time_str = crate::ui::widgets::format_relative_time(&t.created_at);
                         ListItem::new(Line::from(vec![
                             Span::styled(target_icon, Style::default().fg(app.theme.dim)),
-                            Span::styled(format!("[{}] ", t.action_name.replace('_', " ")), action_style),
-                            Span::styled(crate::ui::widgets::truncate_str(&t.body, 50), Style::default().fg(app.theme.title_fg)),
-                            Span::styled(format!(" ({})", time_str), Style::default().fg(app.theme.dim)),
+                            Span::styled(
+                                format!("[{}] ", t.action_name.replace('_', " ")),
+                                action_style,
+                            ),
+                            Span::styled(
+                                crate::ui::widgets::truncate_str(&t.body, 50),
+                                Style::default().fg(app.theme.title_fg),
+                            ),
+                            Span::styled(
+                                format!(" ({})", time_str),
+                                Style::default().fg(app.theme.dim),
+                            ),
                         ]))
                     }
                     GroupedItem::Header(h) => {
@@ -400,12 +426,18 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to cycle Pending, Snoozed, Done", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to cycle Pending, Snoozed, Done",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -467,8 +499,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.title_fg).bold(),
                         ));
 
-                        if let Some(up) = mr.upvotes && up > 0 {
-                            spans.push(Span::styled(format!(" 👍{}", up), Style::default().fg(app.theme.status_success)));
+                        if let Some(up) = mr.upvotes
+                            && up > 0
+                        {
+                            spans.push(Span::styled(
+                                format!(" 👍{}", up),
+                                Style::default().fg(app.theme.status_success),
+                            ));
                         }
 
                         spans.push(Span::raw(" "));
@@ -514,22 +551,34 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to create a new merge request", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to create a new merge request",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to cycle status filters", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to cycle status filters",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("I", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to toggle involved-only filter", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to toggle involved-only filter",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -589,9 +638,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         if let Some(m) = &i.milestone {
                             spans.push(Span::styled(
                                 format!(" ⚑ {} ", m.title),
-                                Style::default()
-                                    .fg(app.theme.project)
-                                    .bg(app.theme.chip_bg),
+                                Style::default().fg(app.theme.project).bg(app.theme.chip_bg),
                             ));
                             spans.push(Span::raw(" "));
                         }
@@ -656,17 +703,26 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to cycle status filters", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to cycle status filters",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("I", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to toggle involved-only filter", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to toggle involved-only filter",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -690,7 +746,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|p| {
                     let (icon, status_style) = match p.status.as_str() {
-                        "success" | "passed" => ("✔", Style::default().fg(app.theme.status_success).bold()),
+                        "success" | "passed" => {
+                            ("✔", Style::default().fg(app.theme.status_success).bold())
+                        }
                         "failed" => ("✖", Style::default().fg(app.theme.failed).bold()),
                         "running" => ("⟳", Style::default().fg(app.theme.running).bold()),
                         "pending" => ("⏱", Style::default().fg(app.theme.pending).bold()),
@@ -698,7 +756,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     };
                     let mut spans = vec![
                         Span::styled(format!(" {} {} ", icon, p.status), status_style),
-                        Span::styled(format!("#{} ", p.id), Style::default().fg(app.theme.title_fg).bold()),
+                        Span::styled(
+                            format!("#{} ", p.id),
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        ),
                     ];
                     if app.active_context != Context::Project {
                         let project_label = app
@@ -707,7 +768,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             .and_then(|proj| proj.path_with_namespace.clone())
                             .unwrap_or_else(|| format!("#{}", p.project_id));
                         spans.push(Span::styled(
-                            format!(" 📂 {} ", crate::ui::widgets::truncate_str(&project_label, 20)),
+                            format!(
+                                " 📂 {} ",
+                                crate::ui::widgets::truncate_str(&project_label, 20)
+                            ),
                             Style::default().fg(app.theme.project),
                         ));
                     }
@@ -738,17 +802,26 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to launch a new pipeline", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to launch a new pipeline",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to cycle status filters (All, Running, Failed, Passed)", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to cycle status filters (All, Running, Failed, Passed)",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -775,7 +848,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
                         Span::styled(
                             format!("{} ", p.name),
-                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(app.theme.title_fg)
+                                .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             format!("({})", p.path_with_namespace.as_deref().unwrap_or("")),
@@ -815,7 +890,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled(" 👥 ", Style::default().fg(app.theme.accent)),
                         Span::styled(
                             format!("{} ", g.name),
-                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(app.theme.title_fg)
+                                .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             format!("({})", g.full_path),
@@ -848,17 +925,21 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         }
         MenuSelection::Repository => {
             let ref_name = app.repository_ref.as_deref().unwrap_or("default");
-            let mut title_spans = vec![
-                Span::styled(
-                    format!(" 📂 Files (🌿 {}) ", ref_name),
-                    Style::default().fg(app.theme.title_fg).bold(),
-                ),
-            ];
+            let mut title_spans = vec![Span::styled(
+                format!(" 📂 Files (🌿 {}) ", ref_name),
+                Style::default().fg(app.theme.title_fg).bold(),
+            )];
             if let Some(ref git) = app.local_git_status {
                 if git.is_dirty {
-                    title_spans.push(Span::styled("● Dirty ", Style::default().fg(app.theme.pending).bold()));
+                    title_spans.push(Span::styled(
+                        "● Dirty ",
+                        Style::default().fg(app.theme.pending).bold(),
+                    ));
                 } else {
-                    title_spans.push(Span::styled("● Clean ", Style::default().fg(app.theme.status_success).bold()));
+                    title_spans.push(Span::styled(
+                        "● Clean ",
+                        Style::default().fg(app.theme.status_success).bold(),
+                    ));
                 }
             }
             let block = Block::default()
@@ -888,12 +969,18 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("b", Style::default().fg(app.theme.author).bold()),
-                        Span::styled(" to switch to another branch", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to switch to another branch",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.author).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 let p = Paragraph::new(empty_lines).block(block);
@@ -929,14 +1016,22 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled(" 🌿 ", Style::default().fg(app.theme.author)),
                         Span::styled(
                             format!("{} ", b.name),
-                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(app.theme.title_fg)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ];
                     if b.default.unwrap_or(false) {
-                        spans.push(Span::styled(" [Default] ", Style::default().fg(app.theme.status_success).bold()));
+                        spans.push(Span::styled(
+                            " [Default] ",
+                            Style::default().fg(app.theme.status_success).bold(),
+                        ));
                     }
                     if b.merged.unwrap_or(false) {
-                        spans.push(Span::styled(" [Merged] ", Style::default().fg(app.theme.dim)));
+                        spans.push(Span::styled(
+                            " [Merged] ",
+                            Style::default().fg(app.theme.dim),
+                        ));
                     }
                     ListItem::new(Line::from(spans))
                 })
@@ -951,12 +1046,18 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to create a new branch", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to create a new branch",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -986,8 +1087,13 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.accent).bold(),
                         ),
                         Span::styled(
-                            crate::ui::widgets::truncate_str(&c.title, (area.width as usize).saturating_sub(35).max(16)),
-                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                            crate::ui::widgets::truncate_str(
+                                &c.title,
+                                (area.width as usize).saturating_sub(35).max(16),
+                            ),
+                            Style::default()
+                                .fg(app.theme.title_fg)
+                                .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             format!(" - @{}", c.author_name),
@@ -1006,7 +1112,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1033,7 +1142,9 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled(" 📋 ", Style::default().fg(app.theme.accent)),
                         Span::styled(
                             format!("{} ", b.name),
-                            Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(app.theme.title_fg)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]))
                 })
@@ -1048,7 +1159,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     Line::from(vec![
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                        Span::styled(
+                            " to refresh from GitLab",
+                            Style::default().fg(app.theme.dim),
+                        ),
                     ]),
                 ];
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1077,13 +1191,18 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                                 format!(" {} ", i.state),
                                 crate::ui::widgets::get_status_style(&i.state, &app.theme),
                             ),
-                            Span::styled(format!("#{} ", i.iid), Style::default().fg(app.theme.issue).bold()),
+                            Span::styled(
+                                format!("#{} ", i.iid),
+                                Style::default().fg(app.theme.issue).bold(),
+                            ),
                             Span::styled(
                                 crate::ui::widgets::truncate_str(
                                     &i.title,
                                     (area.width as usize).saturating_sub(24).max(16),
                                 ),
-                                Style::default().fg(app.theme.title_fg).add_modifier(Modifier::BOLD),
+                                Style::default()
+                                    .fg(app.theme.title_fg)
+                                    .add_modifier(Modifier::BOLD),
                             ),
                         ]))
                     })
@@ -1098,7 +1217,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Line::from(vec![
                             Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                             Span::styled("Esc", Style::default().fg(app.theme.accent).bold()),
-                            Span::styled(" to return to Epics list", Style::default().fg(app.theme.dim)),
+                            Span::styled(
+                                " to return to Epics list",
+                                Style::default().fg(app.theme.dim),
+                            ),
                         ]),
                     ];
                     f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1146,7 +1268,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Line::from(vec![
                             Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                             Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                            Span::styled(" to refresh from GitLab", Style::default().fg(app.theme.dim)),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
                         ]),
                     ];
                     f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1293,7 +1418,10 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from(vec![
                 Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                 Span::styled("c", Style::default().fg(app.theme.accent).bold()),
-                Span::styled(" to start a new discussion / comment", Style::default().fg(app.theme.dim)),
+                Span::styled(
+                    " to start a new discussion / comment",
+                    Style::default().fg(app.theme.dim),
+                ),
             ]),
         ];
         f.render_widget(Paragraph::new(msg), chunks[0]);
@@ -1343,7 +1471,10 @@ pub fn render_jobs_panel(f: &mut Frame, app: &mut App, area: Rect) {
             };
             ListItem::new(Line::from(vec![
                 Span::styled(format!(" {} {} ", icon, j.status), status_style),
-                Span::styled(format!("{} ", j.name), Style::default().fg(app.theme.title_fg).bold()),
+                Span::styled(
+                    format!("{} ", j.name),
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
                 Span::styled(format!("({})", j.stage), Style::default().fg(app.theme.dim)),
             ]))
         })
@@ -1420,12 +1551,14 @@ pub fn render_metadata_panel(f: &mut Frame, app: &mut App, area: Rect) {
     let edit_hint = |f| {
         if is_meta_focused && app.selected_metadata_field == f {
             match f {
-                MetadataField::Confidential => {
-                    Span::styled(" [Space: toggle]", Style::default().fg(app.theme.author).bold())
-                }
-                _ => {
-                    Span::styled(" [Enter: edit]", Style::default().fg(app.theme.author).bold())
-                }
+                MetadataField::Confidential => Span::styled(
+                    " [Space: toggle]",
+                    Style::default().fg(app.theme.author).bold(),
+                ),
+                _ => Span::styled(
+                    " [Enter: edit]",
+                    Style::default().fg(app.theme.author).bold(),
+                ),
             }
         } else {
             Span::raw("")
@@ -1859,7 +1992,11 @@ fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) 
     };
 
     let proj_text = if let Some(p) = &app.selected_project {
-        format!("📂 Project: {} ({})", p.name, p.default_branch.as_deref().unwrap_or("main"))
+        format!(
+            "📂 Project: {} ({})",
+            p.name,
+            p.default_branch.as_deref().unwrap_or("main")
+        )
     } else {
         "📂 Project: None (press P to select)".to_string()
     };
@@ -1876,18 +2013,77 @@ fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) 
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.inactive_border));
-    f.render_widget(Paragraph::new(context_lines).block(context_block), chunks[1]);
+    f.render_widget(
+        Paragraph::new(context_lines).block(context_block),
+        chunks[1],
+    );
 
     // 2. Action Launchpad Cards (8 cards in 4 rows × 2 cols)
     let cards = [
-        ("m", "Merge Requests", "Review open MRs, split/unified diffs & approvals", if !app.merge_requests.is_empty() { format!("{} open", app.merge_requests.len()) } else { "Review queue".to_string() }),
-        ("t", "To-Dos Inbox", "Triage mentions, review requests & notifications", if !app.todos.is_empty() { format!("{} pending", app.todos.len()) } else { "Zero inbox".to_string() }),
-        ("i", "Issues & Bugs", "Triage work items, milestones, weights & labels", if !app.issues.is_empty() { format!("{} active", app.issues.len()) } else { "Work items".to_string() }),
-        ("b", "Kanban Boards", "Interactive sprint workflow & card movement", "Sprint boards".to_string()),
-        ("p", "CI/CD Pipelines", "Monitor builds, stages & streaming job logs", if !app.pipelines.is_empty() { format!("{} builds", app.pipelines.len()) } else { "Builds & logs".to_string() }),
-        ("r", "Repository", "Browse directory tree, syntax viewer & branches", "Code & tree".to_string()),
-        ("P", "Switch Project", "Fuzzy search and switch across GitLab projects", "Fuzzy picker".to_string()),
-        ("?", "Command Palette", "Interactive action finder & keymap reference", "Help & keys".to_string()),
+        (
+            "m",
+            "Merge Requests",
+            "Review open MRs, split/unified diffs & approvals",
+            if !app.merge_requests.is_empty() {
+                format!("{} open", app.merge_requests.len())
+            } else {
+                "Review queue".to_string()
+            },
+        ),
+        (
+            "t",
+            "To-Dos Inbox",
+            "Triage mentions, review requests & notifications",
+            if !app.todos.is_empty() {
+                format!("{} pending", app.todos.len())
+            } else {
+                "Zero inbox".to_string()
+            },
+        ),
+        (
+            "i",
+            "Issues & Bugs",
+            "Triage work items, milestones, weights & labels",
+            if !app.issues.is_empty() {
+                format!("{} active", app.issues.len())
+            } else {
+                "Work items".to_string()
+            },
+        ),
+        (
+            "b",
+            "Kanban Boards",
+            "Interactive sprint workflow & card movement",
+            "Sprint boards".to_string(),
+        ),
+        (
+            "p",
+            "CI/CD Pipelines",
+            "Monitor builds, stages & streaming job logs",
+            if !app.pipelines.is_empty() {
+                format!("{} builds", app.pipelines.len())
+            } else {
+                "Builds & logs".to_string()
+            },
+        ),
+        (
+            "r",
+            "Repository",
+            "Browse directory tree, syntax viewer & branches",
+            "Code & tree".to_string(),
+        ),
+        (
+            "P",
+            "Switch Project",
+            "Fuzzy search and switch across GitLab projects",
+            "Fuzzy picker".to_string(),
+        ),
+        (
+            "?",
+            "Command Palette",
+            "Interactive action finder & keymap reference",
+            "Help & keys".to_string(),
+        ),
     ];
 
     let row_chunks = Layout::default()
@@ -1922,20 +2118,27 @@ fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) 
 
             let prefix = if is_selected { "▶ " } else { "  " };
 
-            let mut card_lines = vec![
-                Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(app.theme.accent).bold()),
-                    Span::styled(format!("[{}] ", key), Style::default().fg(app.theme.shortcut_key).bold()),
-                    Span::styled(title.to_string(), Style::default().fg(app.theme.title_fg).bold()),
-                    Span::styled(format!("  ({})", badge), Style::default().fg(app.theme.dim)),
-                ]),
-            ];
+            let mut card_lines = vec![Line::from(vec![
+                Span::styled(prefix, Style::default().fg(app.theme.accent).bold()),
+                Span::styled(
+                    format!("[{}] ", key),
+                    Style::default().fg(app.theme.shortcut_key).bold(),
+                ),
+                Span::styled(
+                    title.to_string(),
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
+                Span::styled(format!("  ({})", badge), Style::default().fg(app.theme.dim)),
+            ])];
 
             if col_chunks[col].height > 2 {
                 card_lines.push(Line::from(vec![
                     Span::raw("    "),
                     Span::styled(
-                        crate::ui::widgets::truncate_str(desc, col_chunks[col].width.saturating_sub(6) as usize),
+                        crate::ui::widgets::truncate_str(
+                            desc,
+                            col_chunks[col].width.saturating_sub(6) as usize,
+                        ),
                         Style::default().fg(app.theme.dim),
                     ),
                 ]));
@@ -1955,17 +2158,28 @@ fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) 
 
     // 3. Footer
     let footer_spans = vec![
-        Span::styled(" [h/j/k/l/arrows] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled(
+            " [h/j/k/l/arrows] ",
+            Style::default().fg(app.theme.shortcut_key).bold(),
+        ),
         Span::styled("Select Card  ", Style::default().fg(app.theme.dim)),
-        Span::styled("[Enter] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled(
+            "[Enter] ",
+            Style::default().fg(app.theme.shortcut_key).bold(),
+        ),
         Span::styled("Launch  ", Style::default().fg(app.theme.dim)),
-        Span::styled("[m/t/i/b/p/r/P/?] ", Style::default().fg(app.theme.shortcut_key).bold()),
+        Span::styled(
+            "[m/t/i/b/p/r/P/?] ",
+            Style::default().fg(app.theme.shortcut_key).bold(),
+        ),
         Span::styled("Direct Jump  ", Style::default().fg(app.theme.dim)),
         Span::styled("[g h] ", Style::default().fg(app.theme.shortcut_key).bold()),
         Span::styled("Home  ", Style::default().fg(app.theme.dim)),
         Span::styled("[q] ", Style::default().fg(app.theme.shortcut_key).bold()),
         Span::styled("Quit", Style::default().fg(app.theme.dim)),
     ];
-    f.render_widget(Paragraph::new(Line::from(footer_spans)).alignment(Alignment::Center), chunks[3]);
+    f.render_widget(
+        Paragraph::new(Line::from(footer_spans)).alignment(Alignment::Center),
+        chunks[3],
+    );
 }
-

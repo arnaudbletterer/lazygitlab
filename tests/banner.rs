@@ -62,7 +62,11 @@ fn test_banner_lines_generation() {
     // Micro banner
     let micro_lines = Banner::get_lines(&theme, 30, 2);
     assert_eq!(micro_lines.len(), 1);
-    let micro_text: String = micro_lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+    let micro_text: String = micro_lines[0]
+        .spans
+        .iter()
+        .map(|s| s.content.as_ref())
+        .collect();
     assert!(micro_text.contains("lazygitlab"));
 }
 

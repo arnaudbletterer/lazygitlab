@@ -85,17 +85,61 @@ async fn test_available_actions_catalog() {
     let (_server, app) = setup_app().await;
 
     let actions = app.get_available_actions();
-    assert!(actions.iter().any(|a| a.shortcut == "p" && a.category == "Global"));
-    assert!(actions.iter().any(|a| a.shortcut == "q" && a.category == "Global"));
-    assert!(actions.iter().any(|a| a.shortcut == "?" && a.category == "Global"));
-    assert!(actions.iter().any(|a| a.shortcut == "r" && a.category == "Global"));
-    assert!(actions.iter().any(|a| a.shortcut == "f" && a.category == "Global"));
-    assert!(actions.iter().any(|a| a.shortcut == "g b" && a.category == "Jump"));
-    assert!(actions.iter().any(|a| a.shortcut == "g r" && a.category == "Jump"));
-    assert!(actions.iter().any(|a| a.shortcut == "g t" && a.category == "Jump"));
-    assert!(actions.iter().any(|a| a.shortcut == "g m" && a.category == "Jump"));
-    assert!(actions.iter().any(|a| a.shortcut == "g i" && a.category == "Jump"));
-    assert!(actions.iter().any(|a| a.shortcut == "g p" && a.category == "Jump"));
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "p" && a.category == "Global")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "q" && a.category == "Global")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "?" && a.category == "Global")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "r" && a.category == "Global")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "f" && a.category == "Global")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g b" && a.category == "Jump")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g r" && a.category == "Jump")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g t" && a.category == "Jump")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g m" && a.category == "Jump")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g i" && a.category == "Jump")
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.shortcut == "g p" && a.category == "Jump")
+    );
 }
 
 #[tokio::test]

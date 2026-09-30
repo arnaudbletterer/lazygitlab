@@ -49,7 +49,11 @@ impl Banner {
                     Constraint::Min(0),
                 ]
             } else {
-                vec![Constraint::Length(0), Constraint::Length(0), Constraint::Min(0)]
+                vec![
+                    Constraint::Length(0),
+                    Constraint::Length(0),
+                    Constraint::Min(0),
+                ]
             })
             .split(area);
 
@@ -164,9 +168,7 @@ impl Banner {
                 Span::styled("] Quit", dim),
             ]),
             // Line 2
-            Line::from(vec![
-                Span::raw(""),
-            ]),
+            Line::from(vec![Span::raw("")]),
         ]
     }
 

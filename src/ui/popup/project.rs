@@ -14,8 +14,14 @@ pub fn render_project_popup(f: &mut Frame, app: &mut App) {
         .map(|p| {
             ListItem::new(Line::from(vec![
                 Span::styled(" 📂 ", Style::default().fg(app.theme.project)),
-                Span::styled(format!("{} ", p.name), Style::default().fg(app.theme.title_fg).bold()),
-                Span::styled(format!("({})", p.path_with_namespace.as_deref().unwrap_or("")), Style::default().fg(app.theme.dim)),
+                Span::styled(
+                    format!("{} ", p.name),
+                    Style::default().fg(app.theme.title_fg).bold(),
+                ),
+                Span::styled(
+                    format!("({})", p.path_with_namespace.as_deref().unwrap_or("")),
+                    Style::default().fg(app.theme.dim),
+                ),
             ]))
         })
         .collect();

@@ -44,8 +44,13 @@ the --token flag, or a [gitlab] table with `token` in ~/.config/lazygitlab/confi
         );
     }
     let stdin = std::io::stdin();
-    let outcome = setup::run_wizard(&mut stdin.lock(), &mut std::io::stdout(), &settings.url, true)
-        .unwrap_or_else(|e| fail(1, &format!("Setup aborted: {e}")));
+    let outcome = setup::run_wizard(
+        &mut stdin.lock(),
+        &mut std::io::stdout(),
+        &settings.url,
+        true,
+    )
+    .unwrap_or_else(|e| fail(1, &format!("Setup aborted: {e}")));
     let Some(outcome) = outcome else {
         fail(1, "Setup aborted: no token provided.");
     };

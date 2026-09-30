@@ -15,7 +15,7 @@ async fn render_with(set: impl FnOnce(&mut App)) -> String {
         )
         .mount(&server)
         .await;
-    let client =GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
         .insecure()
         .build_async()
         .await

@@ -23,7 +23,10 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(app.theme.active_border))
-            .title(Span::styled(title, Style::default().fg(app.theme.title_fg).bold())),
+            .title(Span::styled(
+                title,
+                Style::default().fg(app.theme.title_fg).bold(),
+            )),
         area,
     );
 

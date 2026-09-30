@@ -468,7 +468,8 @@ impl App {
                     }
                     self.mrs_has_more = has_more;
                     if added {
-                        self.merge_requests.sort_by_key(|b| std::cmp::Reverse(b.iid));
+                        self.merge_requests
+                            .sort_by_key(|b| std::cmp::Reverse(b.iid));
                         self.filter_lists();
                     }
                 }
@@ -1176,11 +1177,16 @@ impl App {
                 {
                     let prev_sel = self.board_lists_state.selected();
                     self.board_lists = data.clone();
-                    self.board_lists_state.select(if self.board_lists.is_empty() {
-                        None
-                    } else {
-                        Some(prev_sel.map(|s| s.min(self.board_lists.len() - 1)).unwrap_or(0))
-                    });
+                    self.board_lists_state
+                        .select(if self.board_lists.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                prev_sel
+                                    .map(|s| s.min(self.board_lists.len() - 1))
+                                    .unwrap_or(0),
+                            )
+                        });
                     let lists_to_fetch = self.board_lists.clone();
                     for list in lists_to_fetch {
                         let _ = self.fetch_board_list_issues(board_id, list.id).await;
@@ -1846,10 +1852,9 @@ impl App {
                         let _ = self.fetch_projects().await;
                     }
                 }
-                MenuSelection::Groups
-                    if should_fetch_lists => {
-                        let _ = self.fetch_groups().await;
-                    }
+                MenuSelection::Groups if should_fetch_lists => {
+                    let _ = self.fetch_groups().await;
+                }
                 _ => {}
             },
             Context::Project => {
@@ -1900,10 +1905,9 @@ impl App {
                                 let _ = self.fetch_boards().await;
                             }
                         }
-                        MenuSelection::Epics
-                            if should_fetch_lists => {
-                                let _ = self.fetch_epics().await;
-                            }
+                        MenuSelection::Epics if should_fetch_lists => {
+                            let _ = self.fetch_epics().await;
+                        }
                         _ => {}
                     }
                 }
@@ -3667,16 +3671,27 @@ impl App {
         }
         self.filter_lists();
         if let Some(state) = self.board_issue_states.get_mut(&from_list.id) {
-            let remaining = self.filtered_board_issues.get(&from_list.id).map(|v| v.len()).unwrap_or(0);
+            let remaining = self
+                .filtered_board_issues
+                .get(&from_list.id)
+                .map(|v| v.len())
+                .unwrap_or(0);
             if remaining == 0 {
                 state.select(None);
             } else if let Some(cur) = state.selected() {
                 state.select(Some(cur.min(remaining - 1)));
             }
         }
-        let to_count = self.filtered_board_issues.get(&to_list.id).map(|v| v.len()).unwrap_or(0);
+        let to_count = self
+            .filtered_board_issues
+            .get(&to_list.id)
+            .map(|v| v.len())
+            .unwrap_or(0);
         if to_count > 0 {
-            self.board_issue_states.entry(to_list.id).or_default().select(Some(to_count - 1));
+            self.board_issue_states
+                .entry(to_list.id)
+                .or_default()
+                .select(Some(to_count - 1));
         }
         self.board_lists_state.select(Some(target_list_idx));
         Ok(())
@@ -4015,7 +4030,9 @@ pub fn detect_local_git_status() -> Option<LocalGitStatus> {
     if !branch_output.status.success() {
         return None;
     }
-    let branch = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+    let branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
     if branch.is_empty() {
         return None;
     }
@@ -4023,7 +4040,9 @@ pub fn detect_local_git_status() -> Option<LocalGitStatus> {
         .args(["status", "--porcelain"])
         .output()
         .ok()?;
-    let is_dirty = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
+    let is_dirty = !String::from_utf8_lossy(&status_output.stdout)
+        .trim()
+        .is_empty();
     Some(LocalGitStatus { branch, is_dirty })
 }
 

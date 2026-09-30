@@ -848,14 +848,13 @@ impl App {
                         let _ = self.refresh().await;
                     }
                 }
-                KeyCode::Char('b')
-                    if self.selected_project.is_some() => {
-                        self.active_context = Context::Project;
-                        self.active_selection = MenuSelection::Branches;
-                        self.project_menu_state.select(Some(4));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    }
+                KeyCode::Char('b') if self.selected_project.is_some() => {
+                    self.active_context = Context::Project;
+                    self.active_selection = MenuSelection::Branches;
+                    self.project_menu_state.select(Some(4));
+                    self.active_panel = Panel::Main;
+                    let _ = self.refresh().await;
+                }
                 _ => {}
             }
             return;
@@ -1423,11 +1422,16 @@ impl App {
                                 let mut found_hunk = None;
                                 if let Some(mr_diff) = self.mr_diffs.get(file_idx) {
                                     for i in (current_line + 1)..mr_diff.display_lines.len() {
-                                        if let DiffDisplayLine::Code(line, ..) = &mr_diff.display_lines[i]
+                                        if let DiffDisplayLine::Code(line, ..) =
+                                            &mr_diff.display_lines[i]
                                             && line.starts_with("@@")
                                         {
                                             let target = (i + 1..mr_diff.display_lines.len())
-                                                .find(|&idx| is_selectable_diff_line(&mr_diff.display_lines[idx]))
+                                                .find(|&idx| {
+                                                    is_selectable_diff_line(
+                                                        &mr_diff.display_lines[idx],
+                                                    )
+                                                })
                                                 .unwrap_or(i);
                                             found_hunk = Some(target);
                                             break;
@@ -1463,11 +1467,16 @@ impl App {
                                 let mut found_hunk = None;
                                 if let Some(mr_diff) = self.mr_diffs.get(file_idx) {
                                     for i in (0..current_line).rev() {
-                                        if let DiffDisplayLine::Code(line, ..) = &mr_diff.display_lines[i]
+                                        if let DiffDisplayLine::Code(line, ..) =
+                                            &mr_diff.display_lines[i]
                                             && line.starts_with("@@")
                                         {
                                             let target = (i + 1..mr_diff.display_lines.len())
-                                                .find(|&idx| is_selectable_diff_line(&mr_diff.display_lines[idx]))
+                                                .find(|&idx| {
+                                                    is_selectable_diff_line(
+                                                        &mr_diff.display_lines[idx],
+                                                    )
+                                                })
                                                 .unwrap_or(i);
                                             found_hunk = Some(target);
                                             break;
@@ -1614,7 +1623,11 @@ impl App {
                         };
                         self.board_lists_state.select(Some(next));
                         if let Some(list) = self.board_lists.get(next) {
-                            let count = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let count = self
+                                .filtered_board_issues
+                                .get(&list.id)
+                                .map(|v| v.len())
+                                .unwrap_or(0);
                             let state = self.board_issue_states.entry(list.id).or_default();
                             if count > 0 && state.selected().is_none() {
                                 state.select(Some(0));
@@ -1627,7 +1640,11 @@ impl App {
                         let next = (current + 1) % self.board_lists.len().max(1);
                         self.board_lists_state.select(Some(next));
                         if let Some(list) = self.board_lists.get(next) {
-                            let count = self.filtered_board_issues.get(&list.id).map(|v| v.len()).unwrap_or(0);
+                            let count = self
+                                .filtered_board_issues
+                                .get(&list.id)
+                                .map(|v| v.len())
+                                .unwrap_or(0);
                             let state = self.board_issue_states.entry(list.id).or_default();
                             if count > 0 && state.selected().is_none() {
                                 state.select(Some(0));
@@ -2165,7 +2182,9 @@ impl App {
                 }
             }
             KeyCode::Char(' ') => {
-                if self.active_selection == MenuSelection::Repository && self.active_panel == Panel::Main {
+                if self.active_selection == MenuSelection::Repository
+                    && self.active_panel == Panel::Main
+                {
                     self.go_forward().await;
                 } else if self.active_panel == Panel::MainDetail
                     && self.detail_section == DetailSection::Discussions
@@ -2418,7 +2437,8 @@ impl App {
                 }
             }
             KeyCode::Char('d') => {
-                if self.active_selection == MenuSelection::Todos && self.active_panel == Panel::Main {
+                if self.active_selection == MenuSelection::Todos && self.active_panel == Panel::Main
+                {
                     let _ = self.mark_todo_as_done().await;
                 } else if self.active_panel == Panel::MainDetail {
                     self.detail_section = DetailSection::Description;
@@ -2600,4 +2620,3 @@ impl App {
         }
     }
 }
-

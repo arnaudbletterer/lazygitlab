@@ -83,7 +83,10 @@ async fn test_repository_tree_traversal_and_space_expand() {
 
     // Press 'j' to navigate down to blob
     app.handle_key(key(KeyCode::Char('j'))).await;
-    assert_eq!(app.repository_tree_state.selected(), &["src/main.rs".to_string()]);
+    assert_eq!(
+        app.repository_tree_state.selected(),
+        &["src/main.rs".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -114,7 +117,10 @@ async fn test_branch_switcher_from_repository_tree() {
 
     // Press 'b' while in repository tree view (ViewMode::List)
     app.handle_key(key(KeyCode::Char('b'))).await;
-    assert!(app.show_tree_branch_popup, "Branch popup must open from repository list");
+    assert!(
+        app.show_tree_branch_popup,
+        "Branch popup must open from repository list"
+    );
 
     // Select second branch 'feature-auth' and press Enter
     app.tree_branch_state.select(Some(1));
@@ -204,10 +210,22 @@ async fn test_project_quick_switcher_clears_previous_project_state() {
     // Hit Enter to select repo-beta
     app.handle_key(key(KeyCode::Enter)).await;
     assert_eq!(app.selected_project.as_ref().map(|p| p.id), Some(2));
-    assert_eq!(app.repository_ref, None, "Previous project's branch ref must be cleared");
-    assert!(app.repository_tree.is_empty(), "Previous repository tree must be cleared");
-    assert!(app.project_branches.is_empty(), "Previous branches list must be cleared");
-    assert!(app.selected_file_content.is_none(), "Previous file content must be cleared");
+    assert_eq!(
+        app.repository_ref, None,
+        "Previous project's branch ref must be cleared"
+    );
+    assert!(
+        app.repository_tree.is_empty(),
+        "Previous repository tree must be cleared"
+    );
+    assert!(
+        app.project_branches.is_empty(),
+        "Previous branches list must be cleared"
+    );
+    assert!(
+        app.selected_file_content.is_none(),
+        "Previous file content must be cleared"
+    );
 
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     while let Ok(update) = rx.try_recv() {
@@ -250,7 +268,10 @@ async fn test_large_file_safeguard_and_clamped_scrolling() {
     // Test clamped scrolling
     app.file_scroll = 50_000;
     terminal.draw(|f| lazygitlab::ui::ui(f, &mut app)).unwrap();
-    assert!(app.file_scroll <= 25_001, "Scroll must be clamped to maximum lines");
+    assert!(
+        app.file_scroll <= 25_001,
+        "Scroll must be clamped to maximum lines"
+    );
 }
 
 #[tokio::test]

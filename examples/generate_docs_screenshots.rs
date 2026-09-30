@@ -110,8 +110,7 @@ fn color_to_hex(color: Color, is_bg: bool, is_light: bool) -> String {
 
 const JETBRAINS_MONO_REGULAR: &[u8] =
     include_bytes!("../docs/assets/fonts/JetBrainsMono-Regular.ttf");
-const JETBRAINS_MONO_BOLD: &[u8] =
-    include_bytes!("../docs/assets/fonts/JetBrainsMono-Bold.ttf");
+const JETBRAINS_MONO_BOLD: &[u8] = include_bytes!("../docs/assets/fonts/JetBrainsMono-Bold.ttf");
 
 fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
     let cols = buffer.area().width as usize;
@@ -128,10 +127,8 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
     let total_h = term_h + header_h + pad * 2;
 
     use base64::Engine;
-    let b64_regular = base64::engine::general_purpose::STANDARD
-        .encode(JETBRAINS_MONO_REGULAR);
-    let b64_bold =
-        base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_BOLD);
+    let b64_regular = base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_REGULAR);
+    let b64_bold = base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_BOLD);
 
     let mut svg = String::new();
     svg.push_str(&format!(
@@ -151,7 +148,9 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
     let header_line = if is_light { "#d0d7de" } else { "#13141a" };
 
     svg.push_str("<defs>\n");
-    svg.push_str("  <filter id=\"macos-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"120%\">\n");
+    svg.push_str(
+        "  <filter id=\"macos-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"120%\">\n",
+    );
     svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"20\" stdDeviation=\"24\" flood-color=\"{}\" flood-opacity=\"{}\"/>\n", shadow_color, shadow_opacity));
     svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"4\" stdDeviation=\"8\" flood-color=\"{}\" flood-opacity=\"0.12\"/>\n", shadow_color));
     svg.push_str("  </filter>\n");
@@ -223,11 +222,7 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
             if color_hex != empty_bg {
                 let start_x = x;
                 while x < cols
-                    && color_to_hex(
-                        buffer[(x as u16, y as u16)].bg,
-                        true,
-                        is_light,
-                    ) == color_hex
+                    && color_to_hex(buffer[(x as u16, y as u16)].bg, true, is_light) == color_hex
                 {
                     x += 1;
                 }
@@ -268,8 +263,7 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
 
             let start_x = x;
             let fg = cell.fg;
-            let is_bold =
-                cell.modifier.contains(ratatui::style::Modifier::BOLD);
+            let is_bold = cell.modifier.contains(ratatui::style::Modifier::BOLD);
             let fg_hex = color_to_hex(fg, false, is_light);
             let mut text_buf = String::new();
 
@@ -277,8 +271,7 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
                 let cur_cell = &buffer[(x as u16, y as u16)];
                 let cur_sym = cur_cell.symbol();
                 let cur_fg_hex = color_to_hex(cur_cell.fg, false, is_light);
-                let cur_bold =
-                    cur_cell.modifier.contains(ratatui::style::Modifier::BOLD);
+                let cur_bold = cur_cell.modifier.contains(ratatui::style::Modifier::BOLD);
 
                 if cur_fg_hex != fg_hex || cur_bold != is_bold {
                     break;
@@ -302,11 +295,7 @@ fn generate_svg(buffer: &Buffer, filename: &str, is_light: bool) {
                 format!(" fill=\"{}\"", fg_hex)
             };
 
-            let weight_attr = if is_bold {
-                " font-weight=\"bold\""
-            } else {
-                ""
-            };
+            let weight_attr = if is_bold { " font-weight=\"bold\"" } else { "" };
 
             svg.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\"{}{}>{}</text>\n",
@@ -411,7 +400,9 @@ async fn main() {
             iid: 124,
             project_id: 1,
             title: "feat(diff): add syntax-highlighted side-by-side diff review".into(),
-            description: Some("Implements syntect syntax highlighting in split diff panel.\n\nCloses #42.".into()),
+            description: Some(
+                "Implements syntect syntax highlighting in split diff panel.\n\nCloses #42.".into(),
+            ),
             author: Author::new(1, "abletterer".into()),
             web_url: "https://gitlab.com/abletterer/lazygitlab/-/merge_requests/124".into(),
             state: "opened".into(),
@@ -419,10 +410,23 @@ async fn main() {
             upvotes: Some(5),
             downvotes: Some(0),
             labels: vec![
-                Label { id: 1, name: "feature".into(), color: "#89b4fa".into(), text_color: None },
-                Label { id: 2, name: "review-ready".into(), color: "#a6e3a1".into(), text_color: None },
+                Label {
+                    id: 1,
+                    name: "feature".into(),
+                    color: "#89b4fa".into(),
+                    text_color: None,
+                },
+                Label {
+                    id: 2,
+                    name: "review-ready".into(),
+                    color: "#a6e3a1".into(),
+                    text_color: None,
+                },
             ],
-            milestone: Some(Milestone { id: 1, title: "v0.16.0".into() }),
+            milestone: Some(Milestone {
+                id: 1,
+                title: "v0.16.0".into(),
+            }),
             assignees: vec![Author::new(1, "abletterer".into())],
             reviewers: vec![Author::new(2, "reviewer1".into())],
             squash: Some(true),
@@ -433,7 +437,10 @@ async fn main() {
             merge_status: Some("can_be_merged".into()),
             detailed_merge_status: None,
             has_conflicts: Some(false),
-            head_pipeline: Some(PipelineMin { id: 9812, status: "success".into() }),
+            head_pipeline: Some(PipelineMin {
+                id: 9812,
+                status: "success".into(),
+            }),
             source_branch: "feat/diff-highlight".into(),
             target_branch: "master".into(),
             participants: vec![],
@@ -449,7 +456,12 @@ async fn main() {
             references: None,
             upvotes: Some(2),
             downvotes: Some(0),
-            labels: vec![Label { id: 3, name: "bug".into(), color: "#f38ba8".into(), text_color: None }],
+            labels: vec![Label {
+                id: 3,
+                name: "bug".into(),
+                color: "#f38ba8".into(),
+                text_color: None,
+            }],
             milestone: None,
             assignees: vec![],
             reviewers: vec![Author::new(1, "abletterer".into())],
@@ -461,7 +473,10 @@ async fn main() {
             merge_status: Some("can_be_merged".into()),
             detailed_merge_status: None,
             has_conflicts: Some(false),
-            head_pipeline: Some(PipelineMin { id: 9801, status: "running".into() }),
+            head_pipeline: Some(PipelineMin {
+                id: 9801,
+                status: "running".into(),
+            }),
             source_branch: "fix/cancel-status".into(),
             target_branch: "master".into(),
             participants: vec![],
@@ -492,18 +507,46 @@ async fn main() {
         diff: "diff --git a/src/app/mrs/review.rs b/src/app/mrs/review.rs".into(),
         collapsed: false,
         display_lines: vec![
-            DiffDisplayLine::Code("@@ -42,6 +42,12 @@ pub async fn post_comment(&mut self) -> Result<()> {".into(), None, None),
-            DiffDisplayLine::Code("     let client = self.gitlab.clone();".into(), Some(42), Some(42)),
-            DiffDisplayLine::Code("     let pid = self.selected_project.as_ref().unwrap().id;".into(), Some(43), Some(43)),
-            DiffDisplayLine::Code("-    let note = self.textarea.lines().join(\"\\n\");".into(), Some(44), None),
-            DiffDisplayLine::Code("+    let body = self.textarea.lines().join(\"\\n\");".into(), None, Some(44)),
-            DiffDisplayLine::Code("+    let discussion = CreateMRDiscussion {".into(), None, Some(45)),
+            DiffDisplayLine::Code(
+                "@@ -42,6 +42,12 @@ pub async fn post_comment(&mut self) -> Result<()> {".into(),
+                None,
+                None,
+            ),
+            DiffDisplayLine::Code(
+                "     let client = self.gitlab.clone();".into(),
+                Some(42),
+                Some(42),
+            ),
+            DiffDisplayLine::Code(
+                "     let pid = self.selected_project.as_ref().unwrap().id;".into(),
+                Some(43),
+                Some(43),
+            ),
+            DiffDisplayLine::Code(
+                "-    let note = self.textarea.lines().join(\"\\n\");".into(),
+                Some(44),
+                None,
+            ),
+            DiffDisplayLine::Code(
+                "+    let body = self.textarea.lines().join(\"\\n\");".into(),
+                None,
+                Some(44),
+            ),
+            DiffDisplayLine::Code(
+                "+    let discussion = CreateMRDiscussion {".into(),
+                None,
+                Some(45),
+            ),
             DiffDisplayLine::Code("+        project: pid,".into(), None, Some(46)),
             DiffDisplayLine::Code("+        body: body.clone(),".into(), None, Some(47)),
             DiffDisplayLine::Code("+    };".into(), None, Some(48)),
             DiffDisplayLine::Code("     tokio::spawn(async move {".into(), Some(45), Some(49)),
             DiffDisplayLine::Code("         let ep = discussion;".into(), Some(46), Some(50)),
-            DiffDisplayLine::Code("         let _ = ep.query_async(&client).await;".into(), Some(47), Some(51)),
+            DiffDisplayLine::Code(
+                "         let _ = ep.query_async(&client).await;".into(),
+                Some(47),
+                Some(51),
+            ),
             DiffDisplayLine::Code("     });".into(), Some(48), Some(52)),
             DiffDisplayLine::Code(" }".into(), Some(49), Some(53)),
         ],
@@ -553,25 +596,45 @@ async fn main() {
         lists: Some(vec![
             BoardList {
                 id: 1,
-                label: Some(Label { id: 1, name: "Backlog".into(), color: "#6c7086".into(), text_color: None }),
+                label: Some(Label {
+                    id: 1,
+                    name: "Backlog".into(),
+                    color: "#6c7086".into(),
+                    text_color: None,
+                }),
                 position: Some(1),
                 list_type: "label".into(),
             },
             BoardList {
                 id: 2,
-                label: Some(Label { id: 2, name: "In Progress".into(), color: "#89b4fa".into(), text_color: None }),
+                label: Some(Label {
+                    id: 2,
+                    name: "In Progress".into(),
+                    color: "#89b4fa".into(),
+                    text_color: None,
+                }),
                 position: Some(2),
                 list_type: "label".into(),
             },
             BoardList {
                 id: 3,
-                label: Some(Label { id: 3, name: "Review".into(), color: "#f9e2af".into(), text_color: None }),
+                label: Some(Label {
+                    id: 3,
+                    name: "Review".into(),
+                    color: "#f9e2af".into(),
+                    text_color: None,
+                }),
                 position: Some(3),
                 list_type: "label".into(),
             },
             BoardList {
                 id: 4,
-                label: Some(Label { id: 4, name: "Done".into(), color: "#a6e3a1".into(), text_color: None }),
+                label: Some(Label {
+                    id: 4,
+                    name: "Done".into(),
+                    color: "#a6e3a1".into(),
+                    text_color: None,
+                }),
                 position: Some(4),
                 list_type: "label".into(),
             },
@@ -579,30 +642,38 @@ async fn main() {
     });
     let mut board_issues = HashMap::new();
     board_issues.insert(1, vec![app.issues[0].clone()]);
-    board_issues.insert(2, vec![Issue {
-        iid: 48,
-        project_id: 1,
-        title: "Support custom themes via theme.toml".into(),
-        description: None,
-        author: Author::new(1, "abletterer".into()),
-        assignees: vec![],
-        state: "opened".into(),
-        web_url: "".into(),
-        references: None,
-        issue_type: None,
-        labels: vec![Label { id: 3, name: "theming".into(), color: "#cba6f7".into(), text_color: None }],
-        milestone: None,
-        due_date: None,
-        start_date: None,
-        weight: Some(1),
-        confidential: false,
-        created_at: None,
-        upvotes: Some(4),
-        downvotes: Some(0),
-        task_completion_status: None,
-        reactions: vec![],
-        participants: vec![],
-    }]);
+    board_issues.insert(
+        2,
+        vec![Issue {
+            iid: 48,
+            project_id: 1,
+            title: "Support custom themes via theme.toml".into(),
+            description: None,
+            author: Author::new(1, "abletterer".into()),
+            assignees: vec![],
+            state: "opened".into(),
+            web_url: "".into(),
+            references: None,
+            issue_type: None,
+            labels: vec![Label {
+                id: 3,
+                name: "theming".into(),
+                color: "#cba6f7".into(),
+                text_color: None,
+            }],
+            milestone: None,
+            due_date: None,
+            start_date: None,
+            weight: Some(1),
+            confidential: false,
+            created_at: None,
+            upvotes: Some(4),
+            downvotes: Some(0),
+            task_completion_status: None,
+            reactions: vec![],
+            participants: vec![],
+        }],
+    );
     app.board_issues = board_issues;
     app.board_lists_state = Default::default();
     terminal.draw(|f| ui(f, &mut app)).unwrap();
@@ -633,9 +704,39 @@ async fn main() {
     app.view_mode = ViewMode::List;
     app.active_selection = MenuSelection::Pipelines;
     app.pipelines = vec![
-        Pipeline { id: 9812, project_id: 1, status: "success".into(), source: "push".into(), ref_name: "main".into(), web_url: "".into(), created_at: "2026-08-30T07:10:00Z".into(), started_at: None, duration: Some(125.0) },
-        Pipeline { id: 9811, project_id: 1, status: "running".into(), source: "push".into(), ref_name: "feat/diff-highlight".into(), web_url: "".into(), created_at: "2026-08-30T07:05:00Z".into(), started_at: None, duration: Some(45.0) },
-        Pipeline { id: 9810, project_id: 1, status: "failed".into(), source: "merge_request_event".into(), ref_name: "fix/parser-edge-case".into(), web_url: "".into(), created_at: "2026-08-30T06:30:00Z".into(), started_at: None, duration: Some(30.0) },
+        Pipeline {
+            id: 9812,
+            project_id: 1,
+            status: "success".into(),
+            source: "push".into(),
+            ref_name: "main".into(),
+            web_url: "".into(),
+            created_at: "2026-08-30T07:10:00Z".into(),
+            started_at: None,
+            duration: Some(125.0),
+        },
+        Pipeline {
+            id: 9811,
+            project_id: 1,
+            status: "running".into(),
+            source: "push".into(),
+            ref_name: "feat/diff-highlight".into(),
+            web_url: "".into(),
+            created_at: "2026-08-30T07:05:00Z".into(),
+            started_at: None,
+            duration: Some(45.0),
+        },
+        Pipeline {
+            id: 9810,
+            project_id: 1,
+            status: "failed".into(),
+            source: "merge_request_event".into(),
+            ref_name: "fix/parser-edge-case".into(),
+            web_url: "".into(),
+            created_at: "2026-08-30T06:30:00Z".into(),
+            started_at: None,
+            duration: Some(30.0),
+        },
     ];
     app.filtered_pipelines = app.pipelines.clone();
     app.selected_pipeline = Some(app.pipelines[0].clone());
@@ -646,12 +747,48 @@ async fn main() {
     // 7. Repository Tree & File Viewer
     app.active_selection = MenuSelection::Repository;
     app.repository_tree = vec![
-        RepositoryTreeItem { id: "1".into(), name: "src".into(), r#type: "tree".into(), path: "src".into(), mode: "040000".into() },
-        RepositoryTreeItem { id: "2".into(), name: "api.rs".into(), r#type: "blob".into(), path: "src/api.rs".into(), mode: "100644".into() },
-        RepositoryTreeItem { id: "3".into(), name: "main.rs".into(), r#type: "blob".into(), path: "src/main.rs".into(), mode: "100644".into() },
-        RepositoryTreeItem { id: "4".into(), name: "models.rs".into(), r#type: "blob".into(), path: "src/models.rs".into(), mode: "100644".into() },
-        RepositoryTreeItem { id: "5".into(), name: "Cargo.toml".into(), r#type: "blob".into(), path: "Cargo.toml".into(), mode: "100644".into() },
-        RepositoryTreeItem { id: "6".into(), name: "README.md".into(), r#type: "blob".into(), path: "README.md".into(), mode: "100644".into() },
+        RepositoryTreeItem {
+            id: "1".into(),
+            name: "src".into(),
+            r#type: "tree".into(),
+            path: "src".into(),
+            mode: "040000".into(),
+        },
+        RepositoryTreeItem {
+            id: "2".into(),
+            name: "api.rs".into(),
+            r#type: "blob".into(),
+            path: "src/api.rs".into(),
+            mode: "100644".into(),
+        },
+        RepositoryTreeItem {
+            id: "3".into(),
+            name: "main.rs".into(),
+            r#type: "blob".into(),
+            path: "src/main.rs".into(),
+            mode: "100644".into(),
+        },
+        RepositoryTreeItem {
+            id: "4".into(),
+            name: "models.rs".into(),
+            r#type: "blob".into(),
+            path: "src/models.rs".into(),
+            mode: "100644".into(),
+        },
+        RepositoryTreeItem {
+            id: "5".into(),
+            name: "Cargo.toml".into(),
+            r#type: "blob".into(),
+            path: "Cargo.toml".into(),
+            mode: "100644".into(),
+        },
+        RepositoryTreeItem {
+            id: "6".into(),
+            name: "README.md".into(),
+            r#type: "blob".into(),
+            path: "README.md".into(),
+            mode: "100644".into(),
+        },
     ];
     use base64::Engine;
     let sample_code = "use crossterm::event::{self, Event};\nuse gitlab::GitlabBuilder;\nuse lazygitlab::*;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let config = Config::from_env();\n    let client = GitlabBuilder::new(config.url, config.token).build_async().await?;\n    run_app(client).await\n}";
@@ -680,9 +817,30 @@ async fn main() {
     // 9. Project Switcher Popup
     app.show_project_popup = true;
     app.projects = vec![
-        Project { id: 1, name: "lazygitlab".into(), path_with_namespace: Some("abletterer/lazygitlab".into()), web_url: None, default_branch: Some("main".into()), namespace: None },
-        Project { id: 2, name: "infrastructure".into(), path_with_namespace: Some("devops/infrastructure".into()), web_url: None, default_branch: Some("master".into()), namespace: None },
-        Project { id: 3, name: "web-frontend".into(), path_with_namespace: Some("frontend/web-app".into()), web_url: None, default_branch: Some("main".into()), namespace: None },
+        Project {
+            id: 1,
+            name: "lazygitlab".into(),
+            path_with_namespace: Some("abletterer/lazygitlab".into()),
+            web_url: None,
+            default_branch: Some("main".into()),
+            namespace: None,
+        },
+        Project {
+            id: 2,
+            name: "infrastructure".into(),
+            path_with_namespace: Some("devops/infrastructure".into()),
+            web_url: None,
+            default_branch: Some("master".into()),
+            namespace: None,
+        },
+        Project {
+            id: 3,
+            name: "web-frontend".into(),
+            path_with_namespace: Some("frontend/web-app".into()),
+            web_url: None,
+            default_branch: Some("main".into()),
+            namespace: None,
+        },
     ];
     app.filtered_projects = app.projects.clone();
     app.projects_state.select(Some(0));
@@ -692,15 +850,63 @@ async fn main() {
 
     // 10. Render Theme Showcase Screenshots for All Built-in Presets
     let theme_presets = [
-        ("theme_catppuccin_mocha", Theme::catppuccin_mocha(), false, "#181825", "#1e1e2e"),
-        ("theme_tokyo_night", Theme::tokyo_night(), false, "#16161e", "#1a1b26"),
+        (
+            "theme_catppuccin_mocha",
+            Theme::catppuccin_mocha(),
+            false,
+            "#181825",
+            "#1e1e2e",
+        ),
+        (
+            "theme_tokyo_night",
+            Theme::tokyo_night(),
+            false,
+            "#16161e",
+            "#1a1b26",
+        ),
         ("theme_nord", Theme::nord(), false, "#242933", "#2e3440"),
-        ("theme_dracula", Theme::dracula(), false, "#21222c", "#282a36"),
-        ("theme_gruvbox_dark", Theme::gruvbox_dark(), false, "#1d2021", "#282828"),
-        ("theme_github_dark", Theme::github_dark(), false, "#0d1117", "#161b22"),
-        ("theme_catppuccin_latte", Theme::catppuccin_latte(), true, "#e6e9ef", "#eff1f5"),
-        ("theme_gruvbox_light", Theme::gruvbox_light(), true, "#f2e5bc", "#fbf1c7"),
-        ("theme_github_light", Theme::github_light(), true, "#f6f8fa", "#ffffff"),
+        (
+            "theme_dracula",
+            Theme::dracula(),
+            false,
+            "#21222c",
+            "#282a36",
+        ),
+        (
+            "theme_gruvbox_dark",
+            Theme::gruvbox_dark(),
+            false,
+            "#1d2021",
+            "#282828",
+        ),
+        (
+            "theme_github_dark",
+            Theme::github_dark(),
+            false,
+            "#0d1117",
+            "#161b22",
+        ),
+        (
+            "theme_catppuccin_latte",
+            Theme::catppuccin_latte(),
+            true,
+            "#e6e9ef",
+            "#eff1f5",
+        ),
+        (
+            "theme_gruvbox_light",
+            Theme::gruvbox_light(),
+            true,
+            "#f2e5bc",
+            "#fbf1c7",
+        ),
+        (
+            "theme_github_light",
+            Theme::github_light(),
+            true,
+            "#f6f8fa",
+            "#ffffff",
+        ),
     ];
 
     app.view_mode = ViewMode::List;
@@ -708,7 +914,13 @@ async fn main() {
     for (filename, theme, is_light, container_bg, header_bg) in theme_presets {
         app.theme = theme;
         terminal.draw(|f| ui(f, &mut app)).unwrap();
-        generate_theme_svg(terminal.backend().buffer(), filename, is_light, container_bg, header_bg);
+        generate_theme_svg(
+            terminal.backend().buffer(),
+            filename,
+            is_light,
+            container_bg,
+            header_bg,
+        );
     }
     app.theme = Theme::default();
 
@@ -738,10 +950,8 @@ fn generate_theme_svg(
     let total_h = term_h + header_h + pad * 2;
 
     use base64::Engine;
-    let b64_regular =
-        base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_REGULAR);
-    let b64_bold =
-        base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_BOLD);
+    let b64_regular = base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_REGULAR);
+    let b64_bold = base64::engine::general_purpose::STANDARD.encode(JETBRAINS_MONO_BOLD);
 
     let mut svg = String::new();
     svg.push_str(&format!(
@@ -759,7 +969,9 @@ fn generate_theme_svg(
     let header_line = if is_light { "#d0d7de" } else { "#13141a" };
 
     svg.push_str("<defs>\n");
-    svg.push_str("  <filter id=\"macos-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"120%\">\n");
+    svg.push_str(
+        "  <filter id=\"macos-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"120%\">\n",
+    );
     svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"20\" stdDeviation=\"24\" flood-color=\"{}\" flood-opacity=\"{}\"/>\n", shadow_color, shadow_opacity));
     svg.push_str(&format!("    <feDropShadow dx=\"0\" dy=\"4\" stdDeviation=\"8\" flood-color=\"{}\" flood-opacity=\"0.12\"/>\n", shadow_color));
     svg.push_str("  </filter>\n");
@@ -831,11 +1043,7 @@ fn generate_theme_svg(
             if color_hex != empty_bg {
                 let start_x = x;
                 while x < cols
-                    && color_to_hex(
-                        buffer[(x as u16, y as u16)].bg,
-                        true,
-                        is_light,
-                    ) == color_hex
+                    && color_to_hex(buffer[(x as u16, y as u16)].bg, true, is_light) == color_hex
                 {
                     x += 1;
                 }
@@ -876,8 +1084,7 @@ fn generate_theme_svg(
 
             let start_x = x;
             let fg = cell.fg;
-            let is_bold =
-                cell.modifier.contains(ratatui::style::Modifier::BOLD);
+            let is_bold = cell.modifier.contains(ratatui::style::Modifier::BOLD);
             let fg_hex = color_to_hex(fg, false, is_light);
             let mut text_buf = String::new();
 
@@ -885,8 +1092,7 @@ fn generate_theme_svg(
                 let cur_cell = &buffer[(x as u16, y as u16)];
                 let cur_sym = cur_cell.symbol();
                 let cur_fg_hex = color_to_hex(cur_cell.fg, false, is_light);
-                let cur_bold =
-                    cur_cell.modifier.contains(ratatui::style::Modifier::BOLD);
+                let cur_bold = cur_cell.modifier.contains(ratatui::style::Modifier::BOLD);
 
                 if cur_fg_hex != fg_hex || cur_bold != is_bold {
                     break;
@@ -909,11 +1115,7 @@ fn generate_theme_svg(
             } else {
                 format!(" fill=\"{}\"", fg_hex)
             };
-            let weight_attr = if is_bold {
-                " font-weight=\"bold\""
-            } else {
-                ""
-            };
+            let weight_attr = if is_bold { " font-weight=\"bold\"" } else { "" };
 
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\"{}{}>{}</text>\n",
@@ -986,21 +1188,31 @@ fn generate_cheatsheet_file(app: &mut App) {
     doc.push_str("[📥 Download Printable 1-Page Landscape PDF Cheatsheet](../assets/lazygitlab-cheatsheet.pdf){ .md-button .md-button--primary }\n\n");
     doc.push_str("### 📄 1-Page Quick Reference Preview\n\n");
     doc.push_str("Click on the preview to open the high-resolution lightbox or download the vector PDF above:\n\n");
-    doc.push_str("![lazygitlab Cheatsheet Preview](../assets/lazygitlab-cheatsheet-preview.png)\n\n");
+    doc.push_str(
+        "![lazygitlab Cheatsheet Preview](../assets/lazygitlab-cheatsheet-preview.png)\n\n",
+    );
     doc.push_str("---\n\n");
 
     doc.push_str("## ⚡ Essential Shortcuts (Top 10)\n\n");
     doc.push_str("| Shortcut | Action | Description |\n");
     doc.push_str("| :--- | :--- | :--- |\n");
-    doc.push_str("| <kbd>?</kbd> | **Command Palette** | Open interactive help and keymap finder |\n");
+    doc.push_str(
+        "| <kbd>?</kbd> | **Command Palette** | Open interactive help and keymap finder |\n",
+    );
     doc.push_str("| <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> | **Cycle Panels** | Switch focus between side menu, list, and detail view |\n");
-    doc.push_str("| <kbd>j</kbd> / <kbd>k</kbd> | **Navigate Items** | Move selection down / up |\n");
+    doc.push_str(
+        "| <kbd>j</kbd> / <kbd>k</kbd> | **Navigate Items** | Move selection down / up |\n",
+    );
     doc.push_str("| <kbd>g</kbd> <kbd>m</kbd> | **Merge Requests** | Jump directly to Merge Requests view |\n");
     doc.push_str("| <kbd>g</kbd> <kbd>i</kbd> | **Issues** | Jump directly to Issues view |\n");
     doc.push_str("| <kbd>g</kbd> <kbd>b</kbd> | **Kanban Boards** | Jump directly to Sprint Kanban Boards |\n");
-    doc.push_str("| <kbd>g</kbd> <kbd>p</kbd> | **Pipelines** | Jump directly to CI/CD Pipelines |\n");
+    doc.push_str(
+        "| <kbd>g</kbd> <kbd>p</kbd> | **Pipelines** | Jump directly to CI/CD Pipelines |\n",
+    );
     doc.push_str("| <kbd>p</kbd> | **Project Switcher** | Filter and quick-switch between GitLab projects |\n");
-    doc.push_str("| <kbd>/</kbd> | **Filter Search** | Search and filter active list items in real-time |\n");
+    doc.push_str(
+        "| <kbd>/</kbd> | **Filter Search** | Search and filter active list items in real-time |\n",
+    );
     doc.push_str("| <kbd>q</kbd> | **Quit** | Exit lazygitlab |\n\n");
     doc.push_str("---\n\n");
 
@@ -1023,7 +1235,11 @@ fn generate_cheatsheet_file(app: &mut App) {
             doc.push_str("| Shortcut | Description |\n");
             doc.push_str("| :--- | :--- |\n");
             for (shortcut, desc) in items {
-                doc.push_str(&format!("| {} | {} |\n", format_shortcut_kbd(shortcut), desc));
+                doc.push_str(&format!(
+                    "| {} | {} |\n",
+                    format_shortcut_kbd(shortcut),
+                    desc
+                ));
             }
             doc.push('\n');
         }

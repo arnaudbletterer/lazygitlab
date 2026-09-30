@@ -271,7 +271,6 @@ pub enum MenuSelection {
     Epics,
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Todo {
     pub id: u64,

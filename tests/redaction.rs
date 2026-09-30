@@ -30,7 +30,12 @@ impl<'a> MakeWriter<'a> for Sink {
 
 #[test]
 fn masks_gitlab_token_prefixes() {
-    for t in [PAT, "gldt-abcdefgh1234", "glrt-abcdefgh1234", "glcbt-abcdefgh1234"] {
+    for t in [
+        PAT,
+        "gldt-abcdefgh1234",
+        "glrt-abcdefgh1234",
+        "glcbt-abcdefgh1234",
+    ] {
         let input = format!("failed with {t} here");
         let out = redact_secrets(&input);
         assert!(!out.contains(t), "{out}");

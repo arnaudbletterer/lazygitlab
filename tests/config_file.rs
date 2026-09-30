@@ -48,7 +48,12 @@ fn cli_beats_env_and_file() {
         project: Some("g/cli".into()),
         ..Default::default()
     };
-    let s = Settings::resolve(&cli, Some("env.example"), Some("et"), &file("a.example", "ft"));
+    let s = Settings::resolve(
+        &cli,
+        Some("env.example"),
+        Some("et"),
+        &file("a.example", "ft"),
+    );
     assert_eq!(s.url, "cli.example");
     assert_eq!(s.token.as_deref(), Some("ct"));
     assert_eq!(s.project.as_deref(), Some("g/cli"));
@@ -91,7 +96,10 @@ fn url_normalization_and_insecure() {
 fn load_missing_file_is_default_unless_required() {
     let dir = tempdir("missing");
     let path = dir.join("nope.toml");
-    assert_eq!(load_file_config(&path, false).unwrap(), FileConfig::default());
+    assert_eq!(
+        load_file_config(&path, false).unwrap(),
+        FileConfig::default()
+    );
     assert!(load_file_config(&path, true).is_err());
 }
 
@@ -109,7 +117,10 @@ fn theme_only_and_mixed_files_parse_both_ways() {
     assert!(parse_file_config(mixed).is_ok());
     assert!(Theme::parse_theme_content(mixed).is_some());
     let theme_only = "theme = \"gruvbox\"\n";
-    assert_eq!(parse_file_config(theme_only).unwrap(), FileConfig::default());
+    assert_eq!(
+        parse_file_config(theme_only).unwrap(),
+        FileConfig::default()
+    );
 }
 
 #[test]
@@ -199,7 +210,9 @@ fn file_insecure_does_not_override_explicit_https_url() {
         ..Default::default()
     };
     assert!(!Settings::resolve(&cli, None, None, &f).insecure);
-    assert!(!Settings::resolve(&CliOptions::default(), Some("https://e.example"), None, &f).insecure);
+    assert!(
+        !Settings::resolve(&CliOptions::default(), Some("https://e.example"), None, &f).insecure
+    );
     let f2 = parse_file_config("[gitlab]\nurl = \"h.example\"\ninsecure = true\n").unwrap();
     assert!(Settings::resolve(&CliOptions::default(), None, None, &f2).insecure);
 }

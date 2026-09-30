@@ -115,7 +115,11 @@ pub fn parse_args(args: &[String]) -> Result<CliOptions, CliError> {
             "--script" => opts.script = Some(value("--script")?),
             "--frames-dir" => opts.frames_dir = Some(value("--frames-dir")?),
             _ => {
-                let shown = if arg.starts_with('-') { arg.split('=').next().unwrap_or(flag) } else { "(positional argument)" };
+                let shown = if arg.starts_with('-') {
+                    arg.split('=').next().unwrap_or(flag)
+                } else {
+                    "(positional argument)"
+                };
                 return Err(CliError::UnknownFlag(shown.to_string()));
             }
         }

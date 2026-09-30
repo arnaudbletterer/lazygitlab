@@ -12,17 +12,47 @@ pub fn render_boards_view(f: &mut Frame, app: &mut App, area: Rect) {
         render_kanban_board(f, app, board_chunks[0]);
 
         let shortcuts_spans = vec![
-            Span::styled("[h/l]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[h/l]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Column  ", Style::default().fg(app.theme.dim)),
-            Span::styled("[j/k]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[j/k]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Card  ", Style::default().fg(app.theme.dim)),
-            Span::styled("[H/L]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[H/L]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Move  ", Style::default().fg(app.theme.dim)),
-            Span::styled("[c]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[c]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Close/Reopen  ", Style::default().fg(app.theme.dim)),
-            Span::styled("[Enter]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[Enter]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Detail  ", Style::default().fg(app.theme.dim)),
-            Span::styled("[Esc]", Style::default().fg(app.theme.shortcut_key).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[Esc]",
+                Style::default()
+                    .fg(app.theme.shortcut_key)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Back", Style::default().fg(app.theme.dim)),
         ];
         f.render_widget(Paragraph::new(Line::from(shortcuts_spans)), board_chunks[1]);
@@ -138,18 +168,18 @@ fn render_kanban_board(f: &mut Frame, app: &mut App, area: Rect) {
                 .add_modifier(Modifier::BOLD)
         };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(Span::styled(
-            format!(" 📋 {} ({}) ", title.to_uppercase(), issues.len()),
-            header_style,
-        ))
-        .border_style(Style::default().fg(if is_column_focused {
-            app.theme.active_border
-        } else {
-            app.theme.inactive_border
-        }));
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                format!(" 📋 {} ({}) ", title.to_uppercase(), issues.len()),
+                header_style,
+            ))
+            .border_style(Style::default().fg(if is_column_focused {
+                app.theme.active_border
+            } else {
+                app.theme.inactive_border
+            }));
 
         if issues.is_empty() && app.is_loading {
             f.render_widget(

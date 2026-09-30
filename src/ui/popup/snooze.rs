@@ -11,7 +11,10 @@ pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
             .bg(app.theme.code_bg)
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Snooze Todo ", Style::default().fg(app.theme.title_fg).bold()))
+            .title(Span::styled(
+                " Snooze Todo ",
+                Style::default().fg(app.theme.title_fg).bold(),
+            ))
             .border_style(Style::default().fg(app.theme.active_border)),
         area,
     );
@@ -24,7 +27,10 @@ pub fn render_snooze_popup(f: &mut Frame, app: &mut App) {
         "Custom date/time...",
     ];
 
-    let items: Vec<ListItem> = suggestions.iter().map(|s| ListItem::new(Span::styled(*s, Style::default().fg(app.theme.title_fg)))).collect();
+    let items: Vec<ListItem> = suggestions
+        .iter()
+        .map(|s| ListItem::new(Span::styled(*s, Style::default().fg(app.theme.title_fg))))
+        .collect();
 
     let list = List::new(items)
         .highlight_style(

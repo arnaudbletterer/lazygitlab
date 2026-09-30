@@ -43,9 +43,14 @@ pub fn render_help_popup(f: &mut Frame, app: &mut App) {
         let filter_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" 🔍 Search Commands ", Style::default().fg(app.theme.title_fg)))
+            .title(Span::styled(
+                " 🔍 Search Commands ",
+                Style::default().fg(app.theme.title_fg),
+            ))
             .border_style(Style::default().fg(app.theme.accent));
-        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str()).style(Style::default().fg(app.theme.title_fg)).block(filter_block);
+        let filter_paragraph = Paragraph::new(app.help_filter_input.as_str())
+            .style(Style::default().fg(app.theme.title_fg))
+            .block(filter_block);
         f.render_widget(filter_paragraph, chunks[1]);
 
         f.set_cursor_position(Position::new(

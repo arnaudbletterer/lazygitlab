@@ -30,7 +30,8 @@ async fn setup_app() -> (
     let server = MockServer::start().await;
     Mock::given(path("/api/v4/user"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"devops"})),
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"id":1,"username":"devops"})),
         )
         .mount(&server)
         .await;
@@ -161,7 +162,10 @@ async fn test_pipeline_retry_and_cancel_actions() {
 
     // Retry pipeline with 'R'
     app.handle_key(key(KeyCode::Char('R'))).await;
-    assert_eq!(app.status_message.as_deref(), Some("Pipeline #101 retry triggered"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Pipeline #101 retry triggered")
+    );
 
     // Select running pipeline and cancel with 'C'
     app.pipelines_state.select(Some(1));
@@ -175,7 +179,10 @@ async fn test_pipeline_retry_and_cancel_actions() {
 
     app.handle_key(key(KeyCode::Char('C'))).await;
     let cancel_msg = app.status_message.as_deref().unwrap_or("");
-    assert!(cancel_msg.contains("102") && (cancel_msg.contains("cancel") || cancel_msg.contains("Canceling")));
+    assert!(
+        cancel_msg.contains("102")
+            && (cancel_msg.contains("cancel") || cancel_msg.contains("Canceling"))
+    );
 }
 
 #[tokio::test]
@@ -200,7 +207,10 @@ async fn test_pipeline_launch_popup_typing_p_does_not_launch() {
     }
 
     // Popup MUST still be open and ref input must accurately contain "patch-p1"
-    assert!(app.show_pipeline_popup, "Popup must NOT close or launch on typing 'p'");
+    assert!(
+        app.show_pipeline_popup,
+        "Popup must NOT close or launch on typing 'p'"
+    );
     assert_eq!(app.pipeline_ref_input, "patch-p1");
 }
 
@@ -362,5 +372,9 @@ async fn test_ci_variables_editor_live_typing_and_editing() {
         app.process_update_single(update).await;
     }
 
-    assert!(app.project_variables.iter().any(|v| v.key == "KEY_A" && v.value == "VAL_A"));
+    assert!(
+        app.project_variables
+            .iter()
+            .any(|v| v.key == "KEY_A" && v.value == "VAL_A")
+    );
 }

@@ -5,8 +5,8 @@ use lazygitlab::models::{
     Project, ViewMode,
 };
 use lazygitlab::ui::ui;
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -314,10 +314,7 @@ async fn test_kanban_board_issues_state_synchronization() {
     .await;
 
     assert_eq!(app.board_issues.get(&10).map(|v| v.len()), Some(2));
-    assert_eq!(
-        app.filtered_board_issues.get(&10).map(|v| v.len()),
-        Some(2)
-    );
+    assert_eq!(app.filtered_board_issues.get(&10).map(|v| v.len()), Some(2));
 }
 
 #[tokio::test]
@@ -350,7 +347,10 @@ async fn test_kanban_move_board_issue_optimistic_update() {
     app.board_issues.insert(101, vec![issue.clone()]);
     app.board_issues.insert(102, Vec::new());
     app.filter_lists();
-    app.board_issue_states.entry(101).or_default().select(Some(0));
+    app.board_issue_states
+        .entry(101)
+        .or_default()
+        .select(Some(0));
 
     // Move right (direction +1) to closed list
     let _ = app.move_board_issue(1).await;
@@ -358,7 +358,10 @@ async fn test_kanban_move_board_issue_optimistic_update() {
     // Verify optimistic move
     assert_eq!(app.board_issues.get(&101).map(|v| v.len()), Some(0));
     assert_eq!(app.board_issues.get(&102).map(|v| v.len()), Some(1));
-    assert_eq!(app.filtered_board_issues.get(&102).map(|v| v.len()), Some(1));
+    assert_eq!(
+        app.filtered_board_issues.get(&102).map(|v| v.len()),
+        Some(1)
+    );
     assert_eq!(app.board_issues.get(&102).unwrap()[0].state, "closed");
     assert_eq!(app.board_lists_state.selected(), Some(1));
 }
@@ -381,7 +384,10 @@ async fn test_kanban_card_c_key_sets_selected_issue() {
     let issue = sample_issue(77, "opened");
     app.board_issues.insert(201, vec![issue]);
     app.filter_lists();
-    app.board_issue_states.entry(201).or_default().select(Some(0));
+    app.board_issue_states
+        .entry(201)
+        .or_default()
+        .select(Some(0));
 
     // Press 'c' on card
     app.handle_key(key_event(KeyCode::Char('c'))).await;
