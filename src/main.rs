@@ -5,25 +5,101 @@ use crossterm::{
 };
 use dotenvy::dotenv;
 use gitlab::GitlabBuilder;
-use lazygitlab::headless::{self, HeadlessOptions};
+use lazygitlab::headless::HeadlessOptions;
 use lazygitlab::*;
 use ratatui::prelude::*;
 use std::{io, time::Duration};
 
 #[cfg(not(tarpaulin_include))]
-fn is_headless_requested() -> bool {
-    std::env::args().any(|a| a == "--headless" || a.starts_with("--headless="))
+fn fail(code: i32, message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(code);
+}
+
+#[cfg(not(tarpaulin_include))]
+fn resolve_settings(cli: &cli::CliOptions) -> config::Settings {
+    let explicit = cli.config.is_some();
+    let path = cli
+        .config
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .or_else(config::default_config_path);
+    let file = match &path {
+        Some(p) => config::load_file_config(p, explicit).unwrap_or_else(|e| fail(1, &e)),
+        None => config::FileConfig::default(),
+    };
+    let mut settings = config::Settings::from_env(cli, &file);
+    if settings.token.is_some() {
+        return settings;
+    }
+
+    use std::io::IsTerminal;
+    if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+        fail(
+            1,
+            "No GitLab token found.\n\
+Provide one with the GITLAB_TOKEN environment variable (a .env file works), \
+the --token flag, or a [gitlab] table with `token` in ~/.config/lazygitlab/config.toml \
+(or the file given by --config).",
+        );
+    }
+    let stdin = std::io::stdin();
+    let outcome = setup::run_wizard(&mut stdin.lock(), &mut std::io::stdout(), &settings.url, true)
+        .unwrap_or_else(|e| fail(1, &format!("Setup aborted: {e}")));
+    let Some(outcome) = outcome else {
+        fail(1, "Setup aborted: no token provided.");
+    };
+    let (url, http) = config::normalize_url(&outcome.url);
+    let insecure = settings.insecure || http;
+    if outcome.save {
+        let saved_url = if insecure {
+            format!("http://{url}")
+        } else {
+            url.clone()
+        };
+        match path {
+            Some(p) => match config::save_gitlab_section(&p, &saved_url, &outcome.token) {
+                Ok(()) => println!("Saved to {}", p.display()),
+                Err(e) => eprintln!("Could not save configuration: {e}"),
+            },
+            None => eprintln!("Could not save configuration: no config directory found"),
+        }
+    }
+    if !url.is_empty() {
+        settings.url = url;
+    }
+    settings.insecure = insecure;
+    settings.token = Some(outcome.token);
+    settings
 }
 
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let cli = match cli::parse_args(&args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            eprintln!("error: {e}\n\n{}", cli::usage());
+            std::process::exit(2);
+        }
+    };
+    if cli.help {
+        print!("{}", cli::usage());
+        return Ok(());
+    }
+    if cli.version {
+        println!("{}", cli::version_line());
+        return Ok(());
+    }
+
     dotenv().ok();
     let _guard = crate::logger::init();
-    let config = Config::from_env();
-    lazygitlab::redaction::register_secret(&config.token);
-    let mut builder = GitlabBuilder::new(config.url, config.token);
-    if config.insecure {
+    let settings = resolve_settings(&cli);
+    let token = settings.token.clone().unwrap_or_default();
+    lazygitlab::redaction::register_secret(&token);
+    let mut builder = GitlabBuilder::new(settings.url, token);
+    if settings.insecure {
         builder.insecure();
     }
     let client = builder
@@ -31,13 +107,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| lazygitlab::redaction::redact_secrets(&e.to_string()).into_owned())?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(client, tx, None);
+    let mut app = App::new(client, tx, settings.project.clone());
+    if let Some(spec) = &settings.project
+        && let Err(e) = app.preselect_project(spec).await
+    {
+        app.last_error = Some(e);
+        app.last_error_since = Some(std::time::Instant::now());
+    }
 
-    if is_headless_requested() {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        let opts = headless::parse_options(&args)
-            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-        run_headless(&mut app, &mut rx, opts).await
+    if cli.headless {
+        run_headless(&mut app, &mut rx, cli.headless_options()).await
     } else {
         run_with_terminal(&mut app, &mut rx).await
     }
@@ -76,38 +155,6 @@ pub async fn run_headless(
     run_app(&mut terminal, app, &event_source, rx, &mut capture_opt).await?;
 
     Ok(())
-}
-
-struct Config {
-    url: String,
-    token: String,
-    insecure: bool,
-}
-impl Config {
-    fn from_env() -> Self {
-        let mut url = std::env::var("GITLAB_URL").unwrap_or_else(|_| "gitlab.com".to_string());
-        let mut insecure = false;
-        if url.starts_with("http://") {
-            insecure = true;
-            url = url.strip_prefix("http://").unwrap().to_string();
-        } else if url.starts_with("https://") {
-            url = url.strip_prefix("https://").unwrap().to_string();
-        }
-
-        while url.ends_with('/') {
-            url.pop();
-        }
-
-        let token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
-        if token.is_empty() {
-            panic!("GITLAB_TOKEN must be set");
-        }
-        Self {
-            url,
-            token,
-            insecure,
-        }
-    }
 }
 
 pub use lazygitlab::EventSource;
@@ -283,37 +330,5 @@ mod tests {
                 .await
                 .is_ok()
         );
-    }
-
-    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    #[should_panic(expected = "GITLAB_TOKEN must be set")]
-    fn test_config_from_env_panic() {
-        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            std::env::remove_var("GITLAB_TOKEN");
-        }
-        Config::from_env();
-    }
-
-    #[test]
-    fn test_config_from_env_success() {
-        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            std::env::set_var("GITLAB_TOKEN", "test_token");
-            std::env::set_var("GITLAB_URL", "https://test.gitlab.com");
-        }
-        let config = Config::from_env();
-        assert_eq!(config.token, "test_token");
-        assert_eq!(config.url, "test.gitlab.com");
-        assert!(!config.insecure);
-
-        unsafe {
-            std::env::set_var("GITLAB_URL", "http://test.gitlab.com/");
-        }
-        let config = Config::from_env();
-        assert_eq!(config.url, "test.gitlab.com");
-        assert!(config.insecure);
     }
 }
