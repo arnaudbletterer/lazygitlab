@@ -103,6 +103,8 @@ fn errors_never_echo_values() {
         &["--insecure=glpat-secret"],
         &["--width=glpat-secret"],
         &["--bogus", "--token=glpat-secret"],
+        &["-t=glpat-secret"],
+        &["glpat-secret"],
     ] {
         let err = parse_args(&args(list)).unwrap_err().to_string();
         assert!(!err.contains("glpat-secret"), "{err}");
