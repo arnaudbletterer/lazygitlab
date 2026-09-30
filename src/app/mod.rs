@@ -3947,6 +3947,27 @@ impl App {
         self.show_project_popup = true;
         let _ = self.fetch_projects().await;
     }
+    pub async fn preselect_project(&mut self, spec: &str) -> Result<(), String> {
+        use gitlab::api::AsyncQuery;
+        let endpoint = gitlab::api::projects::Project::builder()
+            .project(spec)
+            .build()
+            .map_err(|e| format!("invalid project '{spec}': {e}"))?;
+        let project: Project = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            endpoint.query_async(&self.gitlab),
+        )
+        .await
+        .map_err(|_| format!("timed out loading project '{spec}'"))?
+        .map_err(|e| format!("cannot load project '{spec}': {e}"))?;
+        self.selected_project = Some(project);
+        self.active_panel = Panel::Project;
+        self.active_context = Context::Project;
+        self.project_menu_state.select(Some(0));
+        self.active_selection = MenuSelection::MergeRequests;
+        Ok(())
+    }
+
     pub async fn select_project(&mut self) {
         if let Some(project) = self
             .projects_state
