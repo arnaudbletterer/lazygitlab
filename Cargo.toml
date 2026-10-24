@@ -2,6 +2,13 @@
 name = "lazygitlab"
 version = "0.16.0"
 edition = "2024"
+description = "A fast, keyboard-driven terminal UI for GitLab: merge requests, code review, pipelines, issues and boards"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/arnaudbletterer/lazygitlab"
+keywords = ["gitlab", "tui", "terminal", "merge-request", "ci"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["data/", "docs/", "scripts/", "examples/", ".github/", "lazygitlab.log"]
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tarpaulin_include)'] }
