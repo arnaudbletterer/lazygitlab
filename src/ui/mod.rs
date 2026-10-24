@@ -61,6 +61,15 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             .fg(widgets::get_contrast_color(app.theme.accent))
             .add_modifier(Modifier::BOLD),
     )];
+    if app.skip_tls_verify {
+        header_spans.push(Span::styled(
+            " TLS NOT VERIFIED ",
+            Style::default()
+                .bg(app.theme.failed)
+                .fg(widgets::get_contrast_color(app.theme.failed))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
     if let Some(proj) = &app.selected_project {
         header_spans.push(Span::styled(" ❯ ", Style::default().fg(app.theme.dim)));
         header_spans.push(Span::styled(

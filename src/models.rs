@@ -987,6 +987,7 @@ pub struct LocalGitStatus {
 pub struct App {
     pub target_project: Option<String>,
     pub local_git_status: Option<LocalGitStatus>,
+    pub skip_tls_verify: bool,
     pub should_quit: bool,
     pub active_context: Context,
     pub dashboard_menu_state: ListState,

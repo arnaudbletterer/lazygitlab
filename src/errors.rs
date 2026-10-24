@@ -12,8 +12,8 @@ or your role does not allow this"
         || lower.contains("unknownissuer")
         || lower.contains("invalid peer")
     {
-        "TLS certificate not trusted: for a self-signed certificate run with --insecure \
-(or set insecure = true in config.toml)"
+        "TLS certificate not trusted: add your CA certificate to the system trust store. \
+As a temporary last resort, --insecure skips verification and exposes your token to interception"
     } else if lower.contains("internal server error 5") {
         "GitLab reported a server error (5xx): try again in a moment"
     } else if lower.contains("could not parse json response")

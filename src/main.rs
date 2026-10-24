@@ -110,6 +110,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = settings.token.clone().unwrap_or_default();
     lazygitlab::redaction::register_secret(&token);
     let transport = settings.transport();
+    if transport == config::Transport::HttpsSkipVerify {
+        eprintln!("{}", config::SKIP_VERIFY_WARNING);
+    }
     let mut builder = GitlabBuilder::new(settings.url, token);
     match transport {
         config::Transport::Https => {}
@@ -132,6 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx, settings.project.clone());
+    app.skip_tls_verify = transport == config::Transport::HttpsSkipVerify;
     if let Some(spec) = &settings.project
         && let Err(e) = app.preselect_project(spec).await
     {

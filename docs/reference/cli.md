@@ -16,7 +16,7 @@ Precedence: flags > environment > config file > defaults.
 | `--url <URL>` | GitLab instance URL (e.g. `https://gitlab.example.com`). A path prefix is supported (`https://host/gitlab`) |
 | `--token <TOKEN>` | Personal access token. Use `--token -` to read it from the first line of stdin |
 | `--config <FILE>` | Path to a custom configuration file |
-| `--insecure` | Skip TLS certificate verification (self-signed certificates). An `http://` URL uses plain HTTP |
+| `--insecure` | Skip TLS certificate verification (last resort; prefer adding your CA to the system trust store). Warns at every start. An `http://` URL uses plain HTTP |
 | `--headless` | Render off-screen, with `--width`, `--height`, `--script` and `--frames-dir` |
 
 !!! warning "Keep your token out of the process list"

@@ -85,7 +85,7 @@ Choose the installation method that best fits your workflow:
         `--token <TOKEN>` is visible to other users in the process list. Prefer `GITLAB_TOKEN`, or pipe the token in with `--token -`.
 
 !!! tip "Self-Hosted Instances & Custom SSL Certificates"
-    If your self-hosted GitLab instance uses internal or self-signed SSL certificates, pass the `--insecure` flag or configure `insecure = true` in `config.toml`:
+    If your self-hosted GitLab instance uses an internal CA, add that CA certificate to your system trust store; this is the safe option. As a temporary last resort, `--insecure` (or `insecure = true` in `config.toml`) skips certificate verification, which lets anyone on the network path read your token. lazygitlab prints a warning at every start and shows `TLS NOT VERIFIED` in the header while it is active:
     ```bash
     GITLAB_TOKEN=... lazygitlab --url https://gitlab.internal.corp --insecure
     ```

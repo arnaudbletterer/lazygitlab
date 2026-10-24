@@ -34,6 +34,9 @@ pub enum Transport {
     HttpsSkipVerify,
 }
 
+pub const SKIP_VERIFY_WARNING: &str = "WARNING: TLS certificate verification is disabled (--insecure / insecure = true). \
+Your token can be intercepted by anyone on the network path. Prefer adding your CA to the system trust store.";
+
 pub fn default_config_path() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
         return Some(

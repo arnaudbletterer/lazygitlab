@@ -35,6 +35,7 @@ impl App {
         Self {
             target_project,
             local_git_status: detect_local_git_status(),
+            skip_tls_verify: false,
             should_quit: false,
             active_context: Context::Dashboard,
             dashboard_menu_state,
