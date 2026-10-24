@@ -115,10 +115,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.cert_insecure();
         }
     }
-    let client = builder
-        .build_async()
-        .await
-        .map_err(|e| lazygitlab::redaction::redact_secrets(&e.to_string()).into_owned())?;
+    let client = match builder.build_async().await {
+        Ok(client) => client,
+        Err(e) => fail(
+            1,
+            &format!(
+                "Could not connect to GitLab: {}",
+                errors::friendly_error(&e.to_string())
+            ),
+        ),
+    };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx, settings.project.clone());
     if let Some(spec) = &settings.project
