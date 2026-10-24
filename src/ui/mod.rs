@@ -19,7 +19,27 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 pub use widgets::Theme;
 
+pub const MIN_WIDTH: u16 = 50;
+pub const MIN_HEIGHT: u16 = 14;
+
+fn render_too_small(f: &mut Frame) {
+    let area = f.area();
+    let msg = format!(
+        "Terminal too small ({}x{}), need at least {MIN_WIDTH}x{MIN_HEIGHT}. Resize or press q to quit.",
+        area.width, area.height
+    );
+    f.render_widget(
+        Paragraph::new(msg).wrap(ratatui::widgets::Wrap { trim: true }),
+        area,
+    );
+}
+
 pub fn ui(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+        render_too_small(f);
+        return;
+    }
     let job_log_searching =
         app.input_mode && app.input_target == crate::models::InputTarget::JobLogSearch;
     let has_filter = app.show_filter_input || !app.filter_input.is_empty() || job_log_searching;

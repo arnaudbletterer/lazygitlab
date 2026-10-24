@@ -36,7 +36,12 @@ pub fn render_calendar_popup(f: &mut Frame, app: &mut App) {
     });
     let cols = [Constraint::Length(4); 7];
     let header_area = Rect::new(inner.x, inner.y, inner.width, 1);
-    let days_area = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1);
+    let days_area = Rect::new(
+        inner.x,
+        inner.y + 1,
+        inner.width,
+        inner.height.saturating_sub(1),
+    );
 
     // Days of week
     let dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
