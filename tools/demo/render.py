@@ -6,6 +6,7 @@ each line. Requires Pillow (see make demo, which installs it in .venv).
 """
 import re
 import sys
+from pathlib import Path
 import unicodedata
 
 from PIL import Image, ImageDraw, ImageFont
@@ -27,16 +28,21 @@ ADD_BG = (36, 52, 46)
 DEL_BG = (58, 38, 48)
 
 FONT_PATHS = [
-    "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
-    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-    "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+    str(Path(__file__).resolve().parents[2] / "docs" / "assets" / "fonts" / "JetBrainsMono-Regular.ttf"),
 ]
 FALLBACK_PATHS = [
+    "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
     "/usr/share/fonts/noto/NotoSansSymbols-Regular.ttf",
     "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
 ]
-EMOJI_FONT = "/usr/share/fonts/noto/NotoColorEmoji.ttf"
+EMOJI_FONTS = [
+    "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+]
 BORDERS = set("─│╭╮╰╯┌┐└┘├┤┬┴┼")
 FONT_SIZE = 15
 
@@ -60,7 +66,7 @@ def load_font():
             return ImageFont.truetype(path, FONT_SIZE)
         except OSError:
             continue
-    raise SystemExit("no monospace font found; install JetBrains Mono, DejaVu Sans Mono or Liberation Mono")
+    raise SystemExit("no monospace font found; docs/assets/fonts/JetBrainsMono-Regular.ttf is missing")
 
 
 def load_fallbacks():
@@ -192,10 +198,13 @@ def render(text, out_path, scale=1.0):
     pad = 12
     img = Image.new("RGB", (width * cw + 2 * pad, len(lines) * ch + 2 * pad), BASE)
     draw = ImageDraw.Draw(img)
-    try:
-        emoji_font = ImageFont.truetype(EMOJI_FONT, 109)
-    except OSError:
-        emoji_font = None
+    emoji_font = None
+    for path in EMOJI_FONTS:
+        try:
+            emoji_font = ImageFont.truetype(path, 109)
+            break
+        except OSError:
+            continue
     diff_mode = lines[-1].startswith(" DIFF")
     split = 0
     if diff_mode:
@@ -227,7 +236,7 @@ def render(text, out_path, scale=1.0):
             x += span
     if scale != 1.0:
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
-    img.save(out_path)
+    img.quantize(colors=96, method=Image.Quantize.MEDIANCUT).save(out_path, optimize=True)
 
 
 if __name__ == "__main__":

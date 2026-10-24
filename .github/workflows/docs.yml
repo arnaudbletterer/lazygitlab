@@ -34,7 +34,10 @@ jobs:
         python-version: '3.12'
 
     - name: Install Python dependencies
-      run: pip install zensical pymupdf
+      run: pip install zensical pymupdf pillow
+
+    - name: Install ffmpeg and fallback fonts
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-noto-color-emoji
 
     - name: Build documentation suite & assets
       run: python scripts/build_docs.py

@@ -18,8 +18,8 @@ import render
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 BIN = ROOT / "target" / "debug" / "lazygitlab"
-SHOTS = ROOT / "docs" / "assets" / "screenshots"
-GIF = ROOT / "docs" / "assets" / "demo.gif"
+SHOTS = ROOT / "docs" / "assets" / "marketing"
+GIF = ROOT / "docs" / "assets" / "marketing" / "demo.gif"
 WIDTH, HEIGHT = 150, 40
 PAD_TICKS = 100
 SHOT_NAMES = ["dashboard", "mr-review", "pipelines", "boards"]

@@ -1,6 +1,6 @@
 [
-  {"id": 501, "action_name": "review_requested", "target_type": "MergeRequest", "target": "mr:127", "age": "1d",
-   "body": "Fix pagination off-by-one in widget listing"},
+  {"id": 501, "action_name": "review_requested", "target_type": "MergeRequest", "target": "mr:128", "age": "1d",
+   "body": "Add retry with exponential backoff to HTTP client"},
   {"id": 502, "action_name": "mentioned", "target_type": "Issue", "target": "issue:41", "age": "2d",
    "body": "@ada can you confirm this also affects the CSV export?"},
   {"id": 503, "action_name": "assigned", "target_type": "Issue", "target": "issue:40", "age": "3d",

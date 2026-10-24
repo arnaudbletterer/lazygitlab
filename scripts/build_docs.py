@@ -26,6 +26,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DOCS_DIR = ROOT_DIR / "docs"
 ASSETS_DIR = DOCS_DIR / "assets"
 SCREENSHOTS_DIR = ASSETS_DIR / "screenshots"
+MARKETING_DIR = ASSETS_DIR / "marketing"
+MARKETING_FILES = ["dashboard.png", "mr-review.png", "pipelines.png", "boards.png", "demo.gif"]
 
 
 def get_git_version():
@@ -109,6 +111,31 @@ def generate_assets():
         print("PyMuPDF not installed, skipping thumbnail generation.")
 
 
+def generate_marketing():
+    """Builds the binary and renders the fictional-data screenshots and demo.gif."""
+    print("🎬 Generating marketing screenshots and demo.gif (needs Pillow and ffmpeg)...")
+    subprocess.check_call(["cargo", "build"], cwd=ROOT_DIR)
+    subprocess.check_call([sys.executable, str(ROOT_DIR / "tools" / "demo" / "make_demo.py")], cwd=ROOT_DIR)
+
+
+def publish_marketing():
+    """Copies marketing assets into the built site and fails if any is missing or empty."""
+    import shutil
+
+    target = ROOT_DIR / "site" / "assets" / "marketing"
+    target.mkdir(parents=True, exist_ok=True)
+    problems = []
+    for name in MARKETING_FILES:
+        src = MARKETING_DIR / name
+        if not src.is_file() or src.stat().st_size == 0:
+            problems.append(name)
+            continue
+        shutil.copy2(src, target / name)
+    if problems:
+        sys.exit(f"Marketing assets missing or empty: {', '.join(problems)}")
+    print(f"🖼️ Marketing assets published to {target}")
+
+
 def inject_version_into_site_html(version_info):
     """Bakes the version badge directly into compiled static HTML files for zero-blink instant rendering."""
     site_dir = ROOT_DIR / "site"
@@ -144,6 +171,7 @@ def main():
 
     if not args.skip_assets:
         generate_assets()
+        generate_marketing()
 
     if args.serve:
         print(f"🚀 Starting Zensical dev server on http://127.0.0.1:{args.port} ...")
@@ -152,6 +180,7 @@ def main():
         print("📦 Building static documentation site with Zensical...")
         subprocess.check_call([sys.executable, "-m", "zensical", "build"], cwd=ROOT_DIR)
         inject_version_into_site_html(version_info)
+        publish_marketing()
         print("✅ Documentation build complete.")
 
 
