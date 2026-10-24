@@ -3,7 +3,6 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, enable_raw_mode},
 };
-use dotenvy::dotenv;
 use gitlab::GitlabBuilder;
 use lazygitlab::headless::HeadlessOptions;
 use lazygitlab::*;
@@ -45,7 +44,7 @@ fn resolve_settings(cli: &cli::CliOptions) -> config::Settings {
         fail(
             1,
             "No GitLab token found.\n\
-Provide one with the GITLAB_TOKEN environment variable (a .env file works), \
+Provide one with the GITLAB_TOKEN environment variable, \
 the --token flag, or a [gitlab] table with `token` in ~/.config/lazygitlab/config.toml \
 (or the file given by --config).",
         );
@@ -106,7 +105,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    dotenv().ok();
     let _guard = crate::logger::init();
     let settings = resolve_settings(&cli);
     let token = settings.token.clone().unwrap_or_default();

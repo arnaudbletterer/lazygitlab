@@ -75,14 +75,7 @@ cargo build --release
 
 ## Configuration
 
-Copy and edit the example env file:
-
-```bash
-cp .env.example .env
-# Then set:
-#   GITLAB_URL=https://gitlab.com        (or your self-hosted instance)
-#   GITLAB_TOKEN=<your personal access token>
-```
+Set `GITLAB_URL` and `GITLAB_TOKEN` in your environment, or run lazygitlab once and let the setup wizard write `~/.config/lazygitlab/config.toml`. A `.env` file in the working directory is deliberately not read, so a cloned repository cannot redirect your token to another host.
 
 The token needs the `read_api` scope to browse, and `api` to perform actions (merge, comment, edit). Prefer `GITLAB_TOKEN` over `--token`, which is visible in the process list; `--token -` reads it from stdin.
 
