@@ -104,5 +104,8 @@ async fn test_stale_poll_after_filter_change_is_dropped() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     assert!(app.todos.is_empty(), "stale pending result must be dropped");
-    assert_eq!(app.todos_etag, None, "pending ETag must not be stored under Done");
+    assert_eq!(
+        app.todos_etag, None,
+        "pending ETag must not be stored under Done"
+    );
 }
