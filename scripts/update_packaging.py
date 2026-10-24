@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import re
 import sys
 import urllib.request
@@ -80,9 +81,12 @@ def update_aur_bin(text, tag, sums):
     )
 
 
-def update_aur_src(text, tag, sums):
+def update_aur_src(text, tag, sums, source_sha=None):
+    if not source_sha:
+        raise SystemExit("error: source tarball hash is required for the AUR source package")
     text = sub_once(r"^pkgver=.*$", f"pkgver={tag[1:]}", text, re.M)
-    return sub_once(r"^pkgrel=.*$", "pkgrel=1", text, re.M)
+    text = sub_once(r"^pkgrel=.*$", "pkgrel=1", text, re.M)
+    return sub_once(r"^(sha256sums=\(')[^']*('\))$", rf"\g<1>{source_sha}\g<2>", text, re.M)
 
 
 def update_scoop(text, tag, sums):
@@ -111,17 +115,38 @@ UPDATERS = {
 }
 
 
-def update_all(root, tag, sums, dry_run=False):
-    changed = []
+PLACEHOLDER_RE = re.compile(r"\b0{64}\b|sha256sums=\('SKIP'\)")
+
+
+def update_all(root, tag, sums, dry_run=False, source_sha=None):
+    results = {}
     for rel, kind in FILES.items():
         path = Path(root) / rel
         old = path.read_text()
-        new = UPDATERS[kind](old, tag, sums)
+        if kind == "aur-src":
+            new = update_aur_src(old, tag, sums, source_sha)
+        else:
+            new = UPDATERS[kind](old, tag, sums)
+        if PLACEHOLDER_RE.search(new):
+            raise SystemExit(f"error: placeholder hash left in {rel}")
+        results[path] = (rel, old, new)
+    changed = []
+    for path, (rel, old, new) in results.items():
         if new != old:
             changed.append(rel)
             if not dry_run:
                 path.write_text(new)
     return changed
+
+
+def sha256_file(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def fetch_source_sha(tag):
+    url = f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        return hashlib.sha256(resp.read()).hexdigest()
 
 
 def fetch_sums(tag):
@@ -135,6 +160,7 @@ def main(argv=None):
     parser.add_argument("tag", help="release tag, e.g. v0.16.0")
     parser.add_argument("--dry-run", action="store_true", help="report changes without writing")
     parser.add_argument("--sums-file", help="read SHA256SUMS from a local file instead of GitHub")
+    parser.add_argument("--source-tarball", help="local copy of the GitHub tag tarball to hash instead of downloading it")
     parser.add_argument("--root", default=str(ROOT), help="repository root")
     args = parser.parse_args(argv)
 
@@ -143,7 +169,8 @@ def main(argv=None):
 
     text = Path(args.sums_file).read_text() if args.sums_file else fetch_sums(args.tag)
     sums = parse_sums(text)
-    changed = update_all(args.root, args.tag, sums, args.dry_run)
+    source_sha = sha256_file(args.source_tarball) if args.source_tarball else fetch_source_sha(args.tag)
+    changed = update_all(args.root, args.tag, sums, args.dry_run, source_sha)
 
     verb = "would update" if args.dry_run else "updated"
     for rel in changed:

@@ -35,11 +35,14 @@ class UpdatePackagingTest(unittest.TestCase):
             shutil.copy(REPO_ROOT / rel, dest)
         self.sums_file = self.tmp / "SHA256SUMS"
         self.sums_file.write_text(SUMS)
+        self.tarball = self.tmp / "src.tar.gz"
+        self.tarball.write_bytes(b"fake tarball")
+        self.tarball_sha = up.sha256_file(self.tarball)
 
     def run_main(self, *extra):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = up.main([TAG, "--sums-file", str(self.sums_file), "--root", str(self.tmp), *extra])
+            code = up.main([TAG, "--sums-file", str(self.sums_file), "--root", str(self.tmp), "--source-tarball", str(self.tarball), *extra])
         return code, out.getvalue()
 
     def read(self, rel):
@@ -59,7 +62,9 @@ class UpdatePackagingTest(unittest.TestCase):
         aur = self.read("packaging/aur/lazygitlab-bin/PKGBUILD")
         self.assertIn("pkgver=1.2.3", aur)
         self.assertIn(f"sha256sums_x86_64=('{H['x86_64-unknown-linux-gnu']}')", aur)
-        self.assertIn("pkgver=1.2.3", self.read("packaging/aur/lazygitlab/PKGBUILD"))
+        src = self.read("packaging/aur/lazygitlab/PKGBUILD")
+        self.assertIn("pkgver=1.2.3", src)
+        self.assertIn(f"sha256sums=('{self.tarball_sha}')", src)
         scoop_text = self.read("packaging/scoop/lazygitlab.json")
         scoop = json.loads(scoop_text)
         self.assertEqual(scoop["version"], "1.2.3")
@@ -84,6 +89,19 @@ class UpdatePackagingTest(unittest.TestCase):
         self.sums_file.write_text(SUMS.splitlines()[0] + "\n")
         with self.assertRaises(SystemExit):
             self.run_main()
+
+    def test_no_placeholder_left_after_update(self):
+        self.run_main()
+        for rel in up.FILES:
+            self.assertIsNone(up.PLACEHOLDER_RE.search(self.read(rel)), rel)
+
+    def test_refuses_to_leave_placeholder(self):
+        zero = "0" * 64
+        self.sums_file.write_text(SUMS.replace(H["x86_64-pc-windows-msvc"], zero))
+        before = {rel: self.read(rel) for rel in up.FILES}
+        with self.assertRaises(SystemExit):
+            self.run_main()
+        self.assertEqual(before, {rel: self.read(rel) for rel in up.FILES})
 
     def test_rejects_bad_tag(self):
         with self.assertRaises(SystemExit):
