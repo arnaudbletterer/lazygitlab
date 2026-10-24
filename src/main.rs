@@ -11,16 +11,34 @@ use std::{io, time::Duration};
 
 #[cfg(not(tarpaulin_include))]
 fn fail(code: i32, message: &str) -> ! {
-    eprintln!("{message}");
+    eprintln!(
+        "{}",
+        lazygitlab::sanitize::strip_invisible(&lazygitlab::sanitize::strip_all_escapes(message))
+    );
     std::process::exit(code);
+}
+
+#[cfg(not(tarpaulin_include))]
+fn read_dash_token() -> Result<String, String> {
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() {
+        eprint!("GitLab token (input hidden): ");
+        let token = setup::read_hidden().map_err(|e| format!("cannot read token: {e}"));
+        eprintln!();
+        let token = token?;
+        if token.is_empty() {
+            return Err("no token entered".to_string());
+        }
+        return Ok(token);
+    }
+    cli::read_token_line(&mut std::io::stdin().lock())
 }
 
 #[cfg(not(tarpaulin_include))]
 fn resolve_settings(cli: &cli::CliOptions) -> config::Settings {
     let mut cli = cli.clone();
     if cli.token.as_deref() == Some("-") {
-        let token =
-            cli::read_token_line(&mut std::io::stdin().lock()).unwrap_or_else(|e| fail(1, &e));
+        let token = read_dash_token().unwrap_or_else(|e| fail(1, &e));
         cli.token = Some(token);
     }
     let cli = &cli;
@@ -225,7 +243,7 @@ pub async fn run_with_terminal(
     if let Err(err) = res {
         eprintln!(
             "Application Error: {}",
-            lazygitlab::redaction::redact_secrets(&err.to_string())
+            lazygitlab::errors::friendly_error(&err.to_string())
         );
     }
     Ok(())

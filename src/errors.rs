@@ -1,4 +1,8 @@
 pub fn friendly_error(raw: &str) -> String {
+    let raw = crate::redaction::redact_secrets(raw);
+    let raw = crate::sanitize::strip_all_escapes(&raw);
+    let raw = crate::sanitize::strip_invisible(&raw);
+    let raw: &str = raw.as_ref();
     let lower = raw.to_ascii_lowercase();
     let hint = if lower.contains("(401") || lower.contains("unauthorized") {
         "authentication failed (401): the token is invalid, expired or revoked. \
@@ -32,5 +36,5 @@ include it (for example https://host/gitlab)"
     } else {
         return raw.to_string();
     };
-    format!("{hint} [{}]", crate::redaction::redact_secrets(raw))
+    format!("{hint} [{raw}]")
 }

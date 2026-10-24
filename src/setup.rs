@@ -95,7 +95,7 @@ impl Drop for RawGuard {
     }
 }
 
-fn read_hidden() -> io::Result<String> {
+pub fn read_hidden() -> io::Result<String> {
     enable_raw_mode()?;
     let _guard = RawGuard;
     let mut buf = String::new();
