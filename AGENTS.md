@@ -6,7 +6,8 @@
 
 | Doc | Owns | Update when |
 | --- | --- | --- |
-| `README.md` | Onboarding: pitch, features, install, config, keybindings cheatsheet, architecture, testing, links. | A new user-facing feature is added or an existing one changes visibly. |
+| `README.md` | User-facing landing page: pitch, screenshots, features, install, quickstart, key cheatsheet, theming, support. | A new user-facing feature is added or an existing one changes visibly. |
+| `CONTRIBUTING.md` | Developer docs: architecture, testing, headless mode. | Module layout, test tiers or headless options change. |
 | `ROADMAP.md` | Current state (what's built) + prioritized "what's next". | A new feature lands: move it from "What's Next" → "Current State". A new task is identified: add to "What's Next". |
 | `CHANGELOG.md` | User-visible changes per release. | Every PR that changes user-visible behavior. Bump-style releases MUST add an entry in the same PR (see Release Workflow below). |
 | `LICENSE` | Project license (MIT). | License change only. |
@@ -22,13 +23,13 @@ Ask: *would a user running the binary notice this change?*
 
 ## Documentation Maintenance Rules
 
-1. **Keep the three feature lists in sync.** The "Features" bullets in `README.md`, the "Current State" bullets in `ROADMAP.md`, and the file pointers throughout should refer to the same things. When you add a feature:
-   1. Add the `README.md` feature bullet (one line, file:line pointer).
+1. **Keep the three feature lists in sync.** The "Features" bullets in `README.md`, the "Current State" bullets in `ROADMAP.md`, and should refer to the same things. When you add a feature:
+   1. Add the `README.md` feature bullet (one line, user-facing wording, no source pointers).
    2. Add the `ROADMAP.md` "Current State" entry under the appropriate area.
    3. Remove the corresponding `ROADMAP.md` "What's Next" item.
    4. Add a `CHANGELOG.md` entry under `[Unreleased]`.
 
-2. **File pointers must be real.** Every `file.rs:LINE` reference in `README.md` and `ROADMAP.md` should resolve to a real symbol. If you move code, grep the docs and update them in the same PR.
+2. **File pointers must be real.** `README.md` carries no `file.rs:LINE` pointers. Every such reference in `ROADMAP.md` and `CONTRIBUTING.md` should resolve to a real symbol. If you move code, grep the docs and update them in the same PR.
 
 3. **`CHANGELOG.md` is hand-curated.** `scripts/bump_version.py` does **not** update it. The release PR must include the `CHANGELOG.md` entry. See Release Workflow below.
 
