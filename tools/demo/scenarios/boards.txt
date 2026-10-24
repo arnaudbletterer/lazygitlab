@@ -1,0 +1,14 @@
+# args: --project acme/widgets
+# size: 200x24
+# Kanban board: pick Boards in the project menu, then open the board.
+wait:60
+j
+j
+j
+j
+j
+j
+wait:60
+l
+<Enter>
+wait:60

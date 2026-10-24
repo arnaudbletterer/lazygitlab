@@ -1,0 +1,7 @@
+# Personal dashboard: the to-do inbox with the selected item details.
+wait
+g
+t
+wait
+j
+wait

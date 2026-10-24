@@ -1,0 +1,15 @@
+# args: --project acme/widgets
+# size: 150x50
+# Pipelines: pick the failed pipeline, then its failing job to read the log.
+wait
+g
+p
+wait
+j
+j
+<Enter>
+wait
+j
+j
+<Enter>
+wait

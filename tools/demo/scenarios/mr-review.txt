@@ -1,0 +1,17 @@
+# args: --project acme/widgets
+wait
+g
+m
+wait
+<Enter>
+wait
+j
+wait
+k
+wait
+l
+wait
+n
+wait
+<Space>
+wait
