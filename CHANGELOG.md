@@ -6,6 +6,20 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+- **`--insecure` with self-signed certificates:** `--insecure` (and `insecure = true`) now skips TLS certificate verification over `https://` instead of silently downgrading to plain HTTP; use an `http://` URL for plain HTTP. Scheme matching is case-insensitive and a trailing `/api/v4` is ignored (`src/config.rs`).
+- **Actionable error messages:** 401, 403, 429, untrusted certificates, a wrong URL (including a missing path prefix such as `https://host/gitlab`), redirects, 5xx and network failures now say what to check, and startup connection failures exit with a clear message instead of a debug dump (`src/errors.rs`).
+- **Terminal restore:** the terminal leaves raw mode and the alternate screen on panic and on early errors (`src/terminal.rs`).
+- **Tiny terminals:** terminals under 50x14 show a resize message instead of crashing; the calendar popup no longer underflows (`src/ui/mod.rs`).
+- **Escape-sequence injection:** job logs and Markdown from MR, issue and comment text have OSC, cursor and screen-control sequences stripped; only colors (SGR) are kept (`src/sanitize.rs`).
+- **Log privacy:** `lazygitlab.log` is created with mode `0600` on Unix, and an unwritable working directory no longer aborts startup (`src/logger.rs`).
+- **Panics:** a partial diff position and a syntax-highlighting failure no longer panic; test-binary detection no longer misfires on install paths containing `deps`.
+- **Documentation:** `docs/reference/cli.md` listed flags that do not exist; the git auto-detection claim was removed because only the local branch and dirty state are shown.
+
+### Added
+- **Token from stdin:** `--token -` reads the token from the first line of stdin. `--help`, the README and the CLI reference now warn that `--token <TOKEN>` is visible in the process list (`src/cli.rs`).
+- **Package metadata:** description, license, keywords and an exclude list so local data files are not published (`Cargo.toml`).
+
 - **In-App Home Launchpad & Quick Access**: Added `MenuSelection::Home` as the default launchpad on startup with live project/branch context and 8 interactive shortcut cards (MRs, To-Dos, Issues, Boards, CI/CD, Repository, Switch Project, Help/Command Palette) navigable via `h`/`j`/`k`/`l`/arrows or direct hotkeys, plus global `g h` shortcut (`src/models.rs`, `src/app/mod.rs`, `src/ui/list.rs`, `src/app/keymap.rs`).
 - **Brand Identity & TUI Geometric Logo**: Redesigned logo as an independent geometric vector mark combining terminal velocity (`>`) in Electric Sky Blue and Git branch node (`ᚴ`) in Git Emerald Green without third-party mascots or window decorations (`docs/assets/logo.svg`, `docs/assets/logo.png`, `favicon.png`, `favicon.ico`).
 - **Documentation Theme & Monochrome Aesthetic**: Aligned documentation palette with logo brand colors (Electric Sky Blue primary, Git Emerald Green accent, Obsidian Slate dark canvas), removed colored emojis, and enforced strict monochrome icon styling across all guides (`zensical.toml`, `docs/stylesheets/extra.css`, `docs/*.md`).
@@ -19,7 +33,7 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - **Kanban Column Cursor & Footer Polish:** Maintained column selection on board updates and added a dedicated Kanban keyboard shortcuts footer bar (`src/app/mod.rs`, `src/ui/boards.rs`).
 - **Gruvbox Light Theme:** Added built-in Gruvbox Light preset with authentic Gruvbox palette and high contrast.
 - **Dynamic Contrast Helpers:** Added luminance-based `get_contrast_color` and updated `get_contrasting_text_color` to select dark text (`#11111b`) or light text (`#cdd6f4`) based on WCAG perceived luminance.
-- **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project.
+- **Local Git Status:** Shows the current local branch and a dirty marker when run inside a git repository.
 - **Smart Project Selection:** Automatically selects the project if it is the only one available for the user/service account.
 - **CLI Arguments:** Added `--help`, `--version`, `--project`, `--url`, `--token`, `--config` and `--insecure`; headless flags accept `--flag=value` (`src/cli.rs`).
 - **Config File:** `[gitlab]` table (`url`, `token`, `insecure`, `project`) in `~/.config/lazygitlab/config.toml` or `--config`, with CLI > environment > file precedence (`src/config.rs`).
