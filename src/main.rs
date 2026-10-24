@@ -56,8 +56,9 @@ the --token flag, or a [gitlab] table with `token` in ~/.config/lazygitlab/confi
     };
     let (url, http) = config::normalize_url(&outcome.url);
     let insecure = settings.insecure || http;
+    settings.plain_http = settings.plain_http || http;
     if outcome.save {
-        let saved_url = if insecure {
+        let saved_url = if settings.plain_http {
             format!("http://{url}")
         } else {
             url.clone()
@@ -103,9 +104,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = resolve_settings(&cli);
     let token = settings.token.clone().unwrap_or_default();
     lazygitlab::redaction::register_secret(&token);
+    let transport = settings.transport();
     let mut builder = GitlabBuilder::new(settings.url, token);
-    if settings.insecure {
-        builder.insecure();
+    match transport {
+        config::Transport::Https => {}
+        config::Transport::PlainHttp => {
+            builder.insecure();
+        }
+        config::Transport::HttpsSkipVerify => {
+            builder.cert_insecure();
+        }
     }
     let client = builder
         .build_async()

@@ -229,3 +229,42 @@ fn save_leaves_no_temp_files_and_replaces_atomically() {
         .collect();
     assert_eq!(names, vec!["c.toml".to_string()]);
 }
+
+#[test]
+fn insecure_flag_skips_certificate_verification_over_https() {
+    use lazygitlab::config::Transport;
+    let cli = CliOptions {
+        insecure: true,
+        url: Some("https://gitlab.internal.corp".into()),
+        ..Default::default()
+    };
+    let s = Settings::resolve(&cli, None, Some("t"), &FileConfig::default());
+    assert_eq!(s.transport(), Transport::HttpsSkipVerify);
+    let s = Settings::resolve(
+        &CliOptions::default(),
+        Some("http://x.com"),
+        Some("t"),
+        &FileConfig::default(),
+    );
+    assert_eq!(s.transport(), Transport::PlainHttp);
+    let s = Settings::resolve(
+        &CliOptions::default(),
+        Some("https://x.com"),
+        Some("t"),
+        &FileConfig::default(),
+    );
+    assert_eq!(s.transport(), Transport::Https);
+}
+
+#[test]
+fn url_with_path_prefix_and_scheme_case_is_normalized() {
+    assert_eq!(
+        normalize_url("https://host.example/gitlab/"),
+        ("host.example/gitlab".into(), false)
+    );
+    assert_eq!(
+        normalize_url("HTTPS://Host.example/gitlab/api/v4/"),
+        ("Host.example/gitlab".into(), false)
+    );
+    assert_eq!(normalize_url("HTTP://x.com"), ("x.com".into(), true));
+}

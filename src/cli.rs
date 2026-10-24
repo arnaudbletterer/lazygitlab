@@ -51,7 +51,7 @@ OPTIONS:\n\
 \x20       --url <URL>          GitLab instance URL (default: gitlab.com)\n\
 \x20       --token <TOKEN>      Personal access token\n\
 \x20       --config <PATH>      Config file (default: ~/.config/lazygitlab/config.toml)\n\
-\x20       --insecure           Use plain HTTP / skip TLS verification\n\
+\x20       --insecure           Skip TLS certificate verification (http:// URLs use plain HTTP)\n\
 \x20       --headless           Render off-screen (with --width, --height, --script, --frames-dir)\n\
 \n\
 ENVIRONMENT:\n\

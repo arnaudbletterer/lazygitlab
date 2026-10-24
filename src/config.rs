@@ -23,7 +23,15 @@ pub struct Settings {
     pub url: String,
     pub token: Option<String>,
     pub insecure: bool,
+    pub plain_http: bool,
     pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    Https,
+    PlainHttp,
+    HttpsSkipVerify,
 }
 
 pub fn default_config_path() -> Option<PathBuf> {
@@ -68,11 +76,18 @@ pub fn load_file_config(path: &Path, required: bool) -> Result<FileConfig, Strin
 pub fn normalize_url(raw: &str) -> (String, bool) {
     let mut url = raw.trim().to_string();
     let mut insecure = false;
-    if let Some(rest) = url.strip_prefix("http://") {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://") {
         insecure = true;
-        url = rest.to_string();
-    } else if let Some(rest) = url.strip_prefix("https://") {
-        url = rest.to_string();
+        url.drain(.."http://".len());
+    } else if lower.starts_with("https://") {
+        url.drain(.."https://".len());
+    }
+    while url.ends_with('/') {
+        url.pop();
+    }
+    if url.to_ascii_lowercase().ends_with("/api/v4") {
+        url.truncate(url.len() - "/api/v4".len());
     }
     while url.ends_with('/') {
         url.pop();
@@ -111,7 +126,18 @@ impl Settings {
             url,
             token,
             insecure,
+            plain_http: http,
             project,
+        }
+    }
+
+    pub fn transport(&self) -> Transport {
+        if self.plain_http {
+            Transport::PlainHttp
+        } else if self.insecure {
+            Transport::HttpsSkipVerify
+        } else {
+            Transport::Https
         }
     }
 
