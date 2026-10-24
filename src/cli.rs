@@ -49,7 +49,9 @@ OPTIONS:\n\
 \x20   -V, --version            Print the version and exit\n\
 \x20       --project <PATH|ID>  Open this project at startup\n\
 \x20       --url <URL>          GitLab instance URL (default: gitlab.com)\n\
-\x20       --token <TOKEN>      Personal access token\n\
+\x20       --token <TOKEN>      Personal access token; visible to other users in the\n\
+\x20                            process list, prefer GITLAB_TOKEN or `--token -` to read\n\
+\x20                            it from stdin\n\
 \x20       --config <PATH>      Config file (default: ~/.config/lazygitlab/config.toml)\n\
 \x20       --insecure           Skip TLS certificate verification (http:// URLs use plain HTTP)\n\
 \x20       --headless           Render off-screen (with --width, --height, --script, --frames-dir)\n\
@@ -125,6 +127,18 @@ pub fn parse_args(args: &[String]) -> Result<CliOptions, CliError> {
         }
     }
     Ok(opts)
+}
+
+pub fn read_token_line<R: std::io::BufRead>(input: &mut R) -> Result<String, String> {
+    let mut line = String::new();
+    input
+        .read_line(&mut line)
+        .map_err(|e| format!("cannot read token from stdin: {e}"))?;
+    let token = line.trim();
+    if token.is_empty() {
+        return Err("--token - expects the token on the first line of stdin".to_string());
+    }
+    Ok(token.to_string())
 }
 
 impl CliOptions {

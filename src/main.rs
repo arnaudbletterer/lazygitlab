@@ -18,6 +18,13 @@ fn fail(code: i32, message: &str) -> ! {
 
 #[cfg(not(tarpaulin_include))]
 fn resolve_settings(cli: &cli::CliOptions) -> config::Settings {
+    let mut cli = cli.clone();
+    if cli.token.as_deref() == Some("-") {
+        let token =
+            cli::read_token_line(&mut std::io::stdin().lock()).unwrap_or_else(|e| fail(1, &e));
+        cli.token = Some(token);
+    }
+    let cli = &cli;
     let explicit = cli.config.is_some();
     let path = cli
         .config
