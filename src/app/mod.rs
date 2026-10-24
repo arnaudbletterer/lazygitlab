@@ -986,9 +986,6 @@ impl App {
                 if e.contains("Jobs fetch") {
                     self.open_job_when_loaded = false;
                 }
-                if e.contains("Jobs fetch") {
-                    self.open_job_when_loaded = false;
-                }
                 self.last_error = Some(e);
                 self.last_error_since = Some(std::time::Instant::now());
                 self.loading_tasks = self.loading_tasks.saturating_sub(1);
