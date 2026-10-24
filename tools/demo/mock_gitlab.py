@@ -509,6 +509,11 @@ def paginate(items, query, host, path):
     return chunk, headers
 
 
+class Server(http.server.ThreadingHTTPServer):
+    request_queue_size = 256
+    daemon_threads = True
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json", headers=None):
         data = body.encode() if isinstance(body, str) else body
@@ -589,7 +594,7 @@ def main():
     if args.big:
         BIG = True
         build_big(args.projects, args.mrs, args.issues, args.todos, args.pipelines)
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    srv = Server(("127.0.0.1", args.port), Handler)
     srv.serve_forever()
 
 
