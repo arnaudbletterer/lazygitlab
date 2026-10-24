@@ -77,3 +77,30 @@ fn strip(input: &str, keep_sgr: bool) -> Cow<'_, str> {
     }
     Cow::Owned(out)
 }
+
+pub fn is_invisible_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200b}'..='\u{200f}' | '\u{feff}'
+    )
+}
+
+pub fn strip_invisible(input: &str) -> Cow<'_, str> {
+    if !input.chars().any(is_invisible_format_char) {
+        return Cow::Borrowed(input);
+    }
+    Cow::Owned(
+        input
+            .chars()
+            .filter(|c| !is_invisible_format_char(*c))
+            .collect(),
+    )
+}
+
+pub fn scrub_buffer(buf: &mut ratatui::buffer::Buffer) {
+    for cell in buf.content.iter_mut() {
+        if let Cow::Owned(clean) = strip_invisible(cell.symbol()) {
+            cell.set_symbol(&clean);
+        }
+    }
+}

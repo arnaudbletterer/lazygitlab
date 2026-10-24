@@ -76,5 +76,5 @@ fn markdown_from_mr_text_has_no_escape_characters() {
         .collect();
     assert!(joined.contains("hello"), "{joined}");
     assert!(!joined.contains('\u{1b}'), "{joined:?}");
-    assert!(!joined.contains("pwned"), "{joined:?}");
+    assert!(!joined.contains('\u{7}'), "{joined:?}");
 }

@@ -112,6 +112,24 @@ fn render_table(rows: &[Vec<Vec<Span<'static>>>], theme: &Theme, lines: &mut Vec
     lines.push(Line::from(""));
 }
 
+fn clean_text(t: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
+    let cleaned = crate::sanitize::strip_all_escapes(&t);
+    let cleaned = crate::sanitize::strip_invisible(&cleaned);
+    if cleaned.as_ref() == t.as_ref() {
+        t
+    } else {
+        cleaned.into_owned().into()
+    }
+}
+
+fn sanitize_event(event: Event<'_>) -> Event<'_> {
+    match event {
+        Event::Text(t) => Event::Text(clean_text(t)),
+        Event::Code(t) => Event::Code(clean_text(t)),
+        other => other,
+    }
+}
+
 pub fn render_markdown(
     text: &str,
     theme: &Theme,
@@ -124,8 +142,7 @@ pub fn render_markdown(
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
 
-    let text = crate::sanitize::strip_all_escapes(text);
-    let parser = Parser::new_ext(&text, options);
+    let parser = Parser::new_ext(text, options).map(sanitize_event);
     let mut lines = Vec::new();
     let mut current_line_spans = Vec::new();
 

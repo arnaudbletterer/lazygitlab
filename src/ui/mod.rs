@@ -35,6 +35,11 @@ fn render_too_small(f: &mut Frame) {
 }
 
 pub fn ui(f: &mut Frame, app: &mut App) {
+    render_ui(f, app);
+    crate::sanitize::scrub_buffer(f.buffer_mut());
+}
+
+fn render_ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         render_too_small(f);
