@@ -22,6 +22,22 @@ fn passthrough_errors_are_redacted_and_stripped() {
 }
 
 #[test]
+fn token_split_by_control_characters_cannot_reform() {
+    register_secret("glpat-splitTokenValue9988");
+    for split in [
+        "\u{1b}[0m",
+        "\u{200b}",
+        "\u{200d}",
+        "\u{7}",
+        "\u{1b}]0;x\u{7}",
+    ] {
+        let msg = friendly_error(&format!("fail glpat-split{split}TokenValue9988 end"));
+        assert!(!msg.contains("TokenValue9988"), "{msg:?}");
+        assert!(msg.contains("[REDACTED]"), "{msg:?}");
+    }
+}
+
+#[test]
 fn hinted_errors_are_stripped_too() {
     let msg = friendly_error("gitlab server error (401 Unauthorized): \u{1b}]52;c;AAAA\u{7}bad");
     assert!(msg.contains("token is invalid"), "{msg}");

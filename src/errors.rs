@@ -1,7 +1,11 @@
 pub fn friendly_error(raw: &str) -> String {
-    let raw = crate::redaction::redact_secrets(raw);
-    let raw = crate::sanitize::strip_all_escapes(&raw);
+    let raw = crate::sanitize::strip_all_escapes(raw);
     let raw = crate::sanitize::strip_invisible(&raw);
+    let raw: String = raw
+        .chars()
+        .filter(|c| !matches!(c, '\u{200c}' | '\u{200d}'))
+        .collect();
+    let raw = crate::redaction::redact_secrets(&raw);
     let raw: &str = raw.as_ref();
     let lower = raw.to_ascii_lowercase();
     let hint = if lower.contains("(401") || lower.contains("unauthorized") {
