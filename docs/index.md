@@ -48,7 +48,7 @@
 
 ```bash
 # 1. Install from source (Rust 1.85 or newer)
-cargo install --git https://github.com/abletterer/lazygitlab
+cargo install --git https://github.com/arnaudbletterer/lazygitlab
 
 # 2. Configure credentials
 export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"

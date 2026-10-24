@@ -56,7 +56,7 @@ The GitLab web UI is fine for occasional use, but daily review work means a lot 
 
 | Method | Status |
 | --- | --- |
-| `cargo install --git https://github.com/abletterer/lazygitlab` | Available (Rust 1.85 or newer) |
+| `cargo install --git https://github.com/arnaudbletterer/lazygitlab` | Available (Rust 1.85 or newer) |
 | `cargo install lazygitlab` | Planned, not yet on crates.io |
 | Release binaries on the GitHub Releases page | Planned |
 | Homebrew: `brew install arnaudbletterer/tap/lazygitlab` | Planned |
@@ -67,7 +67,7 @@ To build from a checkout: `cargo build --release`, then run `target/release/lazy
 
 ## Quickstart
 
-1. Create a personal access token in GitLab under User Settings, Access Tokens. Grant `api` and `read_user`. If you only browse, `read_api` is enough.
+1. Create a personal access token in GitLab under User Settings, Access Tokens. `read_api` is enough for read-only use; grant `api` to approve, merge, comment and edit.
 2. Export your credentials:
 
 ```bash

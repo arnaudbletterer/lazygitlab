@@ -250,7 +250,7 @@ def generate_pdf():
     pdf.set_font('JetBrainsMono', '', 6.5)
     pdf.set_text_color(110, 118, 129) # #6e7681
     pdf.set_xy(10, 202.0)
-    pdf.cell(277, 4, 'Tip: Press ? anytime inside lazygitlab to open the interactive Command Palette.  •  github.com/abletterer/lazygitlab', align='C')
+    pdf.cell(277, 4, 'Tip: Press ? anytime inside lazygitlab to open the interactive Command Palette.  •  github.com/arnaudbletterer/lazygitlab', align='C')
     
     pdf.output('docs/assets/lazygitlab-cheatsheet.pdf')
     print('Generated sleek docs/assets/lazygitlab-cheatsheet.pdf successfully')

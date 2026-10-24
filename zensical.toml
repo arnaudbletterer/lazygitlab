@@ -2,9 +2,9 @@
 site_name = "lazygitlab"
 site_description = "A fast, feature-rich terminal UI for GitLab"
 site_author = "Arnaud Bletterer"
-site_url = "https://abletterer.github.io/lazygitlab/"
-repo_name = "abletterer/lazygitlab"
-repo_url = "https://github.com/abletterer/lazygitlab"
+site_url = "https://arnaudbletterer.github.io/lazygitlab/"
+repo_name = "arnaudbletterer/lazygitlab"
+repo_url = "https://github.com/arnaudbletterer/lazygitlab"
 copyright = "Copyright &copy; 2026 Arnaud Bletterer"
 extra_css = [
     "stylesheets/extra.css"
