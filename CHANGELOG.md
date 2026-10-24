@@ -24,6 +24,11 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 - **Token header:** the token is now sent as `Authorization: Bearer`, which reqwest strips on cross-host redirects, instead of the `PRIVATE-TOKEN` header, which it forwards (`src/client.rs`).
 
+- **Invisible characters:** zero-width joiner and non-joiner are kept, so emoji sequences and Persian or Indic text render correctly; bidi overrides, zero-width space, directional marks and line separators are still removed (`src/sanitize.rs`).
+- **Error redaction order:** control characters are stripped before secrets are redacted, so a token split by escape sequences cannot slip through (`src/errors.rs`).
+- **Theme location:** `theme.toml` is read only from the config directory, not the working directory (`src/ui/widgets.rs`).
+- **Log hardening:** the log opens non-blocking so a FIFO cannot hang startup, the state directory must be owned by you and is tightened to `0700`, the temp fallback is per user, Windows prefers `LOCALAPPDATA`, and a refused symlink prints a clear message (`src/logger.rs`).
+
 ### Added
 - **Token from stdin:** `--token -` reads the token from the first line of stdin. `--help`, the README and the CLI reference now warn that `--token <TOKEN>` is visible in the process list (`src/cli.rs`).
 - **Package metadata:** description, license, keywords and an exclude list so local data files are not published (`Cargo.toml`).
