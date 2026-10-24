@@ -189,6 +189,7 @@ impl App {
             todos_has_more: true,
             todos_etag: None,
             todos_poll_in_flight: false,
+            todos_etag_state: None,
             open_job_when_loaded: None,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
@@ -264,6 +265,20 @@ impl App {
             pending_g_prefix: false,
             last_detail_fetch: None,
             last_rendered_rects: std::collections::HashMap::new(),
+        }
+    }
+
+    fn apply_todos(&mut self, data: Vec<Todo>, page: u64, has_more: bool) {
+        for t in &data {
+            if let Some(ref p) = t.project {
+                self.project_cache.insert(p.id, p.clone());
+            }
+        }
+        if self.todos != data || self.todos_page != page || self.todos_has_more != has_more {
+            self.todos = data;
+            self.todos_page = page;
+            self.todos_has_more = has_more;
+            self.filter_lists();
         }
     }
 
@@ -351,33 +366,29 @@ impl App {
                 }
             }
 
-            DataUpdate::TodosEtag(etag) => {
-                self.todos_etag = Some(etag);
-            }
-            DataUpdate::TodosPollDone { failed } => {
-                self.todos_poll_in_flight = false;
-                if failed {
-                    let _ = self.fetch_todos().await;
+            DataUpdate::TodosPolled { state, etag, data } => {
+                // Drop results for a filter the user has since left.
+                let current = match self.todo_filter {
+                    TodoFilter::Pending | TodoFilter::Snoozed => "pending",
+                    TodoFilter::Done => "done",
+                };
+                if state == current {
+                    if etag.is_some() {
+                        self.todos_etag = etag;
+                        self.todos_etag_state = Some(state);
+                    }
+                    let has_more = data.len() == 50;
+                    self.apply_todos(data, 1, has_more);
                 }
+            }
+            DataUpdate::TodosPollDone => {
+                self.todos_poll_in_flight = false;
             }
             DataUpdate::Todos {
                 data,
                 page,
                 has_more,
-            } => {
-                for t in &data {
-                    if let Some(ref p) = t.project {
-                        self.project_cache.insert(p.id, p.clone());
-                    }
-                }
-                if self.todos != data || self.todos_page != page || self.todos_has_more != has_more
-                {
-                    self.todos = data;
-                    self.todos_page = page;
-                    self.todos_has_more = has_more;
-                    self.filter_lists();
-                }
-            }
+            } => self.apply_todos(data, page, has_more),
             DataUpdate::AppendTodos(mut data) => {
                 for t in &data {
                     if let Some(ref p) = t.project {

@@ -757,10 +757,12 @@ pub enum DataUpdate {
         has_more: bool,
     },
     AppendTodos(Vec<Todo>),
-    TodosEtag(String),
-    TodosPollDone {
-        failed: bool,
+    TodosPolled {
+        state: &'static str,
+        etag: Option<String>,
+        data: Vec<Todo>,
     },
+    TodosPollDone,
     Projects {
         data: Vec<Project>,
         page: u64,
@@ -1175,6 +1177,7 @@ pub struct App {
     pub todos_has_more: bool,
     pub todos_etag: Option<String>,
     pub todos_poll_in_flight: bool,
+    pub todos_etag_state: Option<&'static str>,
     pub open_job_when_loaded: Option<(u64, u64)>,
     pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
     pub filtered_issues: Vec<GroupedItem<Issue>>,

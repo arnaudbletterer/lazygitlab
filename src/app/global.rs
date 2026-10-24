@@ -158,25 +158,6 @@ impl App {
         Ok(())
     }
 
-    pub async fn fetch_todos_conditional(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let state = self.todos_state_param();
-        let polled = poll_todos(&self.gitlab, state, self.todos_etag.clone())
-            .await
-            .map_err(|e| e.to_string())?;
-        if let Some((etag, data)) = polled {
-            if etag.is_some() {
-                self.todos_etag = etag;
-            }
-            let has_more = data.len() == 50;
-            let _ = self.tx.send(DataUpdate::Todos {
-                data,
-                page: 1,
-                has_more,
-            });
-        }
-        Ok(())
-    }
-
     fn todos_state_param(&self) -> &'static str {
         match self.todo_filter {
             TodoFilter::Pending | TodoFilter::Snoozed => "pending",
@@ -184,8 +165,9 @@ impl App {
         }
     }
 
-    /// Non-blocking variant of `fetch_todos_conditional`: the request runs on a
-    /// spawned task and reports through `DataUpdate`. No-op while a poll is in flight.
+    /// Polls `/todos` on a spawned task (conditional GET, full fetch if that
+    /// fails) and reports through `DataUpdate::TodosPolled`. No-op while a poll
+    /// is in flight; always ends with `TodosPollDone`, even if the task panics.
     pub fn spawn_todos_poll(&mut self) {
         if self.todos_poll_in_flight {
             return;
@@ -194,29 +176,55 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let state = self.todos_state_param();
-        let etag = self.todos_etag.clone();
+        let etag = if self.todos_etag_state == Some(state) {
+            self.todos_etag.clone()
+        } else {
+            None
+        };
         tokio::spawn(async move {
-            match poll_todos(&client, state, etag).await {
-                Ok(Some((new_etag, data))) => {
-                    if let Some(e) = new_etag {
-                        let _ = tx.send(DataUpdate::TodosEtag(e));
+            let work_tx = tx.clone();
+            let work = tokio::spawn(async move {
+                match poll_todos(&client, state, etag).await {
+                    Ok(Some((etag, data))) => {
+                        let _ = work_tx.send(DataUpdate::TodosPolled { state, etag, data });
                     }
-                    let has_more = data.len() == 50;
-                    let _ = tx.send(DataUpdate::Todos {
-                        data,
-                        page: 1,
-                        has_more,
-                    });
-                    let _ = tx.send(DataUpdate::TodosPollDone { failed: false });
+                    Ok(None) => {}
+                    Err(e) => {
+                        tracing::debug!("conditional todos poll failed, falling back: {}", e);
+                        let ep = Todos {
+                            page: Some(1),
+                            per_page: Some(50),
+                            state: Some(state.to_string()),
+                        };
+                        let res: Result<Result<Vec<Todo>, _>, _> = tokio::time::timeout(
+                            std::time::Duration::from_secs(30),
+                            ep.query_async(&client),
+                        )
+                        .await;
+                        match res {
+                            Ok(Ok(data)) => {
+                                let _ = work_tx.send(DataUpdate::TodosPolled {
+                                    state,
+                                    etag: None,
+                                    data,
+                                });
+                            }
+                            Ok(Err(e)) => {
+                                let _ = work_tx.send(DataUpdate::Error(format!(
+                                    "Todos fetch failed: {}",
+                                    e
+                                )));
+                            }
+                            Err(_) => {
+                                let _ = work_tx
+                                    .send(DataUpdate::Error("Todos fetch timed out".into()));
+                            }
+                        }
+                    }
                 }
-                Ok(None) => {
-                    let _ = tx.send(DataUpdate::TodosPollDone { failed: false });
-                }
-                Err(e) => {
-                    tracing::debug!("conditional todos poll failed, falling back: {}", e);
-                    let _ = tx.send(DataUpdate::TodosPollDone { failed: true });
-                }
-            }
+            });
+            let _ = work.await;
+            let _ = tx.send(DataUpdate::TodosPollDone);
         });
     }
 
