@@ -10,6 +10,7 @@ pub mod models;
 pub mod redaction;
 pub mod runner;
 pub mod setup;
+pub mod terminal;
 pub mod ui;
 
 pub use api::*;

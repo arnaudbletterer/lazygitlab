@@ -1,7 +1,7 @@
 use crossterm::{
     event::{self, Event},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{EnterAlternateScreen, enable_raw_mode},
 };
 use dotenvy::dotenv;
 use gitlab::GitlabBuilder;
@@ -196,6 +196,8 @@ pub async fn run_with_terminal(
     app: &mut App,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    terminal::install_panic_hook();
+    let _restore = terminal::RestoreOnDrop;
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(
@@ -210,14 +212,7 @@ pub async fn run_with_terminal(
     let event_source = RealEventSource;
     let res = run_app(&mut terminal, app, &event_source, rx, &mut None).await;
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        event::DisableMouseCapture,
-        event::DisableFocusChange
-    )?;
-    terminal.show_cursor()?;
+    terminal::restore();
     if let Err(err) = res {
         eprintln!(
             "Application Error: {}",
