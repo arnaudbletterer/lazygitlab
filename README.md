@@ -4,220 +4,138 @@
 
 # lazygitlab
 
-A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Triage merge requests, review diffs, watch pipelines, and manage issues without leaving the terminal.
+A keyboard-driven terminal UI for GitLab. Triage merge requests, review diffs, watch pipelines and manage issues without leaving your terminal.
 
-`lazygitlab` talks to any GitLab instance via the REST API and renders everything with [ratatui](https://ratatui.rs). It is designed to be a daily-driver replacement for the web UI's most common workflows.
+## Why
+
+The GitLab web UI is fine for occasional use, but daily review work means a lot of tabs, clicks and page loads. `lazygitlab` keeps your todos, merge requests, issues and pipelines in one screen, navigated with the keyboard, and refreshes in the background. It talks to the GitLab REST API, so it works with gitlab.com and self-hosted instances.
+
+## Screenshots
+
+![Dashboard](docs/assets/screenshots/dashboard.png)
+![Merge request review](docs/assets/screenshots/mr-review.png)
+![Pipelines](docs/assets/screenshots/pipelines.png)
 
 ## Features
-- **Local Git Status:** Shows the current local branch and a dirty marker when run inside a git repository (src/app/mod.rs:4019).
-- **Smart Project Selection:** Automatically selects the project if it is the only one available (src/app/mod.rs:350).
-- **CLI Arguments:** `--help`, `--version`, `--project`, `--url`, `--token`, `--config` and `--insecure` (src/cli.rs:81).
-- **Config file:** `[gitlab]` table in `~/.config/lazygitlab/config.toml`; precedence is CLI, then environment / `.env`, then file (src/config.rs:90).
-- **Setup Wizard:** first-run prompt for URL and token when none is configured, optionally saved to `config.toml` with `0600` permissions (src/setup.rs:19).
-- **Security:** GitLab tokens, Bearer tokens and the configured token are redacted in logs, error messages and the status bar (src/redaction.rs:58).
 
-### Dashboard & Navigation
-- **Personal dashboard** with tabs for Todos, Merge Requests, Issues, Projects, Groups (`src/app/mod.rs:1`)
-- **Membership-scoped listing** so you only see projects you belong to (`src/app/mod.rs:266`, fixed in 0.14.4)
-- **Home Launchpad & Jump shortcuts** (`g h` / `g t` / `g m` / `g i` / `g b` / `g p` / `g r`) with 8 quick-access cards and contextual focus (`src/models.rs`, `src/ui/list.rs:358`, `src/app/keymap.rs`)
-- **Global search** with a dual-strategy (Elasticsearch + scoped) hybrid (`src/app/search.rs:6`, shortcut `f`)
-- **Filter-as-you-type** per list (`/`)
+**Dashboard and navigation**
+- Personal dashboard with Todos, Merge Requests, Issues, Projects and Groups
+- Jump shortcuts (`g t`, `g m`, `g i`, `g b`, `g p`, `g r`) and a project switcher
+- Global search (`f`) and filter-as-you-type on every list (`/`)
+- Opens the project matching the current git repository automatically
 
-### Merge Request review
-- **Diff view with inline comments** scoped to a specific line or line range (`src/app/mrs/review.rs`, shortcut `c` in diff)
-- **Side-by-side vs unified diff viewer** toggleable with `w`, with binary file indicators and file status badges (`src/ui/diff.rs:18`)
-- **Interactive merge dialog** with interactive squash (`s`) and delete source branch (`d`) toggles (`src/ui/popup/confirm.rs:5`)
-- **Approve / Unapprove / Merge / Rebase / Squash / Draft toggle / Open-Close** (`A` / `R` / `M` / `E` / `S` / `D` / `c` in detail) — see `src/app/mrs/review.rs`
-- **Related MRs & closing issues** shown in the metadata panel (lazy-fetched)
-- **Edit metadata in place**: title, description, labels, assignees, reviewers, milestone, target branch
-- **Local diff fallback** for GitLab-collapsed diffs and throttled concurrent fetching (`src/app/mrs/diffs.rs`)
+**Merge requests**
+- Side-by-side or unified diffs (`w`) with inline comments on a line or line range
+- Approve, unapprove, merge, rebase, squash, toggle draft, open or close
+- Resolve discussion threads, see related MRs and closing issues
+- Edit title, description, labels, assignees, reviewers, milestone and target branch in place
 
-### Issues
-- **Create / edit / state toggle** (`src/app/issues.rs:449`)
-- **Label, assignee, milestone, due/start date, weight** editing
-- **Confidentiality toggle** (`src/app/issues.rs:417`)
-- **Discussion resolution** (`s` on a thread) and **linked issues / closing MRs** in the metadata panel
+**Issues and boards**
+- Create, edit and close issues; edit labels, assignees, milestone, dates and weight
+- Confidentiality toggle, linked issues and closing MRs
+- Kanban boards with multi-column filter and card moves with `H` / `L`
+- Epics per group
 
-### CI/CD
-- **Pipelines list** with retry/cancel (`src/app/pipelines.rs`)
-- **Job log viewer** with ANSI rendering, section collapsing, follow-mode, multi-line copy (`src/ui/mod.rs:150`)
-- **Run new pipeline** with ref + custom variables (`src/app/pipelines.rs:152`)
+**CI/CD**
+- Pipelines list with retry and cancel, and launching new pipelines with a ref and variables
+- Job log viewer with ANSI colors, section collapsing, search, follow mode and multi-line copy
+- Pipeline schedules and CI variables
 
-### Project view
-- **Repository tree** with file content viewer and **branch browsing** — press `b` in the file viewer to switch refs (`src/app/global.rs`, `src/ui/popup/tree.rs`)
-- **File viewer** with syntect syntax highlighting and independent scroll state (`src/ui/mod.rs:315`)
-- **Create / delete branches** from the Branches list (`n` / `D`)
-- **Commits history** with pagination (`src/app/global.rs:210`)
-- **Branches** list (`src/app/global.rs:250`)
-- **Kanban boards** with horizontal scroll, multi-column filter, instant optimistic card moves with `H` / `L`, quick close/reopen (`c`), and shortcut footer (`src/app/mod.rs:3523`, `src/ui/boards.rs:1`)
-- **Epics** list per group (`src/app/boards.rs:107`)
+**Repository**
+- File tree with syntax-highlighted viewer, branch switching, commit history
+- Create and delete branches
 
-### Quality of life
-- **Adaptive refresh**: 2s live / 5s active / 30s idle back-off (`src/runner.rs`)
-- **Clipboard**: local `arboard` + OSC 52 sequence for remote/tmux sessions (`src/app/mod.rs:3527`)
-- **Mouse support** throughout, including scroll-aware list navigation
-- **GFM markdown rendering**: aligned tables, task lists, blockquotes, code highlighting (`src/ui/markdown.rs`)
-- **Self-expiring footer feedback**: status messages and errors auto-clear
-- **Themable** via `theme.toml` (see `theme.toml.example`)
-- **Persistent logging** to `lazygitlab.log` (`src/logger.rs`)
-- **Command palette via `?`** — searchable help popup with category grouping
+**Everything else**
+- Markdown rendering (tables, task lists, code blocks), mouse support
+- Clipboard through the system clipboard or OSC 52 over SSH and tmux
+- Adaptive background refresh
+- Nine built-in color themes, or define your own
+- Tokens are redacted from logs, error messages and the status bar
 
-## Installation
+## Install
 
-```bash
-# Requires Rust 1.85+ (edition 2024)
-cargo install --path .
+| Method | Status |
+| --- | --- |
+| `cargo install --git https://github.com/abletterer/lazygitlab` | Available (Rust 1.85 or newer) |
+| `cargo install lazygitlab` | Planned, not yet on crates.io |
+| Release binaries on the GitHub Releases page | Planned |
+| Homebrew: `brew install arnaudbletterer/tap/lazygitlab` | Planned |
+| AUR: `lazygitlab-bin` | Planned |
+| Scoop (Windows) | Planned |
 
-# Or just build a release binary
-cargo build --release
-./target/release/lazygitlab
-```
-
-## Configuration
-
-Set `GITLAB_URL` and `GITLAB_TOKEN` in your environment, or run lazygitlab once and let the setup wizard write `~/.config/lazygitlab/config.toml`. A `.env` file in the working directory is deliberately not read, so a cloned repository cannot redirect your token to another host.
-
-The token needs the `read_api` scope to browse, and `api` to perform actions (merge, comment, edit). Prefer `GITLAB_TOKEN` over `--token`, which is visible in the process list; `--token -` reads it from stdin.
-
-Optional theming: copy `theme.toml.example` to `~/.config/lazygitlab/theme.toml` (`%APPDATA%\lazygitlab\` on Windows) and edit colors. A `theme.toml` in the working directory is not read. See the example file for available keys.
-
-Logs are written to `$XDG_STATE_HOME/lazygitlab/lazygitlab.log` (default `~/.local/state/lazygitlab/`), mode `0600` on Unix, tokens redacted. Set `LAZYGITLAB_LOG=/path/to/file.log` to choose another path.
+To build from a checkout: `cargo build --release`, then run `target/release/lazygitlab`.
 
 ## Quickstart
 
+1. Create a personal access token in GitLab under User Settings, Access Tokens. Grant `api` and `read_user`. If you only browse, `read_api` is enough.
+2. Export your credentials:
+
 ```bash
-export GITLAB_URL=https://gitlab.com
 export GITLAB_TOKEN=glpat-...
-cargo run --release
+export GITLAB_URL=https://gitlab.com   # optional, this is the default
+lazygitlab
 ```
 
-Press `?` in the app for the full keybinding list. The most common starting points:
+3. Press `?` for the searchable keybinding list.
+
+Self-hosted instance:
+
+```bash
+lazygitlab --url https://gitlab.example.com
+```
+
+`--insecure` allows plain HTTP and skips TLS verification, for instances with self-signed certificates. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
+
+Settings are resolved in this order: command-line flags, environment variables (a `.env` file is honored), then the config file:
+
+```toml
+# ~/.config/lazygitlab/config.toml
+[gitlab]
+url = "https://gitlab.example.com"
+token = "glpat-..."
+# insecure = true
+# project = "group/project"
+```
+
+Flags: `--help`, `--version`, `--project <PATH|ID>`, `--url`, `--token`, `--config <PATH>`, `--insecure`. See the [CLI reference](docs/reference/cli.md).
+
+## Keys
 
 | Key | Action |
 | --- | --- |
-| `?` | Help / command palette |
-| `g t` / `g m` / `g i` / `g p` / `g r` | Jump to Todos / MRs / Issues / Pipelines / Repository |
-| `/` | Filter current list |
+| `?` | Help and command palette |
+| `j` / `k` | Move down / up |
+| `Tab` | Cycle panels |
+| `Enter` / `Esc` | Open / go back |
+| `g t` `g m` `g i` `g b` `g p` `g r` | Todos, MRs, issues, boards, pipelines, repository |
+| `p` | Switch project |
+| `/` | Filter the current list |
 | `f` | Global search |
-| `Enter` | Open detail / select |
-| `Esc` | Back / close popup |
-| `y` | Copy URL or content to clipboard |
-| `o` | Open current item in browser |
+| `o` | Open in browser |
+| `y` | Copy URL or selection |
+| `r` | Refresh |
 | `q` | Quit |
 
-Pipelines & job log:
+In a merge request: `A` approve, `R` unapprove, `M` merge, `E` rebase, `S` toggle squash, `D` toggle draft, `c` open or close. In a diff: `w` side-by-side, `c` comment on the selected line, `s` resolve a thread. Full list in the [keybindings reference](docs/reference/keybindings.md).
 
-| Key | Action |
-| --- | --- |
-| `n` | Launch new pipeline |
-| `Shift + j/k` | Extend job-log selection |
-| `y` | Copy current job-log line or selection |
-| `Tab` / `l` | Toggle job-log section collapse |
-| `r` / `R` | Retry a failed job |
-| `c` / `C` | Cancel a running job |
-| `p` / `P` | Play a manual / skipped job |
+## Theming
 
-## Architecture
+Pick a preset in `theme.toml`, placed in the working directory or in `~/.config/lazygitlab/`:
 
-```
-src/
-  main.rs         # binary entry, terminal setup
-  runner.rs       # tokio event loop (run_app), adaptive refresh cadence
-  app/            # stateful App logic (one module per domain)
-    mod.rs        # App struct impl: dispatcher, refresh, shared helpers
-    keymap.rs     # handle_key + help/action catalog
-    menus.rs      # menu navigation & drill-in flows
-    popups.rs     # popup keyboard handling
-    mrs/          # merge requests: mod.rs (listing/discussions),
-                  # diffs.rs, meta.rs, review.rs
-    issues.rs     # Issues, discussions
-    pipelines.rs  # CI/CD
-    global.rs     # Projects, groups, todos, repo tree/branches
-    boards.rs     # Kanban, epics
-    search.rs     # Global search hybrid
-  ui/             # ratatui renderers
-    mod.rs        # top-level frame, popups, job log, file viewer
-    list.rs       # list/detail/metadata rendering
-    detail.rs     # tabbed detail panel
-    diff.rs       # diff view
-    boards.rs     # Kanban
-    popup/        # one file per popup type (+ tree.rs branch picker)
-    markdown.rs   # pulldown-cmark + syntect renderer
-    widgets.rs    # Theme, status styles, helpers
-  api.rs          # ~65 hand-rolled GitLab REST endpoint types
-  models.rs       # DTOs + the App struct definition
-  logger.rs       # tracing setup
+```toml
+theme = "tokyo-night"
+accent = "#ff007f"   # optional override
 ```
 
-The `App` is a single large struct that owns all UI state. Background API work runs in `tokio::spawn`ed tasks and pushes results back through a `tokio::sync::mpsc::UnboundedSender<DataUpdate>` channel. The event loop (`src/runner.rs`) drains the channel each frame and triggers a redraw.
+Presets: `catppuccin-mocha` (default), `catppuccin-latte`, `tokyo-night`, `nord`, `dracula`, `gruvbox-dark`, `gruvbox-light`, `github-dark`, `github-light`. See the [theming guide](docs/reference/theming.md) and `theme.toml.example` for all color keys.
 
-## Testing
+## Documentation
 
-The test suite is split into a hermetic tier (default `cargo test`) and a live tier that talks to a real GitLab instance. All live tests are gated behind `#[ignore]` and resolved via `data/test_ground.json` (a single canonical test ground project).
+Guides and references live in [docs/](docs/index.md). To work on the code, see [CONTRIBUTING.md](CONTRIBUTING.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
-```bash
-# Hermetic: wiremock + unit, no network.
-cargo test
+## Support
 
-# One-time seed of the canonical test ground (idempotent, requires GITLAB_TOKEN).
-python scripts/populate_test_ground.py
-# Add `--with-massive-mr` to also seed a 120-file MR for `tests/test_massive_mr_diffs.rs`.
-
-# Live smoke: quick end-to-end checks (issue/MR updates, reply to a thread).
-# Requires GITLAB_TOKEN and data/test_ground.json.
-cargo test -- --ignored live_smoke
-
-# Live full: exhaustive sweep (massive-MR diffs, all entities, all features).
-cargo test -- --ignored live_full
-```
-
-A `Makefile` (and a `scripts/test.ps1` mirror for Windows) wraps these:
-
-```bash
-make test              # wiremock + unit
-make seed              # populate test ground
-make seed-massive      # populate + 120-file MR
-make test-live-smoke   # live smoke
-make test-live-full    # live full
-make lint              # cargo clippy --all-targets -- -D warnings
-make check             # fmt + lint + test (pre-merge gate)
-make coverage          # cargo tarpaulin (Linux only)
-```
-
-`tests/common/mod.rs` reads `data/test_ground.json` and exposes a single `test_ground()` accessor; every live test must use it (no hardcoded project ids or slugs).
-
-### Headless mode
-
-For snapshot testing and headless CI, the binary supports a `--headless` flag that drives the TUI from a text event script and writes each rendered frame to a directory:
-
-```bash
-lazygitlab --headless --width 120 --height 40 --script events.txt --frames-dir out/
-```
-
-`events.txt` is a newline-delimited script:
-- `q`, `j`, `k`, `<Enter>`, `<Esc>`, `<F1>`, `up`, `down`, ... (named keys)
-- `<S-q>`, `<C-r>`, `<A-x>`, ... (modifiers: Shift, Ctrl, Alt)
-- `mouse:down:10:5`, `mouse:scroll_down:0:0` (mouse events)
-- `#` starts a comment; blank lines are ignored
-- `quit` is a shortcut for `q`
-
-Snapshot tests in `tests/headless_snapshots.rs` use [`insta`](https://insta.rs/) to diff the rendered TUI buffer against `tests/snapshots/*.snap`. To accept a new snapshot, run with `INSTA_UPDATE=always cargo test --test headless_snapshots` (or `cargo insta review`).
-
-The test suite has ~80 integration tests across `tests/` covering:
-
-- API mocking with `wiremock` (e.g. `tests/global_search.rs`, `tests/phase3_boards.rs`)
-- UI rendering with `ratatui::backend::TestBackend` (e.g. `tests/integration_ui.rs`, `tests/ui_exhaustive.rs`)
-- End-to-end key handling (`tests/shortcuts.rs`, `tests/navigation_cycling.rs`)
-- User stories (`tests/user_stories.rs`)
-- Stress / massive-MR (`tests/test_massive_mr_diffs.rs`, `tests/stress_test_exhaustive_e2e.rs`)
-- Membership / metadata caching (`tests/test_project_selection_and_lazy_metadata.rs`)
-- API equivalence oracle (`tests/api_equivalence.rs`, `tests/data_update_round_trip.rs`)
-- Headless script parser (`tests/headless_script.rs`)
-- Headless snapshots via `insta` (`tests/headless_snapshots.rs`)
-
-CI is defined in `.gitlab-ci.yml`: `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on merge requests and the default branch, `test:live-full` on a nightly schedule and manual trigger, and `coverage:tarpaulin` on a schedule (Linux only).
-
-See [AGENTS.md](./AGENTS.md) for the agent / contributor guide, [ROADMAP.md](./ROADMAP.md) for current state and what's next, and [RELEASING.md](./RELEASING.md) for the release process.
+If lazygitlab saves you time, you can support its development on [GitHub Sponsors](https://github.com/sponsors/arnaudbletterer) or [Ko-fi](https://ko-fi.com/abletterer). Bug reports and feedback are just as welcome.
 
 ## Acknowledgements
 
@@ -225,4 +143,4 @@ Built on [ratatui](https://ratatui.rs), [crossterm](https://github.com/crossterm
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT, see [LICENSE](LICENSE).
