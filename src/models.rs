@@ -1014,6 +1014,8 @@ pub struct App {
     pub cross_pipelines: Vec<Pipeline>,
     pub cross_pipelines_page: u64,
     pub cross_pipelines_has_more: bool,
+    pub cross_pipelines_rerun: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub cross_pipelines_deadline: std::time::Duration,
     pub cross_pipelines_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub pipelines_state: ListState,
     pub jobs: Vec<Job>,

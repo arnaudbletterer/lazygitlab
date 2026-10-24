@@ -9,6 +9,51 @@ use tokio::sync::Semaphore;
 /// Pipelines tab.
 const CROSS_PIPELINES_MAX_IN_FLIGHT: usize = 8;
 
+/// One bounded fan-out round. Projects still unfinished at `deadline` are
+/// abandoned and whatever arrived is returned.
+async fn fetch_cross_round(
+    client: gitlab::AsyncGitlab,
+    project_ids: Vec<u64>,
+    deadline: std::time::Duration,
+) -> Vec<Pipeline> {
+    let results = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sem = Arc::new(Semaphore::new(CROSS_PIPELINES_MAX_IN_FLIGHT));
+    // Dropping the JoinSet on deadline aborts unfinished requests.
+    let mut set = tokio::task::JoinSet::new();
+    let run = async {
+        for pid in project_ids {
+            let Ok(permit) = sem.clone().acquire_owned().await else {
+                break;
+            };
+            let c = client.clone();
+            let out = results.clone();
+            set.spawn(async move {
+                let _permit = permit;
+                let ep = ProjectPipelines {
+                    project: pid,
+                    page: Some(1),
+                    per_page: Some(20),
+                };
+                let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    ep.query_async(&c),
+                )
+                .await;
+                if let Ok(Ok(pipes)) = res {
+                    out.lock().unwrap().extend(pipes);
+                }
+            });
+        }
+        while set.join_next().await.is_some() {}
+    };
+    if tokio::time::timeout(deadline, run).await.is_err() {
+        tracing::warn!("cross-project pipelines refresh hit its deadline; showing partial results");
+    }
+    set.abort_all();
+    let mut guard = results.lock().unwrap();
+    std::mem::take(&mut *guard)
+}
+
 /// Clears the in-flight flag when the refresh task ends, even on panic.
 struct InFlightGuard(Arc<AtomicBool>);
 
@@ -204,7 +249,19 @@ impl App {
         Ok(())
     }
 
+    /// Background (polled) refresh: skipped while one is already in flight.
     pub async fn fetch_cross_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.start_cross_pipelines(false)
+    }
+
+    /// Manual refresh: if one is in flight, queue exactly one rerun.
+    pub async fn fetch_cross_pipelines_manual(
+        &mut self,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.start_cross_pipelines(true)
+    }
+
+    fn start_cross_pipelines(&mut self, manual: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut project_ids: Vec<u64> = self.member_project_ids.iter().copied().collect();
         project_ids.sort_unstable();
         if project_ids.is_empty() {
@@ -213,54 +270,36 @@ impl App {
         // Never overlap refreshes: the adaptive runner can tick faster than a
         // slow fan-out completes.
         if self.cross_pipelines_in_flight.swap(true, Ordering::AcqRel) {
+            if manual {
+                self.cross_pipelines_rerun.store(true, Ordering::Release);
+                self.status_message =
+                    Some("Pipelines refresh in progress, will refresh again when done".into());
+            }
             return Ok(());
         }
         let guard = InFlightGuard(self.cross_pipelines_in_flight.clone());
+        let rerun = self.cross_pipelines_rerun.clone();
+        let deadline = self.cross_pipelines_deadline;
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         self.status_message = Some("Fetching pipelines across projects...".into());
         tokio::spawn(async move {
             let _guard = guard;
-            let sem = Arc::new(Semaphore::new(CROSS_PIPELINES_MAX_IN_FLIGHT));
-            let mut handles = Vec::with_capacity(project_ids.len());
-            for pid in project_ids {
-                let Ok(permit) = sem.clone().acquire_owned().await else {
+            loop {
+                let mut all =
+                    fetch_cross_round(client.clone(), project_ids.clone(), deadline).await;
+                all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                all.truncate(50);
+                let _ = tx.send(DataUpdate::GlobalPipelines {
+                    data: all,
+                    page: 1,
+                    has_more: false,
+                });
+                if !rerun.swap(false, Ordering::AcqRel) {
                     break;
-                };
-                let c = client.clone();
-                handles.push(tokio::spawn(async move {
-                    let _permit = permit;
-                    let ep = ProjectPipelines {
-                        project: pid,
-                        page: Some(1),
-                        per_page: Some(20),
-                    };
-                    let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(
-                        std::time::Duration::from_secs(30),
-                        ep.query_async(&c),
-                    )
-                    .await;
-                    match res {
-                        Ok(Ok(pipes)) => pipes,
-                        _ => Vec::new(),
-                    }
-                }));
-            }
-            let mut all = Vec::new();
-            for handle in handles {
-                if let Ok(pipes) = handle.await {
-                    all.extend(pipes);
                 }
             }
-            all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-            all.truncate(50);
-            let has_more = false;
-            let _ = tx.send(DataUpdate::GlobalPipelines {
-                data: all,
-                page: 1,
-                has_more,
-            });
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

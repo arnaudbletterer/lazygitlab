@@ -57,6 +57,8 @@ impl App {
             cross_pipelines_page: 1,
             cross_pipelines_has_more: false,
             cross_pipelines_in_flight: Default::default(),
+            cross_pipelines_rerun: Default::default(),
+            cross_pipelines_deadline: std::time::Duration::from_secs(30),
             pipelines_state: ListState::default(),
             jobs: Vec::new(),
             jobs_state: ListState::default(),
@@ -1874,7 +1876,11 @@ impl App {
                 }
                 MenuSelection::Pipelines => {
                     if should_fetch_lists {
-                        let _ = self.fetch_cross_pipelines().await;
+                        let _ = if force_detail {
+                            self.fetch_cross_pipelines_manual().await
+                        } else {
+                            self.fetch_cross_pipelines().await
+                        };
                     }
                 }
                 MenuSelection::Projects => {
