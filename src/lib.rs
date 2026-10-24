@@ -9,6 +9,7 @@ pub mod logger;
 pub mod models;
 pub mod redaction;
 pub mod runner;
+pub mod sanitize;
 pub mod setup;
 pub mod terminal;
 pub mod ui;

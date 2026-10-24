@@ -124,7 +124,8 @@ pub fn render_markdown(
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
 
-    let parser = Parser::new_ext(text, options);
+    let text = crate::sanitize::strip_all_escapes(text);
+    let parser = Parser::new_ext(&text, options);
     let mut lines = Vec::new();
     let mut current_line_spans = Vec::new();
 

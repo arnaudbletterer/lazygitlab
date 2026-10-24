@@ -643,11 +643,11 @@ pub fn render_job_log_view(f: &mut Frame, app: &mut App, area: Rect) {
             spans.push(Span::styled("    ", indent_style));
         }
 
-        let content_text = line
-            .content
+        let safe_content = crate::sanitize::strip_control_sequences(&line.content);
+        let content_text = safe_content
             .as_bytes()
             .into_text()
-            .unwrap_or_else(|_| Text::from(line.content.as_str()));
+            .unwrap_or_else(|_| Text::from(safe_content.as_ref().to_owned()));
         for content_line in content_text.lines {
             let mut final_spans = spans.clone();
             for mut s in content_line.spans {
