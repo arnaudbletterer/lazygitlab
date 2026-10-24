@@ -29,6 +29,20 @@ fn hinted_errors_are_stripped_too() {
 }
 
 #[test]
+fn zwj_and_zwnj_are_preserved() {
+    let emoji = "\u{1f468}\u{200d}\u{1f4bb}";
+    let persian = "\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}";
+    assert_eq!(strip_invisible(emoji), emoji);
+    assert_eq!(strip_invisible(persian), persian);
+    assert_eq!(strip_invisible("a\u{2028}b\u{2029}c"), "abc");
+    let mut buf = ratatui::buffer::Buffer::empty(ratatui::layout::Rect::new(0, 0, 20, 1));
+    buf.set_string(0, 0, emoji, ratatui::style::Style::default());
+    lazygitlab::sanitize::scrub_buffer(&mut buf);
+    let text: String = buf.content().iter().map(|c| c.symbol()).collect();
+    assert!(text.contains(emoji), "{text:?}");
+}
+
+#[test]
 fn bidi_and_zero_width_characters_are_removed() {
     assert_eq!(
         strip_invisible("a\u{202e}b\u{200b}c\u{feff}d\u{2066}e\u{200f}"),

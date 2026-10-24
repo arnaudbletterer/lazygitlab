@@ -81,7 +81,14 @@ fn strip(input: &str, keep_sgr: bool) -> Cow<'_, str> {
 pub fn is_invisible_format_char(c: char) -> bool {
     matches!(
         c,
-        '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200b}'..='\u{200f}' | '\u{feff}'
+        '\u{200b}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{feff}'
     )
 }
 
