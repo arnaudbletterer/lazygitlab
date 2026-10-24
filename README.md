@@ -84,7 +84,7 @@ Self-hosted instance:
 lazygitlab --url https://gitlab.example.com
 ```
 
-`--insecure` allows plain HTTP and skips TLS verification, for instances with self-signed certificates. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
+`--insecure` connects over plain HTTP instead of HTTPS. Self-signed TLS certificates are not supported yet. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
 
 Settings are resolved in this order: command-line flags, environment variables (a `.env` file is honored), then the config file:
 

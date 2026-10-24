@@ -16,7 +16,7 @@ Precedence: flags > environment > config file > defaults.
 | `--url <URL>` | GitLab instance URL (default: gitlab.com) |
 | `--token <TOKEN>` | Personal access token |
 | `--config <PATH>` | Config file (default: `~/.config/lazygitlab/config.toml`) |
-| `--insecure` | Use plain HTTP and skip TLS verification (self-signed certificates) |
+| `--insecure` | Connect over plain HTTP instead of HTTPS. Self-signed TLS certificates are not supported yet |
 | `--headless` | Render off-screen, with `--width`, `--height`, `--script` and `--frames-dir` (see CONTRIBUTING.md) |
 
 Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` file), then the config file, then defaults.
@@ -30,9 +30,9 @@ Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` 
 lazygitlab --project my-org/backend-service
 ```
 
-### Connect to a self-hosted instance with a self-signed certificate:
+### Connect to a self-hosted instance over plain HTTP:
 ```bash
-GITLAB_TOKEN=... lazygitlab --url https://gitlab.internal.corp --insecure
+lazygitlab --url http://gitlab.internal.corp --token $CORP_GITLAB_TOKEN --insecure
 ```
 
 ### GitLab served under a path prefix:

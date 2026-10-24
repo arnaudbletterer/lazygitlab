@@ -77,14 +77,13 @@ Choose the installation method that best fits your workflow:
     lazygitlab --url "https://gitlab.example.com" --token "glpat-xxxxxx"
     ```
 
-    !!! warning
-        `--token <TOKEN>` is visible to other users in the process list. Prefer `GITLAB_TOKEN`, or pipe the token in with `--token -`.
-
-!!! tip "Self-Hosted Instances & Custom SSL Certificates"
-    If your self-hosted GitLab instance uses internal or self-signed SSL certificates, pass the `--insecure` flag or set `insecure = true` under `[gitlab]` in `config.toml`:
+!!! tip "Self-Hosted Instances over Plain HTTP"
+    If your self-hosted GitLab instance is served over plain HTTP, pass the `--insecure` flag or set `insecure = true` under `[gitlab]` in `config.toml`:
     ```bash
-    GITLAB_TOKEN=... lazygitlab --url https://gitlab.internal.corp --insecure
+    lazygitlab --url http://gitlab.internal.corp --token $TOKEN --insecure
     ```
+
+    Self-signed TLS certificates are not supported yet.
 
 ---
 
