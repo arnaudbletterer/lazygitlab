@@ -34,11 +34,9 @@ async fn fetch_cross_round(
                     page: Some(1),
                     per_page: Some(20),
                 };
-                let res: Result<Result<Vec<Pipeline>, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    ep.query_async(&c),
-                )
-                .await;
+                let res: Result<Result<Vec<Pipeline>, _>, _> =
+                    tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c))
+                        .await;
                 if let Ok(Ok(pipes)) = res {
                     out.lock().unwrap().extend(pipes);
                 }
@@ -255,9 +253,7 @@ impl App {
     }
 
     /// Manual refresh: if one is in flight, queue exactly one rerun.
-    pub async fn fetch_cross_pipelines_manual(
-        &mut self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn fetch_cross_pipelines_manual(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.start_cross_pipelines(true)
     }
 
