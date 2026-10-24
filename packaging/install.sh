@@ -5,10 +5,17 @@
 #   LAZYGITLAB_VERSION      tag to install, e.g. v0.16.0 (default: latest release)
 #   LAZYGITLAB_INSTALL_DIR  target directory (default: ~/.local/bin)
 #   LAZYGITLAB_ALLOW_ROOT   set to 1 to allow running as root
+#   LAZYGITLAB_BASE_URL     release URL prefix override (testing)
 set -euo pipefail
 
 REPO="arnaudbletterer/lazygitlab"
-BASE="https://github.com/${REPO}/releases"
+BASE="${LAZYGITLAB_BASE_URL:-https://github.com/${REPO}/releases}"
+PROTO="=https"
+WGET_PROTO="--https-only"
+if [ -n "${LAZYGITLAB_BASE_URL:-}" ]; then
+  PROTO="=http,https"
+  WGET_PROTO="--no-verbose"
+fi
 INSTALL_DIR="${LAZYGITLAB_INSTALL_DIR:-$HOME/.local/bin}"
 
 die() {
@@ -22,9 +29,9 @@ fi
 
 fetch() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"
+    curl -fsSL --proto "$PROTO" --tlsv1.2 -o "$2" "$1"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --https-only -O "$2" "$1"
+    wget -q $WGET_PROTO -O "$2" "$1"
   else
     die "curl or wget is required"
   fi
@@ -56,7 +63,7 @@ resolve_tag() {
   local tag="${LAZYGITLAB_VERSION:-}"
   if [ -z "$tag" ]; then
     command -v curl >/dev/null 2>&1 || die "curl is required to resolve the latest version; set LAZYGITLAB_VERSION"
-    tag="$(curl -fsSLI --proto '=https' --tlsv1.2 -o /dev/null -w '%{url_effective}' "${BASE}/latest")"
+    tag="$(curl -fsSLI --proto "$PROTO" --tlsv1.2 -o /dev/null -w '%{url_effective}' "${BASE}/latest")"
     tag="${tag##*/}"
   fi
   case "$tag" in
@@ -78,7 +85,7 @@ main() {
   archive="${name}.tar.gz"
 
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap "rm -rf '$tmp'" EXIT
 
   echo "Downloading ${archive}"
   fetch "${BASE}/download/${tag}/${archive}" "${tmp}/${archive}"
