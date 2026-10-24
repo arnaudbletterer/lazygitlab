@@ -2258,6 +2258,7 @@ impl App {
                     if self.active_selection != MenuSelection::Pipelines {
                         self.merge_requests.clear();
                         self.issues.clear();
+                        self.reset_list_paging();
                         self.todos.clear();
                         let _ = self.refresh().await;
                     }
@@ -2307,6 +2308,7 @@ impl App {
                     if self.active_selection != MenuSelection::Pipelines {
                         self.merge_requests.clear();
                         self.issues.clear();
+                        self.reset_list_paging();
                         self.todos.clear();
                         let _ = self.refresh().await;
                     }

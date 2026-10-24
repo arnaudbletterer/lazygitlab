@@ -15,6 +15,7 @@ impl App {
             };
             let _ = tx.send(DataUpdate::Loading(true));
             self.status_message = Some("Fetching Issues...".into());
+            let scope = self.issue_filter;
             tokio::spawn(async move {
                 let ep = PagedIssues {
                     project: pid,
@@ -31,18 +32,29 @@ impl App {
                 match res {
                     Ok(Ok(data)) => {
                         let has_more = data.len() == 50;
-                        let _ = tx.send(DataUpdate::ProjectIssues {
-                            project_id: pid,
-                            data,
-                            page: 1,
-                            has_more,
-                        });
+                        let _ = tx.send(DataUpdate::ScopedIssue(
+                            scope,
+                            Box::new(DataUpdate::ProjectIssues {
+                                project_id: pid,
+                                data,
+                                page: 1,
+                                has_more,
+                            }),
+                        ));
                     }
                     Ok(Err(e)) => {
                         let _ = tx.send(DataUpdate::Error(format!("Issues fetch failed: {}", e)));
+                        let _ = tx.send(DataUpdate::ScopedIssue(
+                            scope,
+                            Box::new(DataUpdate::RefreshFailed),
+                        ));
                     }
                     Err(_) => {
                         let _ = tx.send(DataUpdate::Error("Issues fetch timed out".into()));
+                        let _ = tx.send(DataUpdate::ScopedIssue(
+                            scope,
+                            Box::new(DataUpdate::RefreshFailed),
+                        ));
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -66,6 +78,7 @@ impl App {
                 IssueFilter::All => "all".to_string(),
             };
             let _ = tx.send(DataUpdate::Loading(true));
+            let scope = self.issue_filter;
             tokio::spawn(async move {
                 let ep = PagedIssues {
                     project: pid,
@@ -82,10 +95,13 @@ impl App {
                 match res {
                     Ok(Ok(data)) => {
                         if !data.is_empty() {
-                            let _ = tx.send(DataUpdate::AppendProjectIssues {
-                                project_id: pid,
-                                data,
-                            });
+                            let _ = tx.send(DataUpdate::ScopedIssue(
+                                scope,
+                                Box::new(DataUpdate::AppendProjectIssues {
+                                    project_id: pid,
+                                    data,
+                                }),
+                            ));
                         } else {
                             let _ = tx.send(DataUpdate::Loading(false));
                         }
@@ -115,13 +131,9 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
+        let scope = self.issue_filter;
         tokio::spawn(async move {
             if project_ids.is_empty() {
-                let _ = tx.send(DataUpdate::GlobalIssues {
-                    data: Vec::new(),
-                    page: 1,
-                    has_more: false,
-                });
                 let _ = tx.send(DataUpdate::Loading(false));
                 return;
             }
@@ -148,29 +160,47 @@ impl App {
                     )
                     .await;
                     match res {
-                        Ok(Ok(issues)) => issues,
-                        _ => Vec::new(),
+                        Ok(Ok(issues)) => (pid, Some(issues)),
+                        _ => (pid, None),
                     }
                 });
                 handles.push(handle);
             }
 
+            let total = handles.len();
+            let mut failed: Vec<u64> = Vec::new();
             for handle in handles {
-                if let Ok(issues) = handle.await {
-                    all_issues.extend(issues);
+                match handle.await {
+                    Ok((_, Some(items))) => all_issues.extend(items),
+                    Ok((pid, None)) => failed.push(pid),
+                    Err(_) => failed.push(0),
                 }
             }
 
-            // Sort descending by created_at
-            all_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            Self::sort_issues(&mut all_issues);
             let has_more = all_issues.len() >= 50;
-            all_issues.truncate(50);
 
-            let _ = tx.send(DataUpdate::GlobalIssues {
-                data: all_issues,
-                page: 1,
-                has_more,
-            });
+            if failed.len() < total {
+                let update = if failed.is_empty() {
+                    DataUpdate::GlobalIssues {
+                        data: all_issues,
+                        page: 1,
+                        has_more,
+                    }
+                } else {
+                    DataUpdate::GlobalIssuesPartial {
+                        data: all_issues,
+                        failed: failed.clone(),
+                    }
+                };
+                let _ = tx.send(DataUpdate::ScopedIssue(scope, Box::new(update)));
+            }
+            if !failed.is_empty() {
+                let _ = tx.send(DataUpdate::ScopedIssue(
+                    scope,
+                    Box::new(DataUpdate::RefreshFailed),
+                ));
+            }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -183,7 +213,6 @@ impl App {
         let c = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.issues_page + 1;
-        self.issues_page = next_page;
         let state_str = match self.issue_filter {
             IssueFilter::Opened => "opened".to_string(),
             IssueFilter::Closed => "closed".to_string(),
@@ -193,6 +222,7 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
+        let scope = self.issue_filter;
         tokio::spawn(async move {
             if project_ids.is_empty() {
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -221,28 +251,39 @@ impl App {
                     )
                     .await;
                     match res {
-                        Ok(Ok(issues)) => issues,
-                        _ => Vec::new(),
+                        Ok(Ok(issues)) => Some(issues),
+                        _ => None,
                     }
                 });
                 handles.push(handle);
             }
 
+            let mut complete = true;
             for handle in handles {
-                if let Ok(issues) = handle.await {
-                    all_issues.extend(issues);
+                match handle.await {
+                    Ok(Some(items)) => all_issues.extend(items),
+                    _ => complete = false,
                 }
             }
 
-            // Sort descending by created_at
-            all_issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            Self::sort_issues(&mut all_issues);
             let has_more = all_issues.len() >= 50;
-            all_issues.truncate(50);
 
-            let _ = tx.send(DataUpdate::AppendGlobalIssues {
-                data: all_issues,
-                has_more,
-            });
+            let _ = tx.send(DataUpdate::ScopedIssue(
+                scope,
+                Box::new(DataUpdate::AppendGlobalIssues {
+                    data: all_issues,
+                    has_more,
+                    page: next_page,
+                    complete,
+                }),
+            ));
+            if !complete {
+                let _ = tx.send(DataUpdate::ScopedIssue(
+                    scope,
+                    Box::new(DataUpdate::RefreshFailed),
+                ));
+            }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

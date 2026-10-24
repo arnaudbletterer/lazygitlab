@@ -3,6 +3,7 @@ pub mod global;
 pub mod issues;
 pub mod keymap;
 pub mod menus;
+pub mod merge;
 pub mod mrs;
 pub mod pipelines;
 pub mod popups;
@@ -203,6 +204,7 @@ impl App {
             mr_filter: MergeRequestFilter::Opened,
             pipeline_filter: PipelineFilter::All,
             last_error: None,
+            last_list_refresh_ok: None,
             status_message: None,
             last_status_text: None,
             status_since: std::time::Instant::now(),
@@ -271,26 +273,19 @@ impl App {
         }
     }
 
-    fn apply_todos(&mut self, data: Vec<Todo>, page: u64, has_more: bool) {
-        for t in &data {
-            if let Some(ref p) = t.project {
-                self.project_cache.insert(p.id, p.clone());
-            }
-        }
-        if self.todos != data || self.todos_page != page || self.todos_has_more != has_more {
-            self.todos = data;
-            self.todos_page = page;
-            self.todos_has_more = has_more;
-            self.filter_lists();
-        }
-    }
-
     pub async fn process_update_single(&mut self, update: DataUpdate) {
         match update {
             DataUpdate::TriggerSearch(search_id) => {
                 if search_id == self.search_id {
                     let _ = self.trigger_global_search().await;
                 }
+            }
+            DataUpdate::MemberSyncFailed => {
+                self.is_syncing_membership = false;
+                if !self.member_project_ids.is_empty() {
+                    self.membership_sync_attempted = true;
+                }
+                self.filter_lists();
             }
             DataUpdate::MemberProjectIds(ids) => {
                 self.member_project_ids = ids;
@@ -439,16 +434,41 @@ impl App {
                 for mr in &mut data {
                     self.fix_mr_labels(mr);
                 }
-                if self.active_context == Context::Dashboard
-                    && (self.merge_requests != data
-                        || self.mrs_page != page
-                        || self.mrs_has_more != has_more)
-                {
-                    self.merge_requests = data;
-                    self.mrs_page = page;
-                    self.mrs_has_more = has_more;
-                    self.filter_lists();
+                if self.active_context == Context::Dashboard {
+                    self.replace_mrs(data, page, has_more);
                 }
+            }
+            DataUpdate::GlobalMRsPartial { mut data, failed } => {
+                for mr in &mut data {
+                    self.fix_mr_labels(mr);
+                }
+                if self.active_context == Context::Dashboard {
+                    self.replace_mrs_partial(data, &failed);
+                }
+            }
+            DataUpdate::GlobalIssuesPartial { mut data, failed } => {
+                for issue in &mut data {
+                    self.fix_issue_labels(issue);
+                }
+                if self.active_context == Context::Dashboard {
+                    self.replace_issues_partial(data, &failed);
+                }
+            }
+            DataUpdate::ScopedMr(scope, inner) => {
+                if scope == self.mr_filter {
+                    Box::pin(self.process_update_single(*inner)).await;
+                }
+            }
+            DataUpdate::ScopedIssue(scope, inner) => {
+                if scope == self.issue_filter {
+                    Box::pin(self.process_update_single(*inner)).await;
+                }
+            }
+            DataUpdate::RefreshFailed => {
+                self.status_message = Some(match self.last_list_refresh_ok {
+                    Some(t) => format!("refresh failed, showing data from {}", t.format("%H:%M")),
+                    None => "refresh failed".to_string(),
+                });
             }
             DataUpdate::ProjectMRs {
                 project_id,
@@ -464,40 +484,21 @@ impl App {
                         .selected_project
                         .as_ref()
                         .is_some_and(|p| p.id == project_id)
-                    && (self.merge_requests != data
-                        || self.mrs_page != page
-                        || self.mrs_has_more != has_more)
                 {
-                    self.merge_requests = data;
-                    self.mrs_page = page;
-                    self.mrs_has_more = has_more;
-                    self.filter_lists();
+                    self.replace_mrs(data, page, has_more);
                 }
             }
-            DataUpdate::AppendGlobalMRs { mut data, has_more } => {
+            DataUpdate::AppendGlobalMRs {
+                mut data,
+                has_more,
+                page,
+                complete,
+            } => {
                 for mr in &mut data {
                     self.fix_mr_labels(mr);
                 }
                 if self.active_context == Context::Dashboard {
-                    let existing_keys: std::collections::HashSet<String> = self
-                        .merge_requests
-                        .iter()
-                        .map(|m| format!("{}:{}", m.project_id, m.iid))
-                        .collect();
-                    let mut added = false;
-                    for item in data {
-                        let key = format!("{}:{}", item.project_id, item.iid);
-                        if !existing_keys.contains(&key) {
-                            self.merge_requests.push(item);
-                            added = true;
-                        }
-                    }
-                    self.mrs_has_more = has_more;
-                    if added {
-                        self.merge_requests
-                            .sort_by_key(|b| std::cmp::Reverse(b.iid));
-                        self.filter_lists();
-                    }
+                    self.append_mrs(data, has_more, page, complete);
                 }
             }
             DataUpdate::AppendProjectMRs {
@@ -514,10 +515,9 @@ impl App {
                         .is_some_and(|p| p.id == project_id)
                     && !data.is_empty()
                 {
-                    self.mrs_has_more = data.len() >= 50;
-                    self.merge_requests.append(&mut data);
-                    self.mrs_page += 1;
-                    self.filter_lists();
+                    let has_more = data.len() >= 50;
+                    let page = self.mrs_page + 1;
+                    self.append_mrs(data, has_more, page, true);
                 }
             }
             DataUpdate::ClearGlobalMRs => {
@@ -536,15 +536,8 @@ impl App {
                 for issue in &mut data {
                     self.fix_issue_labels(issue);
                 }
-                if self.active_context == Context::Dashboard
-                    && (self.issues != data
-                        || self.issues_page != page
-                        || self.issues_has_more != has_more)
-                {
-                    self.issues = data;
-                    self.issues_page = page;
-                    self.issues_has_more = has_more;
-                    self.filter_lists();
+                if self.active_context == Context::Dashboard {
+                    self.replace_issues(data, page, has_more);
                 }
             }
             DataUpdate::ProjectIssues {
@@ -561,39 +554,21 @@ impl App {
                         .selected_project
                         .as_ref()
                         .is_some_and(|p| p.id == project_id)
-                    && (self.issues != data
-                        || self.issues_page != page
-                        || self.issues_has_more != has_more)
                 {
-                    self.issues = data;
-                    self.issues_page = page;
-                    self.issues_has_more = has_more;
-                    self.filter_lists();
+                    self.replace_issues(data, page, has_more);
                 }
             }
-            DataUpdate::AppendGlobalIssues { mut data, has_more } => {
+            DataUpdate::AppendGlobalIssues {
+                mut data,
+                has_more,
+                page,
+                complete,
+            } => {
                 for issue in &mut data {
                     self.fix_issue_labels(issue);
                 }
                 if self.active_context == Context::Dashboard {
-                    let existing_keys: std::collections::HashSet<String> = self
-                        .issues
-                        .iter()
-                        .map(|i| format!("{}:{}", i.project_id, i.iid))
-                        .collect();
-                    let mut added = false;
-                    for item in data {
-                        let key = format!("{}:{}", item.project_id, item.iid);
-                        if !existing_keys.contains(&key) {
-                            self.issues.push(item);
-                            added = true;
-                        }
-                    }
-                    self.issues_has_more = has_more;
-                    if added {
-                        self.issues.sort_by_key(|b| std::cmp::Reverse(b.iid));
-                        self.filter_lists();
-                    }
+                    self.append_issues(data, has_more, page, complete);
                 }
             }
             DataUpdate::AppendProjectIssues {
@@ -610,10 +585,9 @@ impl App {
                         .is_some_and(|p| p.id == project_id)
                     && !data.is_empty()
                 {
-                    self.issues_has_more = data.len() >= 50;
-                    self.issues.append(&mut data);
-                    self.issues_page += 1;
-                    self.filter_lists();
+                    let has_more = data.len() >= 50;
+                    let page = self.issues_page + 1;
+                    self.append_issues(data, has_more, page, true);
                 }
             }
             DataUpdate::ClearGlobalIssues => {
@@ -634,14 +608,8 @@ impl App {
                         .selected_project
                         .as_ref()
                         .is_some_and(|p| p.id == project_id)
-                    && (self.pipelines != data
-                        || self.pipelines_page != page
-                        || self.pipelines_has_more != has_more)
                 {
-                    self.pipelines = data;
-                    self.pipelines_page = page;
-                    self.pipelines_has_more = has_more;
-                    self.filter_lists();
+                    self.replace_pipelines(data, page, has_more);
                 }
             }
             DataUpdate::GlobalPipelines {
@@ -649,15 +617,13 @@ impl App {
                 page,
                 has_more,
             } => {
-                if self.active_context != Context::Project
-                    && (self.cross_pipelines != data
-                        || self.cross_pipelines_page != page
-                        || self.cross_pipelines_has_more != has_more)
-                {
-                    self.cross_pipelines = data;
-                    self.cross_pipelines_page = page;
-                    self.cross_pipelines_has_more = has_more;
-                    self.filter_lists();
+                if self.active_context != Context::Project {
+                    self.replace_cross_pipelines(data, page, has_more);
+                }
+            }
+            DataUpdate::MergeGlobalPipelines(data) => {
+                if self.active_context != Context::Project {
+                    self.upsert_cross_pipelines(data);
                 }
             }
             DataUpdate::PipelineSchedules { project_id, data } => {
@@ -1004,8 +970,6 @@ impl App {
                 }
                 self.last_error = Some(e);
                 self.last_error_since = Some(std::time::Instant::now());
-                self.loading_tasks = self.loading_tasks.saturating_sub(1);
-                self.is_loading = self.loading_tasks > 0;
                 if !self.is_loading
                     && let Some(msg) = &self.status_message
                     && (msg.starts_with("Fetching")
@@ -2183,6 +2147,7 @@ impl App {
             self.jobs.clear();
             self.merge_requests.clear();
             self.issues.clear();
+            self.reset_list_paging();
             self.pipelines.clear();
             self.repository_ref = None;
             self.clear_related_items();
@@ -2634,6 +2599,35 @@ impl App {
     }
 
     pub fn filter_lists(&mut self) {
+        let selected_mr = self
+            .mrs_state
+            .selected()
+            .and_then(|i| self.filtered_mrs.get(i))
+            .and_then(|g| match g {
+                GroupedItem::Item(m) => Some((m.project_id, m.iid)),
+                _ => None,
+            });
+        let selected_issue = self
+            .issues_state
+            .selected()
+            .and_then(|i| self.filtered_issues.get(i))
+            .and_then(|g| match g {
+                GroupedItem::Item(i) => Some((i.project_id, i.iid)),
+                _ => None,
+            });
+        let selected_todo = self
+            .todos_state
+            .selected()
+            .and_then(|i| self.filtered_todos.get(i))
+            .and_then(|g| match g {
+                GroupedItem::Item(t) => Some(t.id),
+                _ => None,
+            });
+        let selected_pipeline = self
+            .pipelines_state
+            .selected()
+            .and_then(|i| self.filtered_pipelines.get(i))
+            .map(|p| (p.project_id, p.id));
         let filter = self.filter_input.to_lowercase();
         let me_id = self.current_user.as_ref().map(|u| u.id);
         let show_involved = self.show_involved_only;
@@ -2906,6 +2900,40 @@ impl App {
                 .cloned()
                 .collect();
             self.filtered_board_issues.insert(*list_id, filtered);
+        }
+
+        if let Some(key) = selected_mr
+            && let Some(idx) = self
+                .filtered_mrs
+                .iter()
+                .position(|g| matches!(g, GroupedItem::Item(m) if (m.project_id, m.iid) == key))
+        {
+            self.mrs_state.select(Some(idx));
+        }
+        if let Some(key) = selected_issue
+            && let Some(idx) = self
+                .filtered_issues
+                .iter()
+                .position(|g| matches!(g, GroupedItem::Item(i) if (i.project_id, i.iid) == key))
+        {
+            self.issues_state.select(Some(idx));
+        }
+
+        if let Some(id) = selected_todo
+            && let Some(idx) = self
+                .filtered_todos
+                .iter()
+                .position(|g| matches!(g, GroupedItem::Item(t) if t.id == id))
+        {
+            self.todos_state.select(Some(idx));
+        }
+        if let Some(key) = selected_pipeline
+            && let Some(idx) = self
+                .filtered_pipelines
+                .iter()
+                .position(|p| (p.project_id, p.id) == key)
+        {
+            self.pipelines_state.select(Some(idx));
         }
 
         // Selection normalization
@@ -3343,6 +3371,11 @@ impl App {
                                     }
                                     _ => {}
                                 }
+                                self.merge_requests.clear();
+                                self.issues.clear();
+                                self.todos.clear();
+                                self.reset_list_paging();
+                                self.filter_lists();
                                 let _ = self.refresh().await;
                                 break;
                             }
@@ -4039,6 +4072,7 @@ impl App {
             self.jobs.clear();
             self.merge_requests.clear();
             self.issues.clear();
+            self.reset_list_paging();
             self.pipelines.clear();
             self.repository_ref = None;
             self.repository_tree.clear();

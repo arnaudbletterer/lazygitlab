@@ -15,7 +15,9 @@ async fn fetch_cross_round(
     client: crate::trace::TracedClient,
     project_ids: Vec<u64>,
     deadline: std::time::Duration,
-) -> Vec<Pipeline> {
+) -> (Vec<Pipeline>, bool) {
+    let expected = project_ids.len();
+    let succeeded = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let results = Arc::new(std::sync::Mutex::new(Vec::new()));
     let sem = Arc::new(Semaphore::new(CROSS_PIPELINES_MAX_IN_FLIGHT));
     // Dropping the JoinSet on deadline aborts unfinished requests.
@@ -27,6 +29,7 @@ async fn fetch_cross_round(
             };
             let c = client.clone();
             let out = results.clone();
+            let ok = succeeded.clone();
             set.spawn(async move {
                 let _permit = permit;
                 let ep = ProjectPipelines {
@@ -39,6 +42,7 @@ async fn fetch_cross_round(
                         .await;
                 if let Ok(Ok(pipes)) = res {
                     out.lock().unwrap().extend(pipes);
+                    ok.fetch_add(1, Ordering::AcqRel);
                 }
             });
         }
@@ -49,7 +53,8 @@ async fn fetch_cross_round(
     }
     set.abort_all();
     let mut guard = results.lock().unwrap();
-    std::mem::take(&mut *guard)
+    let complete = succeeded.load(Ordering::Acquire) == expected;
+    (std::mem::take(&mut *guard), complete)
 }
 
 /// Clears the in-flight flag when the refresh task ends, even on panic.
@@ -283,15 +288,22 @@ impl App {
         tokio::spawn(async move {
             let _guard = guard;
             loop {
-                let mut all =
+                let (mut all, complete) =
                     fetch_cross_round(client.clone(), project_ids.clone(), deadline).await;
                 all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
                 all.truncate(50);
-                let _ = tx.send(DataUpdate::GlobalPipelines {
-                    data: all,
-                    page: 1,
-                    has_more: false,
-                });
+                if complete {
+                    let _ = tx.send(DataUpdate::GlobalPipelines {
+                        data: all,
+                        page: 1,
+                        has_more: false,
+                    });
+                } else {
+                    if !all.is_empty() {
+                        let _ = tx.send(DataUpdate::MergeGlobalPipelines(all));
+                    }
+                    let _ = tx.send(DataUpdate::RefreshFailed);
+                }
                 if !rerun.swap(false, Ordering::AcqRel) {
                     break;
                 }

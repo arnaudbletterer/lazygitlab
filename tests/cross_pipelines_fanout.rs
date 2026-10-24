@@ -113,7 +113,9 @@ async fn next_done(rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>) ->
             .expect("timeout")
             .expect("closed")
         {
-            DataUpdate::GlobalPipelines { data, .. } => last = data,
+            DataUpdate::GlobalPipelines { data, .. } | DataUpdate::MergeGlobalPipelines(data) => {
+                last = data
+            }
             DataUpdate::Loading(false) => return last,
             _ => continue,
         }

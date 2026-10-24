@@ -36,6 +36,7 @@ impl App {
                 None
             };
 
+            let scope = self.mr_filter;
             tokio::spawn(async move {
                 let ep = PagedMergeRequests {
                     project: pid,
@@ -56,18 +57,29 @@ impl App {
                 match res {
                     Ok(Ok(data)) => {
                         let has_more = data.len() == 50;
-                        let _ = tx.send(DataUpdate::ProjectMRs {
-                            project_id: pid,
-                            data,
-                            page: 1,
-                            has_more,
-                        });
+                        let _ = tx.send(DataUpdate::ScopedMr(
+                            scope,
+                            Box::new(DataUpdate::ProjectMRs {
+                                project_id: pid,
+                                data,
+                                page: 1,
+                                has_more,
+                            }),
+                        ));
                     }
                     Ok(Err(e)) => {
                         let _ = tx.send(DataUpdate::Error(format!("MRs fetch failed: {}", e)));
+                        let _ = tx.send(DataUpdate::ScopedMr(
+                            scope,
+                            Box::new(DataUpdate::RefreshFailed),
+                        ));
                     }
                     Err(_) => {
                         let _ = tx.send(DataUpdate::Error("MRs fetch timed out".into()));
+                        let _ = tx.send(DataUpdate::ScopedMr(
+                            scope,
+                            Box::new(DataUpdate::RefreshFailed),
+                        ));
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -85,7 +97,6 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let next_page = self.mrs_page + 1;
-            self.mrs_page = next_page;
             let _ = tx.send(DataUpdate::Loading(true));
             let state_str = match self.mr_filter {
                 MergeRequestFilter::Opened
@@ -105,6 +116,7 @@ impl App {
             } else {
                 None
             };
+            let scope = self.mr_filter;
             tokio::spawn(async move {
                 let ep = PagedMergeRequests {
                     project: pid,
@@ -125,10 +137,13 @@ impl App {
                 match res {
                     Ok(Ok(data)) => {
                         if !data.is_empty() {
-                            let _ = tx.send(DataUpdate::AppendProjectMRs {
-                                project_id: pid,
-                                data,
-                            });
+                            let _ = tx.send(DataUpdate::ScopedMr(
+                                scope,
+                                Box::new(DataUpdate::AppendProjectMRs {
+                                    project_id: pid,
+                                    data,
+                                }),
+                            ));
                         }
                     }
                     Ok(Err(e)) => {
@@ -171,13 +186,9 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
+        let scope = self.mr_filter;
         tokio::spawn(async move {
             if project_ids.is_empty() {
-                let _ = tx.send(DataUpdate::GlobalMRs {
-                    data: Vec::new(),
-                    page: 1,
-                    has_more: false,
-                });
                 let _ = tx.send(DataUpdate::Loading(false));
                 return;
             }
@@ -208,29 +219,47 @@ impl App {
                     )
                     .await;
                     match res {
-                        Ok(Ok(mrs)) => mrs,
-                        _ => Vec::new(),
+                        Ok(Ok(mrs)) => (pid, Some(mrs)),
+                        _ => (pid, None),
                     }
                 });
                 handles.push(handle);
             }
 
+            let total = handles.len();
+            let mut failed: Vec<u64> = Vec::new();
             for handle in handles {
-                if let Ok(mrs) = handle.await {
-                    all_mrs.extend(mrs);
+                match handle.await {
+                    Ok((_, Some(items))) => all_mrs.extend(items),
+                    Ok((pid, None)) => failed.push(pid),
+                    Err(_) => failed.push(0),
                 }
             }
 
-            // Sort descending by created_at
-            all_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            Self::sort_mrs(&mut all_mrs);
             let has_more = all_mrs.len() >= 50;
-            all_mrs.truncate(50);
 
-            let _ = tx.send(DataUpdate::GlobalMRs {
-                data: all_mrs,
-                page: 1,
-                has_more,
-            });
+            if failed.len() < total {
+                let update = if failed.is_empty() {
+                    DataUpdate::GlobalMRs {
+                        data: all_mrs,
+                        page: 1,
+                        has_more,
+                    }
+                } else {
+                    DataUpdate::GlobalMRsPartial {
+                        data: all_mrs,
+                        failed: failed.clone(),
+                    }
+                };
+                let _ = tx.send(DataUpdate::ScopedMr(scope, Box::new(update)));
+            }
+            if !failed.is_empty() {
+                let _ = tx.send(DataUpdate::ScopedMr(
+                    scope,
+                    Box::new(DataUpdate::RefreshFailed),
+                ));
+            }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
@@ -245,7 +274,6 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.mrs_page + 1;
-        self.mrs_page = next_page;
         let state_str = match self.mr_filter {
             MergeRequestFilter::Opened
             | MergeRequestFilter::Review
@@ -269,6 +297,7 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
+        let scope = self.mr_filter;
         tokio::spawn(async move {
             if project_ids.is_empty() {
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -301,28 +330,39 @@ impl App {
                     )
                     .await;
                     match res {
-                        Ok(Ok(mrs)) => mrs,
-                        _ => Vec::new(),
+                        Ok(Ok(mrs)) => Some(mrs),
+                        _ => None,
                     }
                 });
                 handles.push(handle);
             }
 
+            let mut complete = true;
             for handle in handles {
-                if let Ok(mrs) = handle.await {
-                    all_mrs.extend(mrs);
+                match handle.await {
+                    Ok(Some(items)) => all_mrs.extend(items),
+                    _ => complete = false,
                 }
             }
 
-            // Sort descending by created_at
-            all_mrs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            Self::sort_mrs(&mut all_mrs);
             let has_more = all_mrs.len() >= 50;
-            all_mrs.truncate(50);
 
-            let _ = tx.send(DataUpdate::AppendGlobalMRs {
-                data: all_mrs,
-                has_more,
-            });
+            let _ = tx.send(DataUpdate::ScopedMr(
+                scope,
+                Box::new(DataUpdate::AppendGlobalMRs {
+                    data: all_mrs,
+                    has_more,
+                    page: next_page,
+                    complete,
+                }),
+            ));
+            if !complete {
+                let _ = tx.send(DataUpdate::ScopedMr(
+                    scope,
+                    Box::new(DataUpdate::RefreshFailed),
+                ));
+            }
             let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())

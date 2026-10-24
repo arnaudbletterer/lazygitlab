@@ -781,9 +781,24 @@ pub enum DataUpdate {
         has_more: bool,
     },
     ClearGlobalMRs,
+    GlobalMRsPartial {
+        data: Vec<MergeRequest>,
+        failed: Vec<u64>,
+    },
+    GlobalIssuesPartial {
+        data: Vec<Issue>,
+        failed: Vec<u64>,
+    },
+    MemberSyncFailed,
+    MergeGlobalPipelines(Vec<Pipeline>),
+    RefreshFailed,
+    ScopedMr(MergeRequestFilter, Box<DataUpdate>),
+    ScopedIssue(IssueFilter, Box<DataUpdate>),
     AppendGlobalMRs {
         data: Vec<MergeRequest>,
         has_more: bool,
+        page: u64,
+        complete: bool,
     },
     GlobalIssues {
         data: Vec<Issue>,
@@ -794,6 +809,8 @@ pub enum DataUpdate {
     AppendGlobalIssues {
         data: Vec<Issue>,
         has_more: bool,
+        page: u64,
+        complete: bool,
     },
     ProjectMRs {
         project_id: u64,
@@ -1193,6 +1210,7 @@ pub struct App {
     pub pipeline_filter: PipelineFilter,
 
     pub last_error: Option<String>,
+    pub last_list_refresh_ok: Option<chrono::DateTime<chrono::Local>>,
     pub status_message: Option<String>,
     pub last_status_text: Option<String>,
     pub status_since: std::time::Instant,
