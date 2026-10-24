@@ -159,46 +159,65 @@ impl App {
     }
 
     pub async fn fetch_todos_conditional(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        use gitlab::api::{AsyncClient, RestClient};
-        let state = match self.todo_filter {
-            TodoFilter::Pending => "pending",
-            TodoFilter::Snoozed => "pending",
-            TodoFilter::Done => "done",
-        };
-        let url = self
-            .gitlab
-            .rest_endpoint(&format!("todos?per_page=50&state={}", state))?;
-        let mut req = http::Request::builder().method("GET").uri(url.as_str());
-        if let Some(etag) = &self.todos_etag {
-            req = req.header(http::header::IF_NONE_MATCH, etag.clone());
+        let state = self.todos_state_param();
+        let polled = poll_todos(&self.gitlab, state, self.todos_etag.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some((etag, data)) = polled {
+            if etag.is_some() {
+                self.todos_etag = etag;
+            }
+            let has_more = data.len() == 50;
+            let _ = self.tx.send(DataUpdate::Todos {
+                data,
+                page: 1,
+                has_more,
+            });
         }
-        let resp = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            self.gitlab.rest_async(req, Vec::new()),
-        )
-        .await??;
-        if resp.status() == http::StatusCode::NOT_MODIFIED {
-            return Ok(());
-        }
-        if !resp.status().is_success() {
-            return Err(format!("todos poll failed: {}", resp.status()).into());
-        }
-        if let Some(etag) = resp
-            .headers()
-            .get(http::header::ETAG)
-            .and_then(|v| v.to_str().ok())
-        {
-            self.todos_etag = Some(etag.to_string());
-        }
-        let data: Vec<Todo> = serde_json::from_slice(resp.body())?;
-        let has_more = data.len() == 50;
-        let page = 1;
-        let _ = self.tx.send(DataUpdate::Todos {
-            data,
-            page,
-            has_more,
-        });
         Ok(())
+    }
+
+    fn todos_state_param(&self) -> &'static str {
+        match self.todo_filter {
+            TodoFilter::Pending | TodoFilter::Snoozed => "pending",
+            TodoFilter::Done => "done",
+        }
+    }
+
+    /// Non-blocking variant of `fetch_todos_conditional`: the request runs on a
+    /// spawned task and reports through `DataUpdate`. No-op while a poll is in flight.
+    pub fn spawn_todos_poll(&mut self) {
+        if self.todos_poll_in_flight {
+            return;
+        }
+        self.todos_poll_in_flight = true;
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let state = self.todos_state_param();
+        let etag = self.todos_etag.clone();
+        tokio::spawn(async move {
+            match poll_todos(&client, state, etag).await {
+                Ok(Some((new_etag, data))) => {
+                    if let Some(e) = new_etag {
+                        let _ = tx.send(DataUpdate::TodosEtag(e));
+                    }
+                    let has_more = data.len() == 50;
+                    let _ = tx.send(DataUpdate::Todos {
+                        data,
+                        page: 1,
+                        has_more,
+                    });
+                    let _ = tx.send(DataUpdate::TodosPollDone { failed: false });
+                }
+                Ok(None) => {
+                    let _ = tx.send(DataUpdate::TodosPollDone { failed: false });
+                }
+                Err(e) => {
+                    tracing::debug!("conditional todos poll failed, falling back: {}", e);
+                    let _ = tx.send(DataUpdate::TodosPollDone { failed: true });
+                }
+            }
+        });
     }
 
     pub async fn fetch_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -762,4 +781,38 @@ mod tests {
         app.snooze_todo("t".into()).await.unwrap();
         app.mark_todo_as_done().await.unwrap();
     }
+}
+
+type PolledTodos = Option<(Option<String>, Vec<Todo>)>;
+
+/// One conditional GET of `/todos`. `Ok(None)` means 304 Not Modified.
+async fn poll_todos(
+    client: &gitlab::AsyncGitlab,
+    state: &str,
+    etag: Option<String>,
+) -> Result<PolledTodos, Box<dyn std::error::Error + Send + Sync>> {
+    use gitlab::api::{AsyncClient, RestClient};
+    let url = client.rest_endpoint(&format!("todos?per_page=50&state={}", state))?;
+    let mut req = http::Request::builder().method("GET").uri(url.as_str());
+    if let Some(etag) = etag {
+        req = req.header(http::header::IF_NONE_MATCH, etag);
+    }
+    let resp = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        client.rest_async(req, Vec::new()),
+    )
+    .await??;
+    if resp.status() == http::StatusCode::NOT_MODIFIED {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(format!("todos poll failed: {}", resp.status()).into());
+    }
+    let new_etag = resp
+        .headers()
+        .get(http::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let data: Vec<Todo> = serde_json::from_slice(resp.body())?;
+    Ok(Some((new_etag, data)))
 }

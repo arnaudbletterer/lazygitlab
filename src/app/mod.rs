@@ -188,6 +188,7 @@ impl App {
             todos_page: 1,
             todos_has_more: true,
             todos_etag: None,
+            todos_poll_in_flight: false,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
             filtered_pipelines: Vec::new(),
@@ -349,6 +350,15 @@ impl App {
                 }
             }
 
+            DataUpdate::TodosEtag(etag) => {
+                self.todos_etag = Some(etag);
+            }
+            DataUpdate::TodosPollDone { failed } => {
+                self.todos_poll_in_flight = false;
+                if failed {
+                    let _ = self.fetch_todos().await;
+                }
+            }
             DataUpdate::Todos {
                 data,
                 page,
@@ -1821,13 +1831,7 @@ impl App {
                 MenuSelection::Todos => {
                     if should_fetch_lists {
                         if self.todos_etag.is_some() || !self.todos.is_empty() {
-                            if let Err(e) = self.fetch_todos_conditional().await {
-                                tracing::debug!(
-                                    "conditional todos poll failed, falling back: {}",
-                                    e
-                                );
-                                let _ = self.fetch_todos().await;
-                            }
+                            self.spawn_todos_poll();
                         } else {
                             let _ = self.fetch_todos().await;
                         }
