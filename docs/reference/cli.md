@@ -10,6 +10,18 @@ Precedence: flags > environment > config file > defaults.
 
 | Flag | Description |
 | --- | --- |
+| `-h, --help` | Print the help summary and exit |
+| `-V, --version` | Print the version and exit |
+| `--project <PATH\|ID>` | Open this project at startup, by numeric ID or full path (`group/project`) |
+| `--url <URL>` | GitLab instance URL (default: gitlab.com) |
+| `--token <TOKEN>` | Personal access token |
+| `--config <PATH>` | Config file (default: `~/.config/lazygitlab/config.toml`) |
+| `--insecure` | Use plain HTTP and skip TLS verification (self-signed certificates) |
+| `--headless` | Render off-screen, with `--width`, `--height`, `--script` and `--frames-dir` (see CONTRIBUTING.md) |
+
+Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` file), then the config file, then defaults.
+
+--- | --- |
 | `-h, --help` | Display the help summary and exit |
 | `-V, --version` | Display version number (`lazygitlab 0.16.0`) and exit |
 | `--project <PATH\|ID>` | Open a project by ID (`81221057`) or full path (`group/project`) on launch |
