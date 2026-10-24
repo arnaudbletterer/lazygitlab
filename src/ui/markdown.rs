@@ -296,7 +296,9 @@ pub fn render_markdown(
 
                     let mut h = HighlightLines::new(syntax, syn_theme);
                     for line in t.lines() {
-                        let ranges = h.highlight_line(line, syntax_set).unwrap();
+                        let ranges = h.highlight_line(line, syntax_set).unwrap_or_else(|_| {
+                            vec![(syntect::highlighting::Style::default(), line)]
+                        });
                         let mut spans = Vec::new();
                         ensure_prefix(&mut spans, blockquote_depth);
                         for (style, content) in ranges {

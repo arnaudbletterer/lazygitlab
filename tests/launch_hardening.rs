@@ -139,3 +139,23 @@ fn hint_redacts_token_in_original_message() {
     let msg = friendly_error(&format!("gitlab server error (401 Unauthorized): {TOKEN}"));
     assert!(!msg.contains(TOKEN), "{msg}");
 }
+
+#[test]
+fn partial_diff_position_does_not_panic() {
+    use gitlab::api::Endpoint;
+    let ep = lazygitlab::CreateMergeRequestDiscussion {
+        project: 1,
+        merge_request: 2,
+        body: "hi".into(),
+        base_sha: Some("b".into()),
+        start_sha: None,
+        head_sha: None,
+        new_path: None,
+        old_path: None,
+        new_line: Some(3),
+        old_line: None,
+        range_start_new: None,
+        range_start_old: None,
+    };
+    assert!(ep.body().is_ok());
+}

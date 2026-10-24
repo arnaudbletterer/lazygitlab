@@ -61,10 +61,12 @@ impl Endpoint for CreateMergeRequestDiscussion {
     fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, gitlab::api::BodyError> {
         let mut params = gitlab::api::FormParams::default();
         params.push("body", &self.body);
-        if let Some(base) = &self.base_sha {
+        if let (Some(base), Some(start), Some(head)) =
+            (&self.base_sha, &self.start_sha, &self.head_sha)
+        {
             params.push("position[base_sha]", base);
-            params.push("position[start_sha]", self.start_sha.as_ref().unwrap());
-            params.push("position[head_sha]", self.head_sha.as_ref().unwrap());
+            params.push("position[start_sha]", start);
+            params.push("position[head_sha]", head);
             params.push("position[position_type]", "text");
             if let Some(path) = &self.new_path {
                 params.push("position[new_path]", path);
