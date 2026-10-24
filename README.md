@@ -12,9 +12,11 @@ The GitLab web UI is fine for occasional use, but daily review work means a lot 
 
 ## Screenshots
 
-![Dashboard](docs/assets/screenshots/dashboard.png)
-![Merge request review](docs/assets/screenshots/mr-review.png)
-![Pipelines](docs/assets/screenshots/pipelines.png)
+![Demo](https://arnaudbletterer.github.io/lazygitlab/assets/marketing/demo.gif)
+
+![Dashboard](https://arnaudbletterer.github.io/lazygitlab/assets/marketing/dashboard.png)
+![Merge request review](https://arnaudbletterer.github.io/lazygitlab/assets/marketing/mr-review.png)
+![Pipelines](https://arnaudbletterer.github.io/lazygitlab/assets/marketing/pipelines.png)
 
 ## Features
 
@@ -22,7 +24,7 @@ The GitLab web UI is fine for occasional use, but daily review work means a lot 
 - Personal dashboard with Todos, Merge Requests, Issues, Projects and Groups
 - Jump shortcuts (`g t`, `g m`, `g i`, `g b`, `g p`, `g r`) and a project switcher
 - Global search (`f`) and filter-as-you-type on every list (`/`)
-- Opens the project matching the current git repository automatically
+- Shows the current local branch and a dirty marker when run inside a git repository
 
 **Merge requests**
 - Side-by-side or unified diffs (`w`) with inline comments on a line or line range
@@ -77,7 +79,7 @@ export GITLAB_URL=https://gitlab.com   # optional, this is the default
 lazygitlab
 ```
 
-3. Press `?` for the searchable keybinding list.
+3. Press `?` for the searchable keybinding list. The terminal must be at least 50x14.
 
 Self-hosted instance:
 
@@ -85,11 +87,11 @@ Self-hosted instance:
 lazygitlab --url https://gitlab.example.com
 ```
 
-`--insecure` connects over plain HTTP instead of HTTPS. Self-signed TLS certificates are not supported yet. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
+`--insecure` skips TLS certificate verification, for self-signed certificates. It prints a warning at every start and the header shows `TLS NOT VERIFIED`; prefer adding your CA to the system trust store. For plain HTTP, use an `http://` URL. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
 
-Logs are written to `lazygitlab.log` in the current working directory.
+Logs are written to `~/.local/state/lazygitlab/lazygitlab.log` (or under `$XDG_STATE_HOME`), readable only by you. Set `LAZYGITLAB_LOG` to choose another path.
 
-Settings are resolved in this order: command-line flags, environment variables (a `.env` file is honored), then the config file:
+Settings are resolved in this order: command-line flags, environment variables (`.env` files are not read), then the config file:
 
 ```toml
 # ~/.config/lazygitlab/config.toml
@@ -100,7 +102,15 @@ token = "glpat-..."
 # project = "group/project"
 ```
 
-Flags: `--help`, `--version`, `--project <PATH|ID>`, `--url`, `--token`, `--config <PATH>`, `--insecure`. See the [CLI reference](docs/reference/cli.md).
+Flags: `--help`, `--version`, `--project <PATH|ID>`, `--url`, `--token <TOKEN|->`, `--config <PATH>`, `--insecure`. `--token -` reads the token from stdin, since `--token <TOKEN>` is visible in the process list. See the [CLI reference](docs/reference/cli.md).
+
+## Security
+
+- The token is never written to logs, error messages or the status bar.
+- It is sent as an `Authorization: Bearer` header, which is not forwarded on cross-host redirects.
+- Skipping TLS verification needs `--insecure` or `insecure = true`, prints a warning at every start and shows `TLS NOT VERIFIED` in the header.
+- No configuration is read from the working directory: no `.env` file and no local `theme.toml`.
+- Escape and control sequences in job logs, Markdown and error text are stripped, so remote content cannot drive your terminal.
 
 ## Keys
 
@@ -123,7 +133,7 @@ In a merge request: `A` approve, `R` unapprove, `M` merge, `E` rebase, `S` toggl
 
 ## Theming
 
-Pick a preset in `theme.toml`, placed in the working directory or in `~/.config/lazygitlab/`:
+Pick a preset in `theme.toml`, placed in `~/.config/lazygitlab/` (it is not read from the working directory):
 
 ```toml
 theme = "tokyo-night"

@@ -102,3 +102,7 @@ The test suite has ~80 integration tests across `tests/` covering:
 
 CI is defined in `.gitlab-ci.yml`: `fmt` + `clippy` + `test:wiremock` on every push, `test:live-smoke` on merge requests and the default branch, `test:live-full` on a nightly schedule and manual trigger, and `coverage:tarpaulin` on a schedule (Linux only).
 
+
+## Demo screenshots
+
+The screenshots and animation in the README are generated against a fictional GitLab, so no real instance, name or project appears in them. CI generates them on the docs site. To build them locally, see [tools/demo/README.md](tools/demo/README.md).
