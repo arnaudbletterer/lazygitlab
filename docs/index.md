@@ -5,8 +5,8 @@
 # lazygitlab
 
 <p align="center">
-  <strong>The fast, keyboard-driven Terminal UI for GitLab.</strong><br>
-  <em>Manage your merge requests, issues, Kanban boards, CI/CD pipelines, and repositories directly from the comfort of your terminal.</em>
+  <strong>A keyboard-driven terminal UI for GitLab.</strong><br>
+  <em>Triage merge requests, review diffs, watch pipelines and manage issues without leaving your terminal.</em>
 </p>
 
 ![lazygitlab Personal Dashboard](assets/screenshots/dashboard.svg#only-dark)
@@ -47,8 +47,8 @@
 ## Quick Start
 
 ```bash
-# 1. Install via Cargo
-cargo install lazygitlab
+# 1. Install from source (Rust 1.85 or newer)
+cargo install --git https://github.com/abletterer/lazygitlab
 
 # 2. Configure credentials
 export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
