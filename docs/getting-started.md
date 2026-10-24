@@ -14,29 +14,25 @@ Choose the installation method that best fits your workflow:
 
 === "Cargo"
 
-    If you have Rust and Cargo installed, install `lazygitlab` directly from [crates.io](https://crates.io):
+    Requires Rust 1.85 or newer:
 
     ```bash
-    cargo install lazygitlab
-    ```
-
-    To update to the latest release at any time:
-    ```bash
-    cargo install lazygitlab --force
+    cargo install --git https://github.com/arnaudbletterer/lazygitlab
     ```
 
 === "Source"
 
-    To build the latest bleeding-edge version from source (requires Rust 1.75+):
-
     ```bash
-    git clone https://github.com/abletterer/lazygitlab.git
+    git clone https://github.com/arnaudbletterer/lazygitlab.git
     cd lazygitlab
     cargo build --release
-
-    # Copy the optimized binary to your PATH
-    sudo cp target/release/lazygitlab /usr/local/bin/
     ```
+
+    The binary is `target/release/lazygitlab`.
+
+=== "Other"
+
+    Not available yet: crates.io, release binaries, Homebrew (`arnaudbletterer/tap`), AUR (`lazygitlab-bin`) and Scoop. See the README for their status.
 
 ---
 
@@ -45,10 +41,10 @@ Choose the installation method that best fits your workflow:
 `lazygitlab` connects securely to GitLab using a **Personal Access Token** (or Project Access Token).
 
 !!! info "Required Token Scopes"
-    When generating your token in GitLab (**User Settings → Access Tokens**), ensure you grant the following two scopes:
+    When generating your token in GitLab (**User Settings → Access Tokens**), use these scopes:
 
-    * `api` — Full read/write access to merge requests, issues, pipelines, and discussions.
-    * `read_user` — Grants permission to resolve your username, assigned tasks, and notifications.
+    * `read_api` is the minimum for read-only browsing.
+    * `api` is needed for actions such as approving, merging, commenting and editing.
 
 ### Configuration Methods
 
@@ -66,11 +62,11 @@ Choose the installation method that best fits your workflow:
     For persistent settings across sessions, create a configuration file at `~/.config/lazygitlab/config.toml` (Linux/macOS) or `%APPDATA%\lazygitlab\config.toml` (Windows):
 
     ```toml
-    gitlab_url = "https://gitlab.com"
+    [gitlab]
+    url = "https://gitlab.com"
     token = "glpat-xxxxxxxxxxxxxxxxxxxx"
-
-    # Optional: Set your preferred UI theme (e.g., catppuccin-mocha, nord, dracula)
-    # theme = "catppuccin-mocha"
+    # insecure = true
+    # project = "group/project"
     ```
 
 === "CLI Flags"
@@ -85,7 +81,7 @@ Choose the installation method that best fits your workflow:
         `--token <TOKEN>` is visible to other users in the process list. Prefer `GITLAB_TOKEN`, or pipe the token in with `--token -`.
 
 !!! tip "Self-Hosted Instances & Custom SSL Certificates"
-    If your self-hosted GitLab instance uses an internal CA, add that CA certificate to your system trust store; this is the safe option. As a temporary last resort, `--insecure` (or `insecure = true` in `config.toml`) skips certificate verification, which lets anyone on the network path read your token. lazygitlab prints a warning at every start and shows `TLS NOT VERIFIED` in the header while it is active:
+    If your self-hosted GitLab instance uses internal or self-signed SSL certificates, pass the `--insecure` flag or set `insecure = true` under `[gitlab]` in `config.toml`:
     ```bash
     GITLAB_TOKEN=... lazygitlab --url https://gitlab.internal.corp --insecure
     ```
@@ -107,16 +103,16 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
     `lazygitlab` automatically inspects your `.git/config` remote origin, matches the repository path on GitLab, and opens the project dashboard immediately.
 
-=== "2. Target Project (-p)"
+=== "2. Target Project (--project)"
 
     Open any repository directly by providing its path or numeric ID without switching directories:
 
     ```bash
     # Open by project path
-    lazygitlab -p my-organization/backend-api
+    lazygitlab --project my-organization/backend-api
 
     # Open by numeric project ID
-    lazygitlab -p 81221057
+    lazygitlab --project 81221057
     ```
 
 === "3. Personal Dashboard"
