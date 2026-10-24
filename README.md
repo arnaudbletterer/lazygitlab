@@ -60,8 +60,9 @@ The GitLab web UI is fine for occasional use, but daily review work means a lot 
 | `cargo install lazygitlab` | Planned, not yet on crates.io |
 | Release binaries on the GitHub Releases page | Planned |
 | Homebrew: `brew install arnaudbletterer/tap/lazygitlab` | Planned |
-| AUR: `lazygitlab-bin` | Planned |
-| Scoop (Windows) | Planned |
+| AUR: `lazygitlab-bin` (binary) and a source package | Planned |
+| Scoop (Windows): bucket `arnaudbletterer/scoop-bucket` | Planned |
+| `install.sh` script | Planned |
 
 To build from a checkout: `cargo build --release`, then run `target/release/lazygitlab`.
 
@@ -86,6 +87,8 @@ lazygitlab --url https://gitlab.example.com
 
 `--insecure` connects over plain HTTP instead of HTTPS. Self-signed TLS certificates are not supported yet. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
 
+Logs are written to `lazygitlab.log` in the current working directory.
+
 Settings are resolved in this order: command-line flags, environment variables (a `.env` file is honored), then the config file:
 
 ```toml
@@ -107,7 +110,7 @@ Flags: `--help`, `--version`, `--project <PATH|ID>`, `--url`, `--token`, `--conf
 | `j` / `k` | Move down / up |
 | `Tab` | Cycle panels |
 | `Enter` / `Esc` | Open / go back |
-| `g t` `g m` `g i` `g b` `g p` `g r` | Todos, MRs, issues, boards, pipelines, repository |
+| `g t` `g m` `g i` `g b` `g p` `g r` | Todos, MRs, issues, branches, pipelines, repository |
 | `p` | Switch project |
 | `/` | Filter the current list |
 | `f` | Global search |

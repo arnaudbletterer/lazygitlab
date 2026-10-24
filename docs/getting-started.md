@@ -59,7 +59,7 @@ Choose the installation method that best fits your workflow:
 
 === "Config File (config.toml)"
 
-    For persistent settings across sessions, create a configuration file at `~/.config/lazygitlab/config.toml` (Linux/macOS) or `%APPDATA%\lazygitlab\config.toml` (Windows):
+    For persistent settings across sessions, create a configuration file at `~/.config/lazygitlab/config.toml` (Linux/macOS) or `%USERPROFILE%\.config\lazygitlab\config.toml` (Windows):
 
     ```toml
     [gitlab]

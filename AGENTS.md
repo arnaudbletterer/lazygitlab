@@ -23,7 +23,7 @@ Ask: *would a user running the binary notice this change?*
 
 ## Documentation Maintenance Rules
 
-1. **Keep the three feature lists in sync.** The "Features" bullets in `README.md`, the "Current State" bullets in `ROADMAP.md`, and should refer to the same things. When you add a feature:
+1. **Keep the three feature lists in sync.** The "Features" bullets in `README.md`, the "Current State" bullets in `ROADMAP.md`, and the file pointers throughout should refer to the same things. When you add a feature:
    1. Add the `README.md` feature bullet (one line, user-facing wording, no source pointers).
    2. Add the `ROADMAP.md` "Current State" entry under the appropriate area.
    3. Remove the corresponding `ROADMAP.md` "What's Next" item.
