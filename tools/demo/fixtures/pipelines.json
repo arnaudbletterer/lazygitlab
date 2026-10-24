@@ -1,0 +1,40 @@
+{
+  "pipelines": [
+    {"id": 9006, "status": "running", "source": "push",                "ref": "main",                 "age": "4m",  "duration": null},
+    {"id": 9005, "status": "success", "source": "merge_request_event", "ref": "feat/retry-backoff",   "age": "5h",  "duration": 412},
+    {"id": 9004, "status": "failed",  "source": "merge_request_event", "ref": "fix/pagination",       "age": "1d",  "duration": 286},
+    {"id": 9003, "status": "running", "source": "merge_request_event", "ref": "refactor/serde-config", "age": "2d", "duration": null},
+    {"id": 9002, "status": "success", "source": "schedule",            "ref": "main",                 "age": "3d",  "duration": 530},
+    {"id": 9001, "status": "canceled", "source": "push",               "ref": "main",                 "age": "6d",  "duration": 61}
+  ],
+  "jobs": {
+    "default": [
+      {"id": 1, "name": "build",         "stage": "build",  "status": "success", "duration": 94.2},
+      {"id": 2, "name": "lint",          "stage": "test",   "status": "success", "duration": 41.7},
+      {"id": 3, "name": "unit-tests",    "stage": "test",   "status": "success", "duration": 128.4},
+      {"id": 4, "name": "integration",   "stage": "test",   "status": "success", "duration": 203.9},
+      {"id": 5, "name": "publish-docs",  "stage": "deploy", "status": "success", "duration": 38.0}
+    ],
+    "9006": [
+      {"id": 11, "name": "build",        "stage": "build",  "status": "success", "duration": 90.1},
+      {"id": 12, "name": "lint",         "stage": "test",   "status": "running", "duration": null},
+      {"id": 13, "name": "unit-tests",   "stage": "test",   "status": "running", "duration": null},
+      {"id": 14, "name": "integration",  "stage": "test",   "status": "pending", "duration": null},
+      {"id": 15, "name": "publish-docs", "stage": "deploy", "status": "created", "duration": null}
+    ],
+    "9004": [
+      {"id": 21, "name": "build",        "stage": "build",  "status": "success", "duration": 88.6},
+      {"id": 22, "name": "lint",         "stage": "test",   "status": "success", "duration": 40.3},
+      {"id": 23, "name": "unit-tests",   "stage": "test",   "status": "failed",  "duration": 61.5},
+      {"id": 24, "name": "integration",  "stage": "test",   "status": "success", "duration": 120.2},
+      {"id": 25, "name": "publish-docs", "stage": "deploy", "status": "skipped", "duration": null}
+    ],
+    "9003": [
+      {"id": 31, "name": "build",        "stage": "build",  "status": "success", "duration": 92.0},
+      {"id": 32, "name": "lint",         "stage": "test",   "status": "success", "duration": 39.0},
+      {"id": 33, "name": "unit-tests",   "stage": "test",   "status": "running", "duration": null},
+      {"id": 34, "name": "integration",  "stage": "test",   "status": "pending", "duration": null},
+      {"id": 35, "name": "publish-docs", "stage": "deploy", "status": "created", "duration": null}
+    ]
+  }
+}

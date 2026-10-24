@@ -1,0 +1,40 @@
+Running with gitlab-runner 17.4.0 (demo)
+  on shared-runner-01 demo-token, system ID: r_demo
+section_start:1700000000:get_sources
+[0KFetching changes with git depth set to 20...
+Checking out 3f9c2ab1 as detached HEAD (ref is fix/pagination)...
+section_end:1700000004:get_sources
+section_start:1700000005:step_script
+[0K[0K[36;1m$ cargo test --lib[0;m
+   Compiling widgets v1.3.0 (/builds/acme/widgets)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.42s
+     Running unittests src/lib.rs (target/debug/deps/widgets-5c1e0f7a)
+
+running 8 tests
+test client::tests::builds_urls ... [32mok[0m
+test config::tests::loads_defaults ... [32mok[0m
+test paging::tests::first_page ... [32mok[0m
+test paging::tests::middle_page ... [32mok[0m
+test paging::tests::exact_multiple_has_no_extra_page ... [31mFAILED[0m
+test paging::tests::empty_listing ... [32mok[0m
+test pool::tests::reuses_connections ... [32mok[0m
+test widget::tests::parse_full ... [32mok[0m
+
+failures:
+
+---- paging::tests::exact_multiple_has_no_extra_page stdout ----
+thread 'paging::tests::exact_multiple_has_no_extra_page' panicked at src/paging.rs:57:9:
+assertion `left == right` failed: expected 2 requests for 100 items
+  left: 3
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    paging::tests::exact_multiple_has_no_extra_page
+
+test result: [31mFAILED[0m. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+error: test failed, to rerun pass `--lib`
+section_end:1700000070:step_script
+[0K[31;1mERROR: Job failed: exit code 101
+[0;m

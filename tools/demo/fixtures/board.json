@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "name": "Development",
+  "lists": [
+    {"id": 101, "label": "To Do",       "position": 0},
+    {"id": 102, "label": "In Progress", "position": 1},
+    {"id": 103, "label": "In Review",   "position": 2}
+  ],
+  "backlog_list_id": 100,
+  "closed_list_id": 104
+}

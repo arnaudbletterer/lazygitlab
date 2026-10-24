@@ -1,0 +1,26 @@
+{
+  "128": [
+    {"id": "d1", "resolved": false, "notes": [
+      {"author": "grace", "age": "4h", "path": "src/client.rs", "new_line": 25,
+       "body": "Should we retry connection errors too? A reset socket returns early at the `?` and never reaches this check."},
+      {"author": "ada", "age": "3h", "path": "src/client.rs", "new_line": 25,
+       "body": "Good catch. I would rather keep this MR small and handle transport errors in a follow-up."}
+    ]},
+    {"id": "d2", "resolved": false, "notes": [
+      {"author": "alan", "age": "4h", "path": "src/retry.rs", "new_line": 27,
+       "body": "This should honour `Retry-After` when the server sends it."}
+    ]},
+    {"id": "d3", "resolved": true, "notes": [
+      {"author": "grace", "age": "4h", "path": "src/retry.rs", "new_line": 22,
+       "body": "Nit: a named constant for the `16` would explain the clamp."},
+      {"author": "ada", "age": "3h", "path": "src/retry.rs", "new_line": 22,
+       "body": "Added `MAX_SHIFT`."}
+    ]},
+    {"id": "d4", "individual_note": true, "notes": [
+      {"author": "ada", "age": "5h", "body": "Benchmarks are flat on the happy path, retries only add latency when the server is unhealthy."}
+    ]},
+    {"id": "d5", "individual_note": true, "notes": [
+      {"author": "grace", "age": "2h", "system": true, "body": "approved this merge request"}
+    ]}
+  ]
+}

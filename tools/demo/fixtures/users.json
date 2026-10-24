@@ -1,0 +1,7 @@
+{
+  "ada":      {"id": 1, "username": "ada",      "name": "Ada Example"},
+  "grace":    {"id": 2, "username": "grace",    "name": "Grace Example"},
+  "alan":     {"id": 3, "username": "alan",     "name": "Alan Example"},
+  "margaret": {"id": 4, "username": "margaret", "name": "Margaret Example"},
+  "edsger":   {"id": 5, "username": "edsger",   "name": "Edsger Example"}
+}

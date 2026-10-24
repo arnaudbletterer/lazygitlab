@@ -1,0 +1,10 @@
+{
+  "groups": [
+    {"id": 7, "name": "Acme", "path": "acme", "full_path": "acme"}
+  ],
+  "projects": [
+    {"id": 42, "name": "widgets", "path": "acme/widgets", "default_branch": "main", "age": "2h"},
+    {"id": 43, "name": "gadgets", "path": "acme/gadgets", "default_branch": "main", "age": "1d"},
+    {"id": 44, "name": "docs",    "path": "acme/docs",    "default_branch": "main", "age": "3d"}
+  ]
+}

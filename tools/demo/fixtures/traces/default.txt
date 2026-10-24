@@ -1,0 +1,8 @@
+Running with gitlab-runner 17.4.0 (demo)
+  on shared-runner-01 demo-token, system ID: r_demo
+section_start:1700000000:step_script
+[0K[36;1m$ cargo build --release[0;m
+   Compiling widgets v1.3.0 (/builds/acme/widgets)
+    Finished `release` profile [optimized] target(s) in 51.07s
+section_end:1700000052:step_script
+[32;1mJob succeeded[0;m

@@ -1,0 +1,13 @@
+@@ -18,6 +18,12 @@ let client = Client::new("https://api.example.com");
+ let reply = client.get("widgets/7").await?;
+ ```
+
++## Retries
++
++Idempotent requests are retried on `429` and `5xx` responses with exponential
++backoff, starting at 200 ms and capped at 5 s. The default policy makes up to
++four attempts; build a `RetryPolicy` to tune it.
++
+ ## License
+
+ MIT

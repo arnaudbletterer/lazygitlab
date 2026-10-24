@@ -1,0 +1,51 @@
+[
+  {
+    "iid": 128, "title": "Add retry with exponential backoff to HTTP client",
+    "author": "ada", "reviewers": ["grace", "alan"], "assignees": ["ada"],
+    "labels": ["feature"], "milestone": "v1.4", "state": "opened", "age": "5h",
+    "source_branch": "feat/retry-backoff", "target_branch": "main",
+    "pipeline": {"id": 9005, "status": "success"}, "upvotes": 2,
+    "approved_by": ["grace"],
+    "description": "Transient `429` and `5xx` responses used to surface as hard errors.\n\n## What changed\n\n- New `RetryPolicy` with capped exponential backoff (200 ms base, 5 s cap)\n- `Client::get` retries through the policy\n- Unit tests for the delay curve and the retryable status set\n\n## Notes\n\n- [x] Unit tests\n- [x] README section\n- [ ] Honour `Retry-After` (follow-up)\n\nCloses #38."
+  },
+  {
+    "iid": 127, "title": "Fix pagination off-by-one in widget listing",
+    "author": "grace", "reviewers": ["ada"], "assignees": ["grace"],
+    "labels": ["bug"], "state": "opened", "age": "1d",
+    "source_branch": "fix/pagination", "target_branch": "main",
+    "pipeline": {"id": 9004, "status": "failed"}, "upvotes": 0,
+    "description": "The last page was requested twice when the total was an exact multiple of `per_page`.\n\nFixes #41."
+  },
+  {
+    "iid": 126, "title": "Draft: migrate config loader to serde", "draft": true,
+    "author": "alan", "reviewers": [], "assignees": ["alan"],
+    "labels": ["refactor"], "state": "opened", "age": "2d",
+    "source_branch": "refactor/serde-config", "target_branch": "main",
+    "pipeline": {"id": 9003, "status": "running"}, "upvotes": 0,
+    "description": "Work in progress."
+  },
+  {
+    "iid": 125, "title": "Document the release process",
+    "author": "edsger", "reviewers": ["margaret"], "assignees": ["edsger"],
+    "labels": ["docs"], "state": "opened", "age": "3d",
+    "source_branch": "docs/release", "target_branch": "main",
+    "pipeline": {"id": 9002, "status": "success"}, "upvotes": 1,
+    "description": "Adds `RELEASING.md`."
+  },
+  {
+    "iid": 124, "title": "Cache widget metadata between requests",
+    "author": "margaret", "reviewers": ["ada"], "assignees": ["margaret"],
+    "labels": ["performance"], "state": "opened", "age": "4d",
+    "source_branch": "perf/metadata-cache", "target_branch": "main",
+    "pipeline": {"id": 9002, "status": "success"}, "upvotes": 3,
+    "description": "Keeps parsed metadata in a small LRU."
+  },
+  {
+    "iid": 123, "title": "Bump tokio to 1.40",
+    "author": "margaret", "reviewers": ["grace"], "assignees": ["margaret"],
+    "labels": [], "state": "merged", "age": "6d",
+    "source_branch": "chore/tokio-1.40", "target_branch": "main",
+    "pipeline": {"id": 9001, "status": "success"}, "upvotes": 1,
+    "description": "Routine dependency bump."
+  }
+]

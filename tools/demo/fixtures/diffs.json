@@ -1,0 +1,8 @@
+{
+  "128": [
+    {"old_path": "src/client.rs", "new_path": "src/client.rs", "file": "client.rs.diff"},
+    {"old_path": "src/retry.rs", "new_path": "src/retry.rs", "file": "retry.rs.diff", "new_file": true},
+    {"old_path": "tests/backoff.rs", "new_path": "tests/backoff.rs", "file": "retry_test.rs.diff", "new_file": true},
+    {"old_path": "README.md", "new_path": "README.md", "file": "README.md.diff"}
+  ]
+}

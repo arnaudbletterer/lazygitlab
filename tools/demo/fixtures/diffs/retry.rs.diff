@@ -1,0 +1,30 @@
+@@ -0,0 +1,29 @@
++use std::time::Duration;
++
++#[derive(Debug, Clone, Copy)]
++pub struct RetryPolicy {
++    pub max_attempts: u32,
++    pub base_delay: Duration,
++    pub max_delay: Duration,
++}
++
++impl Default for RetryPolicy {
++    fn default() -> Self {
++        Self {
++            max_attempts: 4,
++            base_delay: Duration::from_millis(200),
++            max_delay: Duration::from_secs(5),
++        }
++    }
++}
++
++impl RetryPolicy {
++    pub fn delay_for(&self, attempt: u32) -> Duration {
++        let factor = 1u32 << attempt.min(16);
++        (self.base_delay * factor).min(self.max_delay)
++    }
++
++    pub fn should_retry(&self, attempt: u32, status: u16) -> bool {
++        attempt < self.max_attempts && matches!(status, 429 | 500..=599)
++    }
++}

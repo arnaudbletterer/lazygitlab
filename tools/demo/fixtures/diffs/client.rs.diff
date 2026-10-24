@@ -1,0 +1,36 @@
+@@ -1,21 +1,32 @@
+ use crate::error::Error;
++use crate::retry::RetryPolicy;
+ use reqwest::Response;
+
+ pub struct Client {
+     http: reqwest::Client,
+     base_url: String,
++    retry: RetryPolicy,
+ }
+
+ impl Client {
+     pub fn new(base_url: impl Into<String>) -> Self {
+         Self {
+             http: reqwest::Client::new(),
+             base_url: base_url.into(),
++            retry: RetryPolicy::default(),
+         }
+     }
+
+-    pub async fn get(&self, path: &str) -> Result<Response, Error> {
+-        let url = format!("{}/{}", self.base_url, path);
+-        self.http.get(url).send().await.map_err(Error::from)
++    pub async fn get(&self, path: &str) -> Result<Response, Error> {
++        let url = format!("{}/{}", self.base_url, path);
++        let mut attempt = 0;
++        loop {
++            let resp = self.http.get(&url).send().await.map_err(Error::from)?;
++            if !self.retry.should_retry(attempt, resp.status().as_u16()) {
++                return Ok(resp);
++            }
++            tokio::time::sleep(self.retry.delay_for(attempt)).await;
++            attempt += 1;
++        }
+     }
+ }

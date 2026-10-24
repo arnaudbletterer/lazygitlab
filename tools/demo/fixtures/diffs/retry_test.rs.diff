@@ -1,0 +1,24 @@
+@@ -0,0 +1,23 @@
++use std::time::Duration;
++use widgets::retry::RetryPolicy;
++
++#[test]
++fn delay_doubles_until_the_cap() {
++    let policy = RetryPolicy::default();
++    assert_eq!(policy.delay_for(0), Duration::from_millis(200));
++    assert_eq!(policy.delay_for(1), Duration::from_millis(400));
++    assert_eq!(policy.delay_for(10), Duration::from_secs(5));
++}
++
++#[test]
++fn retries_only_transient_statuses() {
++    let policy = RetryPolicy::default();
++    assert!(policy.should_retry(0, 503));
++    assert!(policy.should_retry(1, 429));
++    assert!(!policy.should_retry(0, 404));
++}
++
++#[test]
++fn gives_up_after_max_attempts() {
++    assert!(!RetryPolicy::default().should_retry(4, 503));
++}

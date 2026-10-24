@@ -1,0 +1,12 @@
+[
+  {"id": 501, "action_name": "review_requested", "target_type": "MergeRequest", "target": "mr:127", "age": "1d",
+   "body": "Fix pagination off-by-one in widget listing"},
+  {"id": 502, "action_name": "mentioned", "target_type": "Issue", "target": "issue:41", "age": "2d",
+   "body": "@ada can you confirm this also affects the CSV export?"},
+  {"id": 503, "action_name": "assigned", "target_type": "Issue", "target": "issue:40", "age": "3d",
+   "body": "Support per-request timeouts"},
+  {"id": 504, "action_name": "build_failed", "target_type": "MergeRequest", "target": "mr:127", "age": "1d",
+   "body": "Fix pagination off-by-one in widget listing"},
+  {"id": 505, "action_name": "directly_addressed", "target_type": "MergeRequest", "target": "mr:128", "age": "3h",
+   "body": "@ada should we also retry on connection errors?"}
+]
