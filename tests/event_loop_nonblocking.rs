@@ -126,3 +126,51 @@ async fn opening_job_log_does_not_block_ui_task() {
     }
     assert!(app.job_log.contains("hello log"));
 }
+
+fn pipeline(id: u64) -> Pipeline {
+    serde_json::from_value(serde_json::json!({
+        "id": id, "project_id": 1, "status": "success", "source": "push",
+        "ref": "main", "web_url": "http://x", "created_at": "2026-01-01T00:00:00Z"
+    }))
+    .unwrap()
+}
+
+fn job() -> Job {
+    serde_json::from_value(serde_json::json!({
+        "id": 7, "name": "build", "stage": "test", "status": "success",
+        "created_at": "2026-01-01T00:00:00Z", "allow_failure": false,
+        "web_url": "http://x", "tag_list": []
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn pending_job_open_only_fires_for_its_own_pipeline() {
+    let (_server, mut app, _rx) = setup().await;
+    app.active_selection = MenuSelection::Pipelines;
+    app.view_mode = ViewMode::List;
+    app.selected_pipeline = Some(pipeline(6));
+    app.open_job_when_loaded = Some((1, 5));
+
+    // Jobs for a different pipeline must not open a log.
+    app.process_update_single(DataUpdate::Jobs {
+        project_id: 1,
+        pipeline_id: 6,
+        data: vec![job()],
+    })
+    .await;
+    assert_eq!(app.view_mode, ViewMode::List);
+    assert_eq!(app.open_job_when_loaded, None);
+
+    // go_back cancels a pending open.
+    app.selected_pipeline = Some(pipeline(5));
+    app.open_job_when_loaded = Some((1, 5));
+    app.go_back().await;
+    app.process_update_single(DataUpdate::Jobs {
+        project_id: 1,
+        pipeline_id: 5,
+        data: vec![job()],
+    })
+    .await;
+    assert_eq!(app.view_mode, ViewMode::List);
+}

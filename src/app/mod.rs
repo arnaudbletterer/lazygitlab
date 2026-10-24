@@ -189,7 +189,7 @@ impl App {
             todos_has_more: true,
             todos_etag: None,
             todos_poll_in_flight: false,
-            open_job_when_loaded: false,
+            open_job_when_loaded: None,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
             filtered_pipelines: Vec::new(),
@@ -782,8 +782,10 @@ impl App {
                     {
                         self.selected_job = Some(updated_job.clone());
                     }
-                    if self.open_job_when_loaded {
-                        self.open_job_when_loaded = false;
+                    if self.open_job_when_loaded.take() == Some((project_id, pipeline_id))
+                        && self.view_mode == ViewMode::List
+                        && self.active_selection == MenuSelection::Pipelines
+                    {
                         if !self.jobs.is_empty() {
                             self.jobs_state.select(Some(0));
                         }
@@ -984,7 +986,7 @@ impl App {
                     self.is_fetching_diffs = false;
                 }
                 if e.contains("Jobs fetch") {
-                    self.open_job_when_loaded = false;
+                    self.open_job_when_loaded = None;
                 }
                 self.last_error = Some(e);
                 self.last_error_since = Some(std::time::Instant::now());

@@ -686,7 +686,7 @@ impl App {
                         && let Some(pipeline) = &self.selected_pipeline.clone()
                     {
                         self.status_message = Some("Loading pipeline jobs...".into());
-                        self.open_job_when_loaded = true;
+                        self.open_job_when_loaded = Some((pipeline.project_id, pipeline.id));
                         let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
                     } else {
                         self.open_selected_job().await;
@@ -727,6 +727,7 @@ impl App {
     }
 
     pub async fn go_back(&mut self) {
+        self.open_job_when_loaded = None;
         match self.active_panel {
             Panel::MainDetail => {
                 self.active_panel = Panel::Main;

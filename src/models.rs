@@ -1175,7 +1175,7 @@ pub struct App {
     pub todos_has_more: bool,
     pub todos_etag: Option<String>,
     pub todos_poll_in_flight: bool,
-    pub open_job_when_loaded: bool,
+    pub open_job_when_loaded: Option<(u64, u64)>,
     pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
     pub filtered_issues: Vec<GroupedItem<Issue>>,
     pub filtered_pipelines: Vec<Pipeline>,
