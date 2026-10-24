@@ -54,7 +54,7 @@ cargo install --git https://github.com/arnaudbletterer/lazygitlab
 export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
 export GITLAB_URL="https://gitlab.com"
 
-# 3. Launch (auto-connects to the current git repository)
+# 3. Launch
 lazygitlab
 ```
 

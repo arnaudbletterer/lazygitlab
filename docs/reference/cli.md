@@ -14,12 +14,12 @@ Precedence: flags > environment > config file > defaults.
 | `-V, --version` | Print the version and exit |
 | `--project <PATH\|ID>` | Open this project at startup, by numeric ID or full path (`group/project`) |
 | `--url <URL>` | GitLab instance URL (default: gitlab.com) |
-| `--token <TOKEN>` | Personal access token |
+| `--token <TOKEN>` | Personal access token. Visible in the process list; prefer `--token -`, which reads the token from the first line of stdin, or the `GITLAB_TOKEN` variable |
 | `--config <PATH>` | Config file (default: `~/.config/lazygitlab/config.toml`) |
-| `--insecure` | Connect over plain HTTP instead of HTTPS. Self-signed TLS certificates are not supported yet |
+| `--insecure` | Skip TLS certificate verification over `https://`. Prints a warning at every start and shows `TLS NOT VERIFIED` in the header. For plain HTTP, use an `http://` URL instead. Prefer adding your CA to the system trust store |
 | `--headless` | Render off-screen, with `--width`, `--height`, `--script` and `--frames-dir` (see CONTRIBUTING.md) |
 
-Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` file), then the config file, then defaults.
+Environment variables are `GITLAB_URL` and `GITLAB_TOKEN`. `.env` files are not read.
 
 ---
 
@@ -30,9 +30,19 @@ Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` 
 lazygitlab --project my-org/backend-service
 ```
 
-### Connect to a self-hosted instance over plain HTTP:
+### Self-hosted instance with a self-signed certificate:
 ```bash
-lazygitlab --url http://gitlab.internal.corp --token $CORP_GITLAB_TOKEN --insecure
+lazygitlab --url https://gitlab.internal.corp --insecure
+```
+
+### Plain HTTP instance:
+```bash
+lazygitlab --url http://gitlab.internal.corp
+```
+
+### Pass the token on stdin:
+```bash
+pass show gitlab/token | lazygitlab --token -
 ```
 
 ### GitLab served under a path prefix:

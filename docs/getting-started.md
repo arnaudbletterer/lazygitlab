@@ -50,7 +50,7 @@ Choose the installation method that best fits your workflow:
 
 === "Environment Variables"
 
-    The quickest way to configure credentials is by exporting environment variables in your shell profile (`~/.bashrc`, `~/.zshrc`, or `.env`):
+    The quickest way to configure credentials is by exporting environment variables in your shell profile (`~/.bashrc` or `~/.zshrc`). `.env` files are not read:
 
     ```bash
     export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
@@ -77,13 +77,13 @@ Choose the installation method that best fits your workflow:
     lazygitlab --url "https://gitlab.example.com" --token "glpat-xxxxxx"
     ```
 
-!!! tip "Self-Hosted Instances over Plain HTTP"
-    If your self-hosted GitLab instance is served over plain HTTP, pass the `--insecure` flag or set `insecure = true` under `[gitlab]` in `config.toml`:
+!!! tip "Self-Hosted Instances and Self-Signed Certificates"
+    Prefer adding your CA to the system trust store. If that is not possible, pass `--insecure` or set `insecure = true` under `[gitlab]` in `config.toml`. This skips TLS certificate verification, prints a warning at every start and shows `TLS NOT VERIFIED` in the header:
     ```bash
-    lazygitlab --url http://gitlab.internal.corp --token $TOKEN --insecure
+    lazygitlab --url https://gitlab.internal.corp --insecure
     ```
 
-    Self-signed TLS certificates are not supported yet.
+    For a plain HTTP instance, use an `http://` URL; no flag is needed.
 
 ---
 
@@ -93,14 +93,14 @@ Follow this 4-step onboarding flow to start using `lazygitlab` immediately:
 
 === "1. Local Git Repo"
 
-    Navigate to any local Git repository cloned from your GitLab instance:
+    Run it inside a local Git repository:
 
     ```bash
     cd ~/Projects/backend-api
     lazygitlab
     ```
 
-    `lazygitlab` automatically inspects your `.git/config` remote origin, matches the repository path on GitLab, and opens the project dashboard immediately.
+    `lazygitlab` shows the current local branch and a dirty marker. It does not detect the project from the remote; pick it with `p` or pass `--project`.
 
 === "2. Target Project (--project)"
 

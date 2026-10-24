@@ -1,6 +1,6 @@
 # Theming
 
-`lazygitlab` supports fully customizable color schemes. You can choose from built-in classical presets or create a custom palette in `theme.toml`.
+`lazygitlab` supports fully customizable color schemes. You can choose from built-in classical presets or create a custom palette in `theme.toml` in your config directory (`~/.config/lazygitlab/`). It is not read from the working directory.
 
 ---
 
