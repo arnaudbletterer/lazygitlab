@@ -9,7 +9,7 @@ A fast, keyboard-driven terminal UI for [GitLab](https://about.gitlab.com/). Tri
 `lazygitlab` talks to any GitLab instance via the REST API and renders everything with [ratatui](https://ratatui.rs). It is designed to be a daily-driver replacement for the web UI's most common workflows.
 
 ## Features
-- **Intelligent Git Integration:** Auto-detects local git repository to automatically select the matching GitLab project (src/main.rs:100).
+- **Local Git Status:** Shows the current local branch and a dirty marker when run inside a git repository (src/app/mod.rs:4019).
 - **Smart Project Selection:** Automatically selects the project if it is the only one available (src/app/mod.rs:350).
 - **CLI Arguments:** `--help`, `--version`, `--project`, `--url`, `--token`, `--config` and `--insecure` (src/cli.rs:81).
 - **Config file:** `[gitlab]` table in `~/.config/lazygitlab/config.toml`; precedence is CLI, then environment / `.env`, then file (src/config.rs:90).
@@ -84,11 +84,11 @@ cp .env.example .env
 #   GITLAB_TOKEN=<your personal access token>
 ```
 
-The token needs the `api` and `read_user` scopes at minimum.
+The token needs the `read_api` scope to browse, and `api` to perform actions (merge, comment, edit). Prefer `GITLAB_TOKEN` over `--token`, which is visible in the process list; `--token -` reads it from stdin.
 
-Optional theming: copy `theme.toml.example` to `theme.toml` next to the binary and edit colors. See the example file for available keys.
+Optional theming: copy `theme.toml.example` to `theme.toml` in the working directory (or `~/.config/lazygitlab/`) and edit colors. See the example file for available keys.
 
-Logs are written to `lazygitlab.log` in the working directory (see `.gitignore`).
+Logs are written to `lazygitlab.log` in the working directory (mode `0600` on Unix, tokens redacted; see `.gitignore`).
 
 ## Quickstart
 
