@@ -680,29 +680,16 @@ impl App {
                     };
                     let _ = self.fetch_mr_diffs(pid, iid).await;
                 } else if self.active_selection == MenuSelection::Pipelines {
-                    // If the user pressed Enter on a pipeline before its jobs finished
-                    // loading, the jobs panel is still empty. Await the fetch synchronously
-                    // so this same Enter opens the job log.
+                    // If the user pressed Enter before the jobs finished loading, fetch
+                    // them in the background and open the first job once they arrive.
                     if self.jobs.is_empty()
                         && let Some(pipeline) = &self.selected_pipeline.clone()
                     {
                         self.status_message = Some("Loading pipeline jobs...".into());
-                        let _ = self.update_preview().await;
-                        let _ = self.fetch_jobs_sync(pipeline.project_id, pipeline.id).await;
-                    }
-                    if let Some(j) = self
-                        .jobs_state
-                        .selected()
-                        .and_then(|i| self.jobs.get(i))
-                        .cloned()
-                    {
-                        self.selected_job = Some(j.clone());
-                        self.view_mode = ViewMode::JobLog;
-                        self.job_log_scroll = 0;
-                        let project_id = self.selected_project.as_ref().unwrap().id;
-                        let _ = self.fetch_job_log_sync(project_id, j.id).await;
-                    } else if self.jobs.is_empty() {
-                        self.status_message = Some("No jobs in this pipeline.".into());
+                        self.open_job_when_loaded = true;
+                        let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                    } else {
+                        self.open_selected_job().await;
                     }
                 } else {
                     self.enter_detail_action().await;
@@ -710,6 +697,33 @@ impl App {
             }
         }
         let _ = self.update_preview().await;
+    }
+
+    /// Opens the log of the selected job. The log is fetched on a spawned task
+    /// and delivered through `DataUpdate::Log`.
+    pub async fn open_selected_job(&mut self) {
+        let Some(job) = self
+            .jobs_state
+            .selected()
+            .and_then(|i| self.jobs.get(i))
+            .cloned()
+        else {
+            if self.jobs.is_empty() {
+                self.status_message = Some("No jobs in this pipeline.".into());
+            }
+            return;
+        };
+        self.selected_job = Some(job.clone());
+        self.view_mode = ViewMode::JobLog;
+        self.job_log_scroll = 0;
+        self.job_log.clear();
+        self.parse_job_log();
+        self.job_log_cursor = 0;
+        self.job_log_selection_start = None;
+        self.follow_log = matches!(job.status.as_str(), "running" | "pending");
+        if let Some(project_id) = self.selected_project.as_ref().map(|p| p.id) {
+            let _ = self.fetch_job_log(project_id, job.id).await;
+        }
     }
 
     pub async fn go_back(&mut self) {

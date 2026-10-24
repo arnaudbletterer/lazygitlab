@@ -189,6 +189,7 @@ impl App {
             todos_has_more: true,
             todos_etag: None,
             todos_poll_in_flight: false,
+            open_job_when_loaded: false,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
             filtered_pipelines: Vec::new(),
@@ -781,6 +782,13 @@ impl App {
                     {
                         self.selected_job = Some(updated_job.clone());
                     }
+                    if self.open_job_when_loaded {
+                        self.open_job_when_loaded = false;
+                        if !self.jobs.is_empty() {
+                            self.jobs_state.select(Some(0));
+                        }
+                        self.open_selected_job().await;
+                    }
                 }
             }
             DataUpdate::ProjectVariables { project_id, data } => {
@@ -974,6 +982,12 @@ impl App {
                 let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));
                 if e.contains("Diffs") {
                     self.is_fetching_diffs = false;
+                }
+                if e.contains("Jobs fetch") {
+                    self.open_job_when_loaded = false;
+                }
+                if e.contains("Jobs fetch") {
+                    self.open_job_when_loaded = false;
                 }
                 self.last_error = Some(e);
                 self.last_error_since = Some(std::time::Instant::now());

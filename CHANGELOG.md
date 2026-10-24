@@ -32,6 +32,7 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 ### Added
 - **Token from stdin:** `--token -` reads the token from the first line of stdin. `--help`, the README and the CLI reference now warn that `--token <TOKEN>` is visible in the process list (`src/cli.rs`).
 - **Package metadata:** description, license, keywords and an exclude list so local data files are not published (`Cargo.toml`).
+- **Non-blocking UI**: The Todos background poll and opening a job log now run on spawned tasks and report through `DataUpdate`, so key input no longer freezes on slow networks; only one todos poll is in flight at a time (`src/app/global.rs`, `src/app/menus.rs`, `src/app/mod.rs`).
 
 - **In-App Home Launchpad & Quick Access**: Added `MenuSelection::Home` as the default launchpad on startup with live project/branch context and 8 interactive shortcut cards (MRs, To-Dos, Issues, Boards, CI/CD, Repository, Switch Project, Help/Command Palette) navigable via `h`/`j`/`k`/`l`/arrows or direct hotkeys, plus global `g h` shortcut (`src/models.rs`, `src/app/mod.rs`, `src/ui/list.rs`, `src/app/keymap.rs`).
 - **Brand Identity & TUI Geometric Logo**: Redesigned logo as an independent geometric vector mark combining terminal velocity (`>`) in Electric Sky Blue and Git branch node (`ᚴ`) in Git Emerald Green without third-party mascots or window decorations (`docs/assets/logo.svg`, `docs/assets/logo.png`, `favicon.png`, `favicon.ico`).
