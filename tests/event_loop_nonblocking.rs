@@ -7,7 +7,7 @@ use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const DELAY: Duration = Duration::from_secs(2);
-const BOUND: Duration = Duration::from_millis(100);
+const BOUND: Duration = Duration::from_millis(50);
 
 async fn setup() -> (MockServer, App, mpsc::UnboundedReceiver<DataUpdate>) {
     let server = MockServer::start().await;
@@ -54,6 +54,7 @@ async fn todos_poll_does_not_block_ui_task() {
 
     let t = Instant::now();
     app.refresh_background().await;
+    println!("refresh_background: {:?}", t.elapsed());
     assert!(
         t.elapsed() < BOUND,
         "refresh_background took {:?}",
@@ -65,6 +66,7 @@ async fn todos_poll_does_not_block_ui_task() {
         crossterm::event::KeyCode::Char('j'),
     ))
     .await;
+    println!("key handling: {:?}", t.elapsed());
     assert!(t.elapsed() < BOUND, "key handling took {:?}", t.elapsed());
 
     // A second refresh while the poll is pending must not start another request.
@@ -116,6 +118,7 @@ async fn opening_job_log_does_not_block_ui_task() {
 
     let t = Instant::now();
     app.open_selected_job().await;
+    println!("job open: {:?}", t.elapsed());
     assert!(t.elapsed() < BOUND, "open took {:?}", t.elapsed());
     assert_eq!(app.view_mode, ViewMode::JobLog);
 
