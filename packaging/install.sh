@@ -52,7 +52,12 @@ detect_target() {
   os="$(uname -s)"
   arch="$(uname -m)"
   case "$os-$arch" in
-    Linux-x86_64) echo "x86_64-unknown-linux-gnu" ;;
+    Linux-x86_64)
+      if ls /lib/ld-musl-* /usr/lib/ld-musl-* >/dev/null 2>&1; then
+        die "musl libc detected (Alpine); no prebuilt binary, use: cargo install lazygitlab"
+      fi
+      echo "x86_64-unknown-linux-gnu"
+      ;;
     Darwin-arm64 | Darwin-aarch64) echo "aarch64-apple-darwin" ;;
     Darwin-x86_64) echo "x86_64-apple-darwin" ;;
     *) die "unsupported platform ${os}/${arch} (Windows: use scoop; others: cargo install lazygitlab)" ;;
