@@ -30,7 +30,6 @@ impl ScriptedEventSource {
     }
 }
 
-#[async_trait::async_trait]
 impl EventSource for ScriptedEventSource {
     async fn next_event(&self, _timeout: Duration) -> std::io::Result<Option<Event>> {
         let mut events = self.events.lock().unwrap();

@@ -166,7 +166,6 @@ pub use lazygitlab::EventSource;
 
 pub struct RealEventSource;
 
-#[async_trait::async_trait]
 #[cfg(not(tarpaulin_include))]
 impl EventSource for RealEventSource {
     async fn next_event(&self, timeout: Duration) -> io::Result<Option<Event>> {
@@ -242,7 +241,6 @@ mod tests {
         events: Mutex<Vec<Event>>,
     }
 
-    #[async_trait::async_trait]
     impl EventSource for MockEventSource {
         async fn next_event(&self, _timeout: Duration) -> io::Result<Option<Event>> {
             let mut events = self.events.lock().unwrap();
