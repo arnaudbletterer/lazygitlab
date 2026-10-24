@@ -3,7 +3,6 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, enable_raw_mode},
 };
-use gitlab::GitlabBuilder;
 use lazygitlab::headless::HeadlessOptions;
 use lazygitlab::*;
 use ratatui::prelude::*;
@@ -131,16 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if transport == config::Transport::HttpsSkipVerify {
         eprintln!("{}", config::SKIP_VERIFY_WARNING);
     }
-    let mut builder = GitlabBuilder::new(settings.url, token);
-    match transport {
-        config::Transport::Https => {}
-        config::Transport::PlainHttp => {
-            builder.insecure();
-        }
-        config::Transport::HttpsSkipVerify => {
-            builder.cert_insecure();
-        }
-    }
+    let builder = client::builder(settings.url.clone(), token, transport);
     let client = match builder.build_async().await {
         Ok(client) => client,
         Err(e) => fail(
@@ -268,6 +258,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gitlab::GitlabBuilder;
     use ratatui::backend::TestBackend;
     use std::sync::Mutex;
     use wiremock::matchers::path;

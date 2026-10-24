@@ -22,6 +22,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - **Text sanitizing:** Markdown is sanitized after parsing so entity-encoded escapes cannot re-form, and bidi overrides and zero-width characters are removed from everything drawn (`src/sanitize.rs`).
 - **Error text:** every error is redacted and stripped of escape sequences before it reaches stderr or the status bar, and `--token -` hides input when stdin is a terminal.
 
+- **Token header:** the token is now sent as `Authorization: Bearer`, which reqwest strips on cross-host redirects, instead of the `PRIVATE-TOKEN` header, which it forwards (`src/client.rs`).
+
 ### Added
 - **Token from stdin:** `--token -` reads the token from the first line of stdin. `--help`, the README and the CLI reference now warn that `--token <TOKEN>` is visible in the process list (`src/cli.rs`).
 - **Package metadata:** description, license, keywords and an exclude list so local data files are not published (`Cargo.toml`).
