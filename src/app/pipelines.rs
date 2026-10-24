@@ -1,6 +1,22 @@
 use crate::api::*;
 use crate::models::*;
 use gitlab::api::{AsyncQuery, paged, raw};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::Semaphore;
+
+/// Upper bound on simultaneous per-project requests for the cross-project
+/// Pipelines tab.
+const CROSS_PIPELINES_MAX_IN_FLIGHT: usize = 8;
+
+/// Clears the in-flight flag when the refresh task ends, even on panic.
+struct InFlightGuard(Arc<AtomicBool>);
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
 
 impl App {
     pub async fn fetch_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -189,19 +205,32 @@ impl App {
     }
 
     pub async fn fetch_cross_pipelines(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let project_ids: Vec<u64> = self.member_project_ids.iter().copied().collect();
+        let mut project_ids: Vec<u64> = self.member_project_ids.iter().copied().collect();
+        project_ids.sort_unstable();
         if project_ids.is_empty() {
             return Ok(());
         }
+        // Never overlap refreshes: the adaptive runner can tick faster than a
+        // slow fan-out completes.
+        if self.cross_pipelines_in_flight.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        let guard = InFlightGuard(self.cross_pipelines_in_flight.clone());
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         self.status_message = Some("Fetching pipelines across projects...".into());
         tokio::spawn(async move {
-            let mut handles = Vec::new();
+            let _guard = guard;
+            let sem = Arc::new(Semaphore::new(CROSS_PIPELINES_MAX_IN_FLIGHT));
+            let mut handles = Vec::with_capacity(project_ids.len());
             for pid in project_ids {
+                let Ok(permit) = sem.clone().acquire_owned().await else {
+                    break;
+                };
                 let c = client.clone();
-                let handle = tokio::spawn(async move {
+                handles.push(tokio::spawn(async move {
+                    let _permit = permit;
                     let ep = ProjectPipelines {
                         project: pid,
                         page: Some(1),
@@ -216,8 +245,7 @@ impl App {
                         Ok(Ok(pipes)) => pipes,
                         _ => Vec::new(),
                     }
-                });
-                handles.push(handle);
+                }));
             }
             let mut all = Vec::new();
             for handle in handles {

@@ -56,6 +56,7 @@ impl App {
             cross_pipelines: Vec::new(),
             cross_pipelines_page: 1,
             cross_pipelines_has_more: false,
+            cross_pipelines_in_flight: Default::default(),
             pipelines_state: ListState::default(),
             jobs: Vec::new(),
             jobs_state: ListState::default(),
