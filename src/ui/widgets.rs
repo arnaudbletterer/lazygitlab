@@ -600,25 +600,29 @@ impl Theme {
         }
     }
 
-    pub fn load() -> Self {
-        // Search locations: local theme.toml, ~/.config/lazygitlab/theme.toml, or config.toml
+    pub fn candidate_paths(home: Option<&str>, appdata: Option<&str>) -> Vec<std::path::PathBuf> {
         let mut candidates = Vec::new();
-        candidates.push(std::path::PathBuf::from("theme.toml"));
-
-        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            let config_dir = std::path::PathBuf::from(&home)
+        if let Some(home) = home {
+            let config_dir = std::path::PathBuf::from(home)
                 .join(".config")
                 .join("lazygitlab");
             candidates.push(config_dir.join("theme.toml"));
             candidates.push(config_dir.join("config.toml"));
         }
-        if let Ok(appdata) = std::env::var("APPDATA") {
+        if let Some(appdata) = appdata {
             let config_dir = std::path::PathBuf::from(appdata).join("lazygitlab");
             candidates.push(config_dir.join("theme.toml"));
             candidates.push(config_dir.join("config.toml"));
         }
+        candidates
+    }
 
-        for path in candidates {
+    pub fn load() -> Self {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok();
+        let appdata = std::env::var("APPDATA").ok();
+        for path in Self::candidate_paths(home.as_deref(), appdata.as_deref()) {
             if let Ok(content) = std::fs::read_to_string(&path)
                 && let Some(t) = Self::parse_theme_content(&content)
             {

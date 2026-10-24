@@ -79,7 +79,7 @@ Set `GITLAB_URL` and `GITLAB_TOKEN` in your environment, or run lazygitlab once 
 
 The token needs the `read_api` scope to browse, and `api` to perform actions (merge, comment, edit). Prefer `GITLAB_TOKEN` over `--token`, which is visible in the process list; `--token -` reads it from stdin.
 
-Optional theming: copy `theme.toml.example` to `theme.toml` in the working directory (or `~/.config/lazygitlab/`) and edit colors. See the example file for available keys.
+Optional theming: copy `theme.toml.example` to `~/.config/lazygitlab/theme.toml` (`%APPDATA%\lazygitlab\` on Windows) and edit colors. A `theme.toml` in the working directory is not read. See the example file for available keys.
 
 Logs are written to `$XDG_STATE_HOME/lazygitlab/lazygitlab.log` (default `~/.local/state/lazygitlab/`), mode `0600` on Unix, tokens redacted. Set `LAZYGITLAB_LOG=/path/to/file.log` to choose another path.
 
