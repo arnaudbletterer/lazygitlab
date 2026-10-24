@@ -4018,7 +4018,11 @@ impl App {
 
 pub fn detect_local_git_status() -> Option<LocalGitStatus> {
     if std::env::current_exe()
-        .map(|p| p.to_string_lossy().contains("deps"))
+        .map(|p| {
+            p.parent()
+                .and_then(|d| d.file_name())
+                .is_some_and(|n| n == "deps")
+        })
         .unwrap_or(false)
     {
         return None;
