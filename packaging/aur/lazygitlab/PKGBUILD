@@ -1,0 +1,40 @@
+# Maintainer: Arnaud Bletterer <arnaud.bletterer@gmail.com>
+pkgname=lazygitlab
+pkgver=0.16.0
+pkgrel=1
+pkgdesc='Terminal UI for GitLab'
+arch=('x86_64' 'aarch64')
+url='https://github.com/arnaudbletterer/lazygitlab'
+license=('MIT')
+depends=('gcc-libs' 'glibc')
+makedepends=('cargo')
+conflicts=('lazygitlab-bin')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/lazygitlab "$pkgdir/usr/bin/lazygitlab"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 theme.toml.example "$pkgdir/usr/share/doc/$pkgname/theme.toml.example"
+}
