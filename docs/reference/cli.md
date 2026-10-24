@@ -21,25 +21,6 @@ Precedence: flags > environment > config file > defaults.
 
 Precedence: flags, then environment (`GITLAB_URL`, `GITLAB_TOKEN`, and a `.env` file), then the config file, then defaults.
 
---- | --- |
-| `-h, --help` | Display the help summary and exit |
-| `-V, --version` | Display version number (`lazygitlab 0.16.0`) and exit |
-| `--project <PATH\|ID>` | Open a project by ID (`81221057`) or full path (`group/project`) on launch |
-| `--url <URL>` | GitLab instance URL (e.g. `https://gitlab.example.com`). A path prefix is supported (`https://host/gitlab`) |
-| `--token <TOKEN>` | Personal access token. Use `--token -` to read it from the first line of stdin |
-| `--config <FILE>` | Path to a custom configuration file |
-| `--insecure` | Skip TLS certificate verification (last resort; prefer adding your CA to the system trust store). Warns at every start. An `http://` URL uses plain HTTP |
-| `--headless` | Render off-screen, with `--width`, `--height`, `--script` and `--frames-dir` |
-
-!!! warning "Keep your token out of the process list"
-    A value passed as `--token <TOKEN>` is visible to every user on the machine in `ps` output and
-    may be saved in your shell history. Prefer the `GITLAB_TOKEN` environment variable, the
-    `config.toml` file (created with mode `0600` by the setup wizard), or read it from stdin:
-
-    ```bash
-    pass show gitlab/token | lazygitlab --token -
-    ```
-
 ---
 
 ## Usage Examples
