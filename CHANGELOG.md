@@ -16,6 +16,12 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 - **Panics:** a partial diff position and a syntax-highlighting failure no longer panic; test-binary detection no longer misfires on install paths containing `deps`.
 - **Documentation:** `docs/reference/cli.md` listed flags that do not exist; the git auto-detection claim was removed because only the local branch and dirty state are shown.
 
+- **`.env` no longer read:** a `.env` file in the working directory or its parents is ignored, so a cloned repository cannot point `GITLAB_URL` at another host and capture your token. Use real environment variables or `config.toml`.
+- **Log location:** `lazygitlab.log` now lives in `$XDG_STATE_HOME/lazygitlab/` (default `~/.local/state/lazygitlab/`), is opened without following symlinks and only as a regular file, and can be moved with `LAZYGITLAB_LOG` (`src/logger.rs`).
+- **Skip-verify visibility:** when TLS verification is disabled, from `--insecure` or `insecure = true`, a warning is printed at every start and the header shows `TLS NOT VERIFIED`; the certificate error hint now recommends the system trust store (`src/main.rs`, `src/ui/mod.rs`).
+- **Text sanitizing:** Markdown is sanitized after parsing so entity-encoded escapes cannot re-form, and bidi overrides and zero-width characters are removed from everything drawn (`src/sanitize.rs`).
+- **Error text:** every error is redacted and stripped of escape sequences before it reaches stderr or the status bar, and `--token -` hides input when stdin is a terminal.
+
 ### Added
 - **Token from stdin:** `--token -` reads the token from the first line of stdin. `--help`, the README and the CLI reference now warn that `--token <TOKEN>` is visible in the process list (`src/cli.rs`).
 - **Package metadata:** description, license, keywords and an exclude list so local data files are not published (`Cargo.toml`).
