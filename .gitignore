@@ -13,3 +13,5 @@ docs/assets/screenshots/
 docs/assets/lazygitlab-cheatsheet.pdf
 docs/assets/lazygitlab-cheatsheet-preview.png
 docs/assets/version.json
+tools/demo/.venv/
+tools/demo/__pycache__/
