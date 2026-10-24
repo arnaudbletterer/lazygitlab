@@ -1635,6 +1635,7 @@ dependencies = [
  "arboard",
  "async-trait",
  "base64",
+ "bytes",
  "chrono",
  "chrono-humanize",
  "crossterm 0.29.0",
@@ -1660,6 +1661,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "tui-tree-widget",
+ "url",
  "wiremock",
 ]
 

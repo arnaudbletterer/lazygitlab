@@ -1,5 +1,5 @@
 use crate::ui::Theme;
-use gitlab::AsyncGitlab;
+use crate::trace::TracedClient;
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 
@@ -1001,7 +1001,7 @@ pub struct App {
     pub project_menu_state: ListState,
     pub active_selection: MenuSelection,
     pub home_card_index: usize,
-    pub gitlab: AsyncGitlab,
+    pub gitlab: TracedClient,
     pub projects: Vec<Project>,
     pub projects_state: ListState,
     pub selected_project: Option<Project>,

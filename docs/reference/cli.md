@@ -53,3 +53,7 @@ lazygitlab --url https://example.com/gitlab
 ### Logs
 
 Diagnostics are written to `$XDG_STATE_HOME/lazygitlab/lazygitlab.log` (default `~/.local/state/lazygitlab/`, `%LOCALAPPDATA%\lazygitlab\` on Windows) with mode `0600` on Unix. Symlinks are refused. Set `LAZYGITLAB_LOG=/path/to/file.log` to choose another path. Tokens are redacted.
+
+### Request timing trace
+
+Set `LAZYGITLAB_TRACE=1` to add one JSON line per API request to the log: method, endpoint template (numeric ids replaced by `:id`, project and group paths by `:path`), status, duration in ms, response bytes, page, and whether the answer was a 304. The host, token, project names and query values are never written. `scripts/summarize_trace.py <log>` prints count, p50, p95 and total time per endpoint; with `--extract` it prints only the trace lines, which is what to share when reporting slowness.

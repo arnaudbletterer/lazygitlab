@@ -711,7 +711,7 @@ type PolledTodos = Option<(Option<String>, Vec<Todo>)>;
 
 /// One conditional GET of `/todos`. `Ok(None)` means 304 Not Modified.
 async fn poll_todos(
-    client: &gitlab::AsyncGitlab,
+    client: &crate::trace::TracedClient,
     state: &str,
     etag: Option<String>,
 ) -> Result<PolledTodos, Box<dyn std::error::Error + Send + Sync>> {

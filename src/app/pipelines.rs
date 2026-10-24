@@ -12,7 +12,7 @@ const CROSS_PIPELINES_MAX_IN_FLIGHT: usize = 8;
 /// One bounded fan-out round. Projects still unfinished at `deadline` are
 /// abandoned and whatever arrived is returned.
 async fn fetch_cross_round(
-    client: gitlab::AsyncGitlab,
+    client: crate::trace::TracedClient,
     project_ids: Vec<u64>,
     deadline: std::time::Duration,
 ) -> Vec<Pipeline> {

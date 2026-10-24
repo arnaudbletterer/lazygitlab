@@ -13,6 +13,7 @@ pub mod runner;
 pub mod sanitize;
 pub mod setup;
 pub mod terminal;
+pub mod trace;
 pub mod ui;
 
 pub use api::*;

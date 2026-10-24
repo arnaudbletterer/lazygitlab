@@ -12,7 +12,7 @@ use crate::api::*;
 use crate::models::*;
 use crate::ui::Theme;
 use chrono::Local;
-use gitlab::{AsyncGitlab, api::AsyncQuery};
+use gitlab::api::AsyncQuery;
 use ratatui::widgets::ListState;
 use regex::Regex;
 
@@ -21,7 +21,7 @@ static TODO_TARGET_RE: std::sync::LazyLock<Regex> =
 
 impl App {
     pub fn new(
-        gitlab: AsyncGitlab,
+        gitlab: impl Into<crate::trace::TracedClient>,
         tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
         target_project: Option<String>,
     ) -> Self {
@@ -43,7 +43,7 @@ impl App {
             project_menu_state,
             active_selection: MenuSelection::Home,
             home_card_index: 0,
-            gitlab,
+            gitlab: gitlab.into(),
             projects: Vec::new(),
             projects_state: ListState::default(),
             selected_project: None,

@@ -57,7 +57,8 @@ OPTIONS:\n\
 \x20       --headless           Render off-screen (with --width, --height, --script, --frames-dir)\n\
 \n\
 ENVIRONMENT:\n\
-\x20   GITLAB_URL, GITLAB_TOKEN, LAZYGITLAB_LOG (log file path)\n\
+\x20   GITLAB_URL, GITLAB_TOKEN, LAZYGITLAB_LOG (log file path),\n\
+\x20   LAZYGITLAB_TRACE=1 (log one timing line per API request)\n\
 \n\
 Precedence: flags > environment > config file > defaults.\n",
         version = env!("CARGO_PKG_VERSION")

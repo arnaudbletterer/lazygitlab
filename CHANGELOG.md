@@ -6,6 +6,9 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **Request timing trace:** `LAZYGITLAB_TRACE=1` writes one JSON line per API request to the log (method, endpoint template, status, duration, response bytes, page, 304). The host, token, project names and query values are never recorded. `scripts/summarize_trace.py` prints per-endpoint count, p50, p95 and total time (`src/trace.rs`).
+
 ### Fixed
 - **`--insecure` with self-signed certificates:** `--insecure` (and `insecure = true`) now skips TLS certificate verification over `https://` instead of silently downgrading to plain HTTP; use an `http://` URL for plain HTTP. Scheme matching is case-insensitive and a trailing `/api/v4` is ignored (`src/config.rs`).
 - **Actionable error messages:** 401, 403, 429, untrusted certificates, a wrong URL (including a missing path prefix such as `https://host/gitlab`), redirects, 5xx and network failures now say what to check, and startup connection failures exit with a clear message instead of a debug dump (`src/errors.rs`).
