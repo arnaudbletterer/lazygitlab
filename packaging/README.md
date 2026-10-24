@@ -10,7 +10,7 @@ Manifests for distributing lazygitlab. They consume the assets published by `.gi
 | `scoop/lazygitlab.json` | Personal Scoop bucket |
 | `install.sh` | curl-able installer |
 
-All hashes in the repo are placeholders (64 zeros) until you fill them for a real release.
+All hashes in the repo are placeholders (64 zeros, or `SKIP`) until you fill them for a real release.
 
 ## After each release
 
@@ -23,26 +23,26 @@ All hashes in the repo are placeholders (64 zeros) until you fill them for a rea
    git diff packaging/
    ```
 
-   The script downloads `SHA256SUMS` from the release. Use `--sums-file PATH` to read a local copy. Only stable tags (`vX.Y.Z`) are accepted.
+   The script downloads `SHA256SUMS` from the release. Use `--sums-file PATH` to read a local copy. Only stable tags (`vX.Y.Z`) are accepted, and it fails without writing anything if a placeholder would remain.
 3. Commit with `chore(packaging): update manifests for vX.Y.Z`, then submit to each channel below.
 
 Tests: `python3 -I scripts/test_update_packaging.py` (or `python3 -I -m unittest discover -s scripts -p 'test_update_packaging.py'`). The `-m unittest scripts/test_update_packaging.py` form needs the repository root on `sys.path`, so run it without `-I`.
 
 ## Homebrew (personal tap)
 
-One-time setup: create the GitHub repository `arnaudbletterer/homebrew-lazygitlab` (the `homebrew-` prefix is required).
+One-time setup: create the GitHub repository `arnaudbletterer/homebrew-tap` (the `homebrew-` prefix is required).
 
 ```bash
-git clone git@github.com:arnaudbletterer/homebrew-lazygitlab.git
-mkdir -p homebrew-lazygitlab/Formula
-cp packaging/homebrew/lazygitlab.rb homebrew-lazygitlab/Formula/
-cd homebrew-lazygitlab
+git clone git@github.com:arnaudbletterer/homebrew-tap.git
+mkdir -p homebrew-tap/Formula
+cp packaging/homebrew/lazygitlab.rb homebrew-tap/Formula/
+cd homebrew-tap
 git add Formula/lazygitlab.rb
 git commit -m "lazygitlab X.Y.Z"
 git push
 ```
 
-Users install with `brew install arnaudbletterer/lazygitlab/lazygitlab`. Validate before pushing: `brew audit --strict --new arnaudbletterer/lazygitlab/lazygitlab` and `brew install arnaudbletterer/lazygitlab/lazygitlab` on a test machine.
+Users install with `brew install arnaudbletterer/tap/lazygitlab`. Validate before pushing: `brew audit --strict --new arnaudbletterer/tap/lazygitlab` and `brew install arnaudbletterer/tap/lazygitlab` on a test machine.
 
 ## AUR
 
@@ -60,23 +60,23 @@ git commit -m "Update to X.Y.Z"
 git push
 ```
 
-Repeat for `lazygitlab` (source package) with `packaging/aur/lazygitlab/PKGBUILD`. The source PKGBUILD ships `sha256sums=('SKIP')`: run `updpkgsums` (from `pacman-contrib`) in the AUR clone before `makepkg --printsrcinfo` to pin the GitHub tag tarball hash. Bump `pkgrel` instead of `pkgver` for packaging-only fixes.
+Repeat for `lazygitlab` (source package) with `packaging/aur/lazygitlab/PKGBUILD`. The source PKGBUILD hash is the GitHub tag tarball hash, computed by the update script (downloaded, or pass `--source-tarball PATH`). Bump `pkgrel` instead of `pkgver` for packaging-only fixes.
 
 ## Scoop (personal bucket)
 
-One-time setup: create the GitHub repository `arnaudbletterer/scoop-lazygitlab` with a `bucket/` directory.
+One-time setup: create the GitHub repository `arnaudbletterer/scoop-bucket` with a `bucket/` directory.
 
 ```bash
-git clone git@github.com:arnaudbletterer/scoop-lazygitlab.git
-mkdir -p scoop-lazygitlab/bucket
-cp packaging/scoop/lazygitlab.json scoop-lazygitlab/bucket/
-cd scoop-lazygitlab
+git clone git@github.com:arnaudbletterer/scoop-bucket.git
+mkdir -p scoop-bucket/bucket
+cp packaging/scoop/lazygitlab.json scoop-bucket/bucket/
+cd scoop-bucket
 git add bucket/lazygitlab.json
 git commit -m "lazygitlab: update to X.Y.Z"
 git push
 ```
 
-Users install with `scoop bucket add lazygitlab https://github.com/arnaudbletterer/scoop-lazygitlab` then `scoop install lazygitlab`. The manifest has `checkver` and `autoupdate` blocks, so Scoop tooling (`checkver.ps1 -u`) can also bump it.
+Users install with `scoop bucket add arnaudbletterer https://github.com/arnaudbletterer/scoop-bucket` then `scoop install arnaudbletterer/lazygitlab`. The manifest has `checkver` and `autoupdate` blocks, so Scoop tooling (`checkver.ps1 -u`) can also bump it.
 
 ## install.sh
 
