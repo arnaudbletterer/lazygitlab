@@ -81,7 +81,7 @@ The token needs the `read_api` scope to browse, and `api` to perform actions (me
 
 Optional theming: copy `theme.toml.example` to `theme.toml` in the working directory (or `~/.config/lazygitlab/`) and edit colors. See the example file for available keys.
 
-Logs are written to `lazygitlab.log` in the working directory (mode `0600` on Unix, tokens redacted; see `.gitignore`).
+Logs are written to `$XDG_STATE_HOME/lazygitlab/lazygitlab.log` (default `~/.local/state/lazygitlab/`), mode `0600` on Unix, tokens redacted. Set `LAZYGITLAB_LOG=/path/to/file.log` to choose another path.
 
 ## Quickstart
 

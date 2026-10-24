@@ -1636,6 +1636,7 @@ dependencies = [
  "gitlab",
  "http",
  "insta",
+ "libc",
  "mockito",
  "pulldown-cmark",
  "ratatui",

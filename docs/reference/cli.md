@@ -49,4 +49,4 @@ lazygitlab --url https://example.com/gitlab
 
 ### Logs
 
-Diagnostics are written to `lazygitlab.log` in the working directory (mode `0600` on Unix). Tokens are redacted.
+Diagnostics are written to `$XDG_STATE_HOME/lazygitlab/lazygitlab.log` (default `~/.local/state/lazygitlab/`, `%LOCALAPPDATA%\lazygitlab\` on Windows) with mode `0600` on Unix. Symlinks are refused. Set `LAZYGITLAB_LOG=/path/to/file.log` to choose another path. Tokens are redacted.
