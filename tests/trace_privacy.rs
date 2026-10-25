@@ -171,7 +171,10 @@ fn templates_replace_ids_and_unknown_segments() {
         "/projects/:path/repository/files/:x/raw"
     );
     assert_eq!(template("/api/v4/users/alice"), "/users/:path");
-    assert_eq!(template("/api/v4/users/alice/projects"), "/users/:path/projects");
+    assert_eq!(
+        template("/api/v4/users/alice/projects"),
+        "/users/:path/projects"
+    );
     assert_eq!(
         template("/api/v4/groups/team/projects"),
         "/groups/:path/projects"
