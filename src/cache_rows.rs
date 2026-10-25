@@ -49,6 +49,8 @@ pub struct CachedMr {
     pub pipeline_status: Option<String>,
     pub web_path: String,
     pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +67,8 @@ pub struct CachedIssue {
     pub issue_type: Option<String>,
     pub web_path: String,
     pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
     pub due_date: Option<String>,
 }
 
@@ -209,6 +213,7 @@ impl From<&MergeRequest> for CachedMr {
             pipeline_status: m.head_pipeline.as_ref().map(|p| p.status.clone()),
             web_path: url_path(&m.web_url),
             created_at: m.created_at.clone(),
+            updated_at: m.updated_at.clone(),
         }
     }
 }
@@ -233,6 +238,7 @@ impl CachedMr {
             reviewers: self.reviewers.iter().map(Into::into).collect(),
             squash: None,
             created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
             diff_refs: None,
             reactions: Vec::new(),
             merge_status: None,
@@ -275,6 +281,7 @@ impl TryFrom<&Issue> for CachedIssue {
             issue_type: i.issue_type.clone(),
             web_path: url_path(&i.web_url),
             created_at: i.created_at.clone(),
+            updated_at: i.updated_at.clone(),
             due_date: i.due_date.clone(),
         })
     }
@@ -301,6 +308,7 @@ impl CachedIssue {
             task_completion_status: None,
             confidential: false,
             created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
             upvotes: None,
             downvotes: None,
             reactions: Vec::new(),

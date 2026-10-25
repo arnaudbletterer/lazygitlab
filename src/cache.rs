@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Bump SCHEMA whenever a cached row gains, loses or changes a field.
-pub const SCHEMA: u32 = 2;
+pub const SCHEMA: u32 = 3;
 pub const MAX_TOTAL_BYTES: usize = 18 * 1024 * 1024;
 pub const MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
 pub const MAX_AGE_SECS: u64 = 7 * 24 * 3600;
