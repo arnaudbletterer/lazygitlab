@@ -1,8 +1,10 @@
 mod diffs;
+mod list;
 mod meta;
 mod review;
 
 pub use diffs::parse_diff_context;
+pub use list::{CACHE_FLUSH_EVERY, MrFetch, fetch_global_mrs, rate_limit_text, state_of};
 
 use crate::api::*;
 use crate::models::*;
@@ -12,78 +14,7 @@ impl App {
     pub async fn fetch_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(project) = &self.selected_project {
             let pid = project.id;
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            let _ = tx.send(DataUpdate::Loading(true));
-            self.status_message = Some("Fetching Merge Requests...".into());
-
-            let state_str = match self.mr_filter {
-                MergeRequestFilter::Opened
-                | MergeRequestFilter::Review
-                | MergeRequestFilter::Assigned => Some("opened".to_string()),
-                MergeRequestFilter::Merged => Some("merged".to_string()),
-                MergeRequestFilter::Closed => Some("closed".to_string()),
-                MergeRequestFilter::All => None,
-            };
-            let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned {
-                self.current_user.as_ref().map(|u| u.id)
-            } else {
-                None
-            };
-            let reviewer_id = if self.mr_filter == MergeRequestFilter::Review {
-                self.current_user.as_ref().map(|u| u.id)
-            } else {
-                None
-            };
-
-            let scope = self.mr_filter;
-            tokio::spawn(async move {
-                let ep = PagedMergeRequests {
-                    project: pid,
-                    page: 1,
-                    per_page: 50,
-                    state: state_str,
-                    order_by: Some("updated_at".into()),
-                    sort: Some("desc".into()),
-                    with_labels_details: Some(true),
-                    assignee_id,
-                    reviewer_id,
-                };
-                let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(60),
-                    ep.query_async(&client),
-                )
-                .await;
-                match res {
-                    Ok(Ok(data)) => {
-                        let has_more = data.len() == 50;
-                        let _ = tx.send(DataUpdate::ScopedMr(
-                            scope,
-                            Box::new(DataUpdate::ProjectMRs {
-                                project_id: pid,
-                                data,
-                                page: 1,
-                                has_more,
-                            }),
-                        ));
-                    }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("MRs fetch failed: {}", e)));
-                        let _ = tx.send(DataUpdate::ScopedMr(
-                            scope,
-                            Box::new(DataUpdate::RefreshFailed),
-                        ));
-                    }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("MRs fetch timed out".into()));
-                        let _ = tx.send(DataUpdate::ScopedMr(
-                            scope,
-                            Box::new(DataUpdate::RefreshFailed),
-                        ));
-                    }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+            self.start_mr_fetch(Some(pid));
         }
         Ok(())
     }
@@ -160,109 +91,7 @@ impl App {
     }
 
     pub async fn fetch_global_merge_requests(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone();
-        let tx = self.tx.clone();
-        let state_str = match self.mr_filter {
-            MergeRequestFilter::Opened
-            | MergeRequestFilter::Review
-            | MergeRequestFilter::Assigned => "opened".to_string(),
-            MergeRequestFilter::Merged => "merged".to_string(),
-            MergeRequestFilter::Closed => "closed".to_string(),
-            MergeRequestFilter::All => "all".to_string(),
-        };
-        let assignee_id = if self.mr_filter == MergeRequestFilter::Assigned {
-            self.current_user.as_ref().map(|u| u.id)
-        } else {
-            None
-        };
-        let reviewer_id = if self.mr_filter == MergeRequestFilter::Review {
-            self.current_user.as_ref().map(|u| u.id)
-        } else {
-            None
-        };
-
-        let _ = tx.send(DataUpdate::Loading(true));
-        self.status_message = Some("Fetching Merge Requests...".into());
-
-        let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
-
-        let scope = self.mr_filter;
-        tokio::spawn(async move {
-            // Sends nothing: the membership filter already hides rows of non-members.
-            if project_ids.is_empty() {
-                let _ = tx.send(DataUpdate::Loading(false));
-                return;
-            }
-
-            let mut all_mrs = Vec::new();
-            let mut handles = Vec::new();
-
-            for pid in project_ids {
-                let c = client.clone();
-                let state = state_str.clone();
-                let assignee_id = assignee_id;
-                let reviewer_id = reviewer_id;
-                let handle = tokio::spawn(async move {
-                    let ep = PagedMergeRequests {
-                        project: pid,
-                        state: Some(state),
-                        page: 1,
-                        per_page: 50,
-                        order_by: Some("updated_at".into()),
-                        sort: Some("desc".into()),
-                        with_labels_details: Some(true),
-                        assignee_id,
-                        reviewer_id,
-                    };
-                    let res: Result<Result<Vec<MergeRequest>, _>, _> = tokio::time::timeout(
-                        std::time::Duration::from_secs(60),
-                        ep.query_async(&c),
-                    )
-                    .await;
-                    match res {
-                        Ok(Ok(mrs)) => (pid, Some(mrs)),
-                        _ => (pid, None),
-                    }
-                });
-                handles.push((pid, handle));
-            }
-
-            let total = handles.len();
-            let mut failed: Vec<u64> = Vec::new();
-            for (joined_pid, handle) in handles {
-                match handle.await {
-                    Ok((_, Some(items))) => all_mrs.extend(items),
-                    Ok((pid, None)) => failed.push(pid),
-                    Err(_) => failed.push(joined_pid),
-                }
-            }
-
-            Self::sort_mrs(&mut all_mrs);
-            let has_more = all_mrs.len() >= 50;
-
-            if failed.len() < total {
-                let update = if failed.is_empty() {
-                    DataUpdate::GlobalMRs {
-                        data: all_mrs,
-                        page: 1,
-                        has_more,
-                    }
-                } else {
-                    DataUpdate::GlobalMRsPartial {
-                        data: all_mrs,
-                        failed: failed.clone(),
-                    }
-                };
-                let _ = tx.send(DataUpdate::ScopedMr(scope, Box::new(update)));
-            }
-            if !failed.is_empty() {
-                let _ = tx.send(DataUpdate::ScopedMr(
-                    scope,
-                    Box::new(DataUpdate::RefreshFailed),
-                ));
-            }
-            let _ = tx.send(DataUpdate::Loading(false));
-        });
+        self.start_mr_fetch(None);
         Ok(())
     }
 
@@ -374,10 +203,12 @@ impl App {
         project_id: u64,
         mr_iid: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.abort_mr_detail();
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
+            let _loading = list::LoadingGuard::new(tx.clone());
             let mr_endpoint = SingleMergeRequest {
                 project: project_id,
                 merge_request: mr_iid,
@@ -436,8 +267,8 @@ impl App {
                     let _ = tx.send(DataUpdate::Error("Discussions fetch timed out".into()));
                 }
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
+        self.mr_detail_task = Some(handle);
         Ok(())
     }
 

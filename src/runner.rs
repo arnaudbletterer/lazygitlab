@@ -72,6 +72,7 @@ where
     }
     app.refresh().await;
 
+    let mut last_flush = std::time::Instant::now();
     let mut needs_draw = true;
     let mut pending = Box::pin(event_source.next_event(INPUT_POLL));
 
@@ -126,6 +127,12 @@ where
             Duration::from_secs(5)
         };
 
+        app.fire_pending_detail().await;
+        if last_flush.elapsed() >= crate::app::mrs::CACHE_FLUSH_EVERY {
+            app.flush_cache_in_background();
+            last_flush = std::time::Instant::now();
+        }
+
         if app.last_refresh.elapsed() >= refresh_interval {
             app.refresh_background().await;
         }
@@ -165,5 +172,6 @@ where
             }
         }
     }
+    app.flush_cache();
     Ok(())
 }

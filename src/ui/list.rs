@@ -248,11 +248,17 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
         MenuSelection::Home => " ⚡ Home • Quick Launchpad ".to_string(),
         MenuSelection::Todos => " To-Do List ".to_string(),
         MenuSelection::MergeRequests => {
+            let mut title = String::from(" Merge Requests");
             if app.show_involved_only {
-                " Merge Requests (Involved Only) ".to_string()
-            } else {
-                " Merge Requests ".to_string()
+                title.push_str(" (Involved Only)");
             }
+            if let Some(at) = app.mrs_cached_at {
+                title.push_str(&format!(" \u{b7} {}", crate::cache::age_label(at)));
+            } else if app.mrs_stale {
+                title.push_str(" \u{b7} stale");
+            }
+            title.push(' ');
+            title
         }
         MenuSelection::Issues => {
             if app.show_involved_only {

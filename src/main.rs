@@ -150,6 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.headless || !io::stdout().is_terminal()
     };
     if let Some(dir) = cache::default_cache_dir() {
+        app.enable_cache(&dir, &settings.url);
         app.enable_membership_cache(dir, &settings.url);
     }
 

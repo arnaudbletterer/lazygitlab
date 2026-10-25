@@ -420,3 +420,32 @@ fn write_private(
     }
     result
 }
+
+/// The user a cache file was last written for, read from the file names of this host.
+/// With several candidates the most recently written file wins.
+pub fn discover_user_id(dir: &Path, host: &str) -> Option<NonZeroU64> {
+    let prefix = format!("{}-", host_hash(host));
+    let mut best: Option<(SystemTime, NonZeroU64)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(id) = name
+            .strip_prefix(&prefix)
+            .and_then(|r| r.strip_suffix(".json"))
+            .and_then(|d| d.parse::<u64>().ok())
+            .and_then(NonZeroU64::new)
+        else {
+            continue;
+        };
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let at = meta.modified().unwrap_or(UNIX_EPOCH);
+        if best.is_none_or(|(t, _)| at > t) {
+            best = Some((at, id));
+        }
+    }
+    best.map(|(_, id)| id)
+}

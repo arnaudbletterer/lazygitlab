@@ -178,7 +178,7 @@ impl App {
             if self
                 .selected_mr
                 .as_ref()
-                .is_some_and(|m| m.head_pipeline.is_some())
+                .is_some_and(|m| self.mr_pipeline_id(m).is_some())
             {
                 items.push(HelpItem {
                     shortcut: "P".into(),
@@ -2060,10 +2060,10 @@ impl App {
                 self.copy_url();
             }
             KeyCode::Char('P') => {
-                let head = self
-                    .selected_mr
-                    .as_ref()
-                    .and_then(|mr| mr.head_pipeline.clone());
+                let head = self.selected_mr.as_ref().and_then(|mr| {
+                    self.mr_pipeline_id(mr)?;
+                    mr.head_pipeline.clone()
+                });
                 if let Some(head) = head {
                     let pid = self
                         .selected_mr

@@ -35,7 +35,21 @@ impl App {
         let mut project_menu_state = ListState::default();
         project_menu_state.select(Some(0));
 
+        let gitlab: crate::trace::TracedClient = gitlab.into();
         Self {
+            http: crate::http::HttpLayer::new(gitlab.clone()),
+            graphql: std::sync::Arc::new(crate::graphql::GraphqlState::new()),
+            list_cache: None,
+            cache_host: String::new(),
+            mrs_cached_at: None,
+            mrs_stale: false,
+            mrs_sync: MrSync::default(),
+            mrs_in_flight: None,
+            mrs_force_full: false,
+            mrs_mutations: 0,
+            mr_meta: std::collections::HashMap::new(),
+            pending_mr_detail: None,
+            mr_detail_task: None,
             target_project,
             local_git_status: detect_local_git_status(),
             skip_tls_verify: false,
@@ -46,7 +60,7 @@ impl App {
             project_menu_state,
             active_selection: MenuSelection::Home,
             home_card_index: 0,
-            gitlab: gitlab.into(),
+            gitlab,
             projects: Vec::new(),
             projects_state: ListState::default(),
             selected_project: None,
@@ -902,6 +916,13 @@ impl App {
             }
             DataUpdate::MRDetail(mut mr) => {
                 self.fix_mr_labels(&mut mr);
+                self.mr_meta.insert(
+                    (mr.project_id, mr.iid),
+                    MrMeta {
+                        pipeline_id: mr.head_pipeline.as_ref().map(|p| p.id),
+                        milestone_id: mr.milestone.as_ref().map(|m| m.id),
+                    },
+                );
                 if let Some(selected) = &mut self.selected_mr {
                     if selected.iid == mr.iid && selected.project_id == mr.project_id {
                         for label in &mut mr.labels {
@@ -1033,8 +1054,12 @@ impl App {
             DataUpdate::CheckPagination => {
                 let _ = self.check_pagination().await;
             }
+            DataUpdate::MrList(update) => {
+                self.apply_mr_list(*update);
+            }
             DataUpdate::CurrentUser(user) => {
                 let id = user.id;
+                self.on_user_known(id);
                 self.current_user = Some(user);
                 self.on_current_user(id);
             }
@@ -1792,6 +1817,7 @@ impl App {
 
     pub async fn refresh_impl(&mut self, force_detail: bool) {
         self.last_refresh = std::time::Instant::now();
+        self.mrs_force_full = force_detail;
 
         if force_detail {
             self.membership_sync_attempted = false;
@@ -1925,7 +1951,7 @@ impl App {
         }
 
         if let Some(mr) = self.selected_mr.clone() {
-            if force_detail || self.discussions.is_empty() {
+            if force_detail || (self.discussions.is_empty() && self.pending_mr_detail.is_none()) {
                 let _ = self.fetch_discussions(mr.project_id, mr.iid).await;
             }
             if self.active_panel == Panel::MainDetail
@@ -2110,6 +2136,7 @@ impl App {
     }
 
     pub async fn update_preview(&mut self) {
+        self.fire_pending_detail().await;
         let prev_selection = self.active_selection;
         let prev_context = self.active_context;
 
@@ -2157,6 +2184,10 @@ impl App {
             self.discussions.clear();
             self.jobs.clear();
             self.merge_requests.clear();
+            self.mrs_cached_at = None;
+            self.mrs_stale = false;
+            self.mrs_sync = MrSync::default();
+            self.abort_mr_detail();
             self.issues.clear();
             self.reset_list_paging();
             self.pipelines.clear();
@@ -2294,9 +2325,8 @@ impl App {
                             self.mr_diffs.clear();
                             self.is_fetching_diffs = false;
                             self.clear_related_items();
-                            if self.should_fetch_detail(pid, iid) {
-                                let _ = self.fetch_discussions(pid, iid).await;
-                            }
+                            self.abort_mr_detail();
+                            self.pending_mr_detail = Some((pid, iid, std::time::Instant::now()));
                             if self.active_panel == Panel::MainDetail {
                                 self.trigger_project_metadata_fetch(pid);
                             }
@@ -2522,6 +2552,13 @@ impl App {
                         self.reviewer_state.select(Some(0));
                     }
                     MetadataField::Milestone => {
+                        if let Some(mr) = &self.selected_mr
+                            && !self.mr_milestone_known(mr)
+                        {
+                            self.status_message =
+                                Some("Milestone id unavailable for this merge request yet".into());
+                            return;
+                        }
                         self.show_milestone_popup = true;
                         let mid = if let Some(i) = &self.selected_issue {
                             i.milestone.as_ref().map(|m| m.id)

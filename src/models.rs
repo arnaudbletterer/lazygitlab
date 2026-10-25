@@ -753,8 +753,37 @@ pub struct ApprovalUser {
     pub user: Option<Author>,
 }
 
+/// Ids the list source could not give (GraphQL) are `None`; `None` disables the actions that need them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MrMeta {
+    pub pipeline_id: Option<u64>,
+    pub milestone_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MrListUpdate {
+    pub scope: Option<MergeRequestFilter>,
+    pub project: Option<u64>,
+    pub rows: Vec<MergeRequest>,
+    pub meta: Vec<((u64, u64), MrMeta)>,
+    pub incremental: bool,
+    pub complete: bool,
+    pub failed_projects: Vec<u64>,
+    pub rate_limited_secs: Option<u64>,
+    pub error: Option<String>,
+}
+
+/// Incremental refresh bookkeeping for the list currently on screen.
+#[derive(Debug, Clone, Default)]
+pub struct MrSync {
+    pub key: String,
+    pub cursor: Option<String>,
+    pub last_full: Option<std::time::Instant>,
+}
+
 #[derive(Debug)]
 pub enum DataUpdate {
+    MrList(Box<MrListUpdate>),
     Todos {
         data: Vec<Todo>,
         page: u64,
@@ -1298,6 +1327,19 @@ pub struct App {
     pub theme_set: syntect::highlighting::ThemeSet,
     pub pending_g_prefix: bool,
     pub last_detail_fetch: Option<(u64, u64, std::time::Instant)>,
+    pub http: crate::http::HttpLayer,
+    pub graphql: std::sync::Arc<crate::graphql::GraphqlState>,
+    pub list_cache: Option<std::sync::Arc<crate::cache::ListCache>>,
+    pub cache_host: String,
+    pub mrs_cached_at: Option<u64>,
+    pub mrs_stale: bool,
+    pub mrs_sync: MrSync,
+    pub mrs_in_flight: Option<String>,
+    pub mrs_force_full: bool,
+    pub mrs_mutations: u64,
+    pub mr_meta: std::collections::HashMap<(u64, u64), MrMeta>,
+    pub pending_mr_detail: Option<(u64, u64, std::time::Instant)>,
+    pub mr_detail_task: Option<tokio::task::JoinHandle<()>>,
 
     pub last_rendered_rects: std::collections::HashMap<String, ratatui::layout::Rect>,
 }

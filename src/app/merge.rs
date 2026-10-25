@@ -338,3 +338,66 @@ impl App {
         }
     }
 }
+
+fn upsert_changed(existing: &mut Vec<MergeRequest>, fresh: Vec<MergeRequest>) -> bool {
+    let mut index: HashMap<Key, usize> = existing
+        .iter()
+        .enumerate()
+        .map(|(i, e)| ((e.project_id, e.iid), i))
+        .collect();
+    let mut changed = false;
+    for item in fresh {
+        let k = (item.project_id, item.iid);
+        match index.get(&k) {
+            Some(&i) => {
+                if existing[i] != item {
+                    existing[i] = item;
+                    changed = true;
+                }
+            }
+            None => {
+                index.insert(k, existing.len());
+                existing.push(item);
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        existing.sort_by(mr_cmp);
+    }
+    changed
+}
+
+impl App {
+    /// Applies one merge request list result and reports whether the list changed.
+    /// `replace` swaps the rows of every project that answered; rows of `failed`
+    /// projects stay. Without `replace` rows are only upserted, never removed, and
+    /// an identical row is not touched.
+    pub(super) fn merge_mr_rows(
+        &mut self,
+        rows: Vec<MergeRequest>,
+        failed: &[u64],
+        replace: bool,
+    ) -> bool {
+        if !replace {
+            return upsert_changed(&mut self.merge_requests, rows);
+        }
+        let (answered, failed_rows): (Vec<_>, Vec<_>) = rows
+            .into_iter()
+            .partition(|m| !failed.contains(&m.project_id));
+        let mut next = answered;
+        next.extend(
+            self.merge_requests
+                .iter()
+                .filter(|m| failed.contains(&m.project_id))
+                .cloned(),
+        );
+        upsert_by_key(&mut next, failed_rows, |m| (m.project_id, m.iid));
+        Self::sort_mrs(&mut next);
+        if next == self.merge_requests {
+            return false;
+        }
+        self.merge_requests = next;
+        true
+    }
+}

@@ -296,13 +296,23 @@ impl HttpLayer {
     where
         T: DeserializeOwned,
     {
+        self.get_pages_capped(path, MAX_PAGES).await
+    }
+
+    /// Like `get_all_pages` but stops after `max_pages` pages. Hitting a cap below
+    /// `MAX_PAGES` is a deliberate window, so it does not make the result incomplete.
+    pub async fn get_pages_capped<T>(&self, path: &str, max_pages: u32) -> Pages<T>
+    where
+        T: DeserializeOwned,
+    {
+        let max_pages = max_pages.clamp(1, MAX_PAGES);
         let mut out = Pages {
             items: Vec::new(),
             complete: true,
             rate_limited_until: None,
         };
         let mut fetched: Vec<(u32, Outcome)> = Vec::new();
-        let run = self.fill_pages(path, &mut out, &mut fetched);
+        let run = self.fill_pages(path, max_pages, &mut out, &mut fetched);
         if tokio::time::timeout(self.pages_deadline, run)
             .await
             .is_err()
@@ -324,6 +334,7 @@ impl HttpLayer {
     async fn fill_pages<T: DeserializeOwned>(
         &self,
         path: &str,
+        max_pages: u32,
         out: &mut Pages<T>,
         fetched: &mut Vec<(u32, Outcome)>,
     ) {
@@ -339,9 +350,11 @@ impl HttpLayer {
         out.absorb(&first);
 
         if let Some(total) = first.page_header("x-total-pages") {
-            let last_page = if total > MAX_PAGES {
-                out.complete = false;
-                MAX_PAGES
+            let last_page = if total > max_pages {
+                if max_pages >= MAX_PAGES {
+                    out.complete = false;
+                }
+                max_pages
             } else {
                 total
             };
@@ -363,6 +376,9 @@ impl HttpLayer {
         let mut current = 1;
         let mut next = first.page_header("x-next-page");
         while let Some(n) = next {
+            if current >= max_pages && max_pages < MAX_PAGES {
+                break;
+            }
             if n <= current || current >= MAX_PAGES {
                 out.complete = false;
                 break;
