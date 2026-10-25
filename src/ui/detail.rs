@@ -38,12 +38,27 @@ pub fn render_detail_view(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Generate tab titles
     let has_changes = app.selected_mr.is_some();
+    let selected_key = app
+        .selected_mr
+        .as_ref()
+        .map(|m| (m.project_id, m.iid))
+        .or_else(|| app.selected_issue.as_ref().map(|i| (i.project_id, i.iid)));
+    let discussions_count = if selected_key.is_some() && app.discussions_key == selected_key {
+        app.discussions.len().to_string()
+    } else {
+        "…".to_string()
+    };
     let mut titles = vec![
         " 📄 Overview ".to_string(),
-        format!(" 💬 Discussions ({}) ", app.discussions.len()),
+        format!(" 💬 Discussions ({}) ", discussions_count),
     ];
     if has_changes {
-        titles.push(format!(" 📝 Changes ({}) ", app.mr_diffs.len()));
+        let changes_count = if app.diffs_key.is_some() && app.diffs_key == selected_key {
+            app.mr_diffs.len().to_string()
+        } else {
+            "…".to_string()
+        };
+        titles.push(format!(" 📝 Changes ({}) ", changes_count));
     }
 
     // Determine active tab index based on detail_section

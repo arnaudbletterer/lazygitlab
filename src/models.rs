@@ -1333,6 +1333,8 @@ pub struct App {
 
     pub last_error: Option<String>,
     pub list_error: Option<String>,
+    pub discussions_key: Option<(u64, u64)>,
+    pub diffs_key: Option<(u64, u64)>,
     pub nav_wait: Option<std::time::Instant>,
     pub mrs_scope: Option<u64>,
     pub issues_scope: Option<u64>,

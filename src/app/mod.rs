@@ -232,6 +232,8 @@ impl App {
             pipeline_filter: PipelineFilter::All,
             last_error: None,
             list_error: None,
+            discussions_key: None,
+            diffs_key: None,
             nav_wait: None,
             mrs_scope: None,
             issues_scope: None,
@@ -816,6 +818,7 @@ impl App {
                         }
                     }
                     self.discussions = data;
+                    self.discussions_key = Some((project_id, iid));
                     self.enrich_diffs_with_discussions();
                 }
             }
@@ -839,6 +842,7 @@ impl App {
                         }
                     }
                     self.discussions = data;
+                    self.discussions_key = Some((project_id, iid));
                 }
             }
             DataUpdate::Jobs {
@@ -951,6 +955,7 @@ impl App {
                     && selected.project_id == project_id
                 {
                     self.mr_diffs = data;
+                    self.diffs_key = Some((project_id, iid));
                     self.enrich_diffs_with_discussions();
                     let _ = self.fetch_all_missing_diffs().await;
                 }
@@ -1076,6 +1081,8 @@ impl App {
             DataUpdate::Loading(b) => {
                 if b {
                     self.loading_tasks += 1;
+                    self.list_error = None;
+                    self.nav_wait = None;
                 } else {
                     self.loading_tasks = self.loading_tasks.saturating_sub(1);
                 }
@@ -1120,6 +1127,12 @@ impl App {
             },
             DataUpdate::Error(e) => {
                 let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));
+                if ["MRs", "Todos", "Projects", "Groups", "Issues", "Pipelines", "Commits"]
+                    .iter()
+                    .any(|k| e.starts_with(&format!("{k} fetch")))
+                {
+                    self.list_error = Some(e.clone());
+                }
                 if e.contains("Diffs") {
                     self.is_fetching_diffs = false;
                 }

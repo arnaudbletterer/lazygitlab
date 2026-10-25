@@ -210,6 +210,8 @@ impl App {
         self.selected_pipeline = None;
         self.selected_job = None;
         self.discussions.clear();
+        self.discussions_key = None;
+        self.diffs_key = None;
         self.mr_diffs.clear();
         self.is_fetching_diffs = false;
         self.jobs.clear();

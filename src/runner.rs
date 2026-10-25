@@ -181,6 +181,9 @@ where
                     app.handle_mouse(mouse).await;
                     needs_draw = true;
                 }
+                crossterm::event::Event::Resize(_, _) => {
+                    needs_draw = true;
+                }
                 _ => {}
             }
         }

@@ -11,7 +11,14 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
         || app.selected_issue.is_some()
         || app.selected_pipeline.is_some();
 
-    let chunks = if is_item_selected {
+    let reserve_detail = matches!(
+        app.active_selection,
+        MenuSelection::Todos
+            | MenuSelection::MergeRequests
+            | MenuSelection::Issues
+            | MenuSelection::Pipelines
+    );
+    let chunks = if is_item_selected || reserve_detail {
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -105,18 +112,26 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     // 2. Modern Navigation Panels
-    let todo_badge = if !app.todos.is_empty() {
-        format!(" ({})", app.todos.len())
+    fn item_count<T>(rows: &[GroupedItem<T>]) -> usize {
+        rows.iter()
+            .filter(|r| matches!(r, GroupedItem::Item(_)))
+            .count()
+    }
+    fn badge(count: usize) -> String {
+        if count > 0 {
+            format!(" ({})", count)
+        } else {
+            String::new()
+        }
+    }
+    let todo_badge = badge(item_count(&app.filtered_todos));
+    let mr_badge = if app.mrs_scope.is_none() {
+        badge(item_count(&app.filtered_mrs))
     } else {
         String::new()
     };
-    let mr_badge = if !app.merge_requests.is_empty() {
-        format!(" ({})", app.merge_requests.len())
-    } else {
-        String::new()
-    };
-    let issue_badge = if !app.issues.is_empty() {
-        format!(" ({})", app.issues.len())
+    let issue_badge = if app.issues_scope.is_none() {
+        badge(item_count(&app.filtered_issues))
     } else {
         String::new()
     };
@@ -195,6 +210,13 @@ pub fn render_list_view(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         app.set_rect("main_list", chunks[1]);
         render_main_list(f, app, chunks[1]);
+        if reserve_detail {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(app.theme.inactive_border));
+            f.render_widget(block, chunks[2]);
+        }
     }
 }
 
@@ -422,7 +444,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No todos match this view or filter.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -444,7 +469,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -547,7 +573,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No merge requests match this view or filter.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -585,7 +614,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -694,7 +724,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No issues match this view or filter.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -729,7 +762,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -798,7 +832,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No pipelines match this view or filter.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -828,7 +865,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -1042,7 +1080,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No Branches found.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -1064,7 +1105,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -1108,7 +1150,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No Commits found on this branch.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -1122,7 +1167,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -1155,7 +1201,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             if items.is_empty() {
-                let msg = vec![
+                let msg = if let Some(status) = list_empty_status(app) {
+                    status
+                } else {
+                    vec![
                     Line::from(Span::styled(
                         "No Issue Boards found for this project.",
                         Style::default().fg(app.theme.title_fg).bold(),
@@ -1169,7 +1218,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),
-                ];
+                    ]
+                };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
             } else {
                 f.render_stateful_widget(
@@ -1264,7 +1314,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     })
                     .collect();
                 if items.is_empty() {
-                    let msg = vec![
+                    let msg = if let Some(status) = list_empty_status(app) {
+                        status
+                    } else {
+                        vec![
                         Line::from(Span::styled(
                             "No Epics found for this group.",
                             Style::default().fg(app.theme.title_fg).bold(),
@@ -1278,7 +1331,8 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                                 Style::default().fg(app.theme.dim),
                             ),
                         ]),
-                    ];
+                        ]
+                    };
                     f.render_widget(Paragraph::new(msg), list_chunks[1]);
                 } else {
                     f.render_stateful_widget(
@@ -1414,7 +1468,18 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     if comments.is_empty() {
-        let msg = vec![
+        let selected_key = app
+            .selected_mr
+            .as_ref()
+            .map(|m| (m.project_id, m.iid))
+            .or_else(|| app.selected_issue.as_ref().map(|i| (i.project_id, i.iid)));
+        let msg = if selected_key.is_some() && app.discussions_key != selected_key {
+            vec![Line::from(Span::styled(
+                "Loading...",
+                Style::default().fg(app.theme.dim),
+            ))]
+        } else {
+            vec![
             Line::from(Span::styled(
                 "No discussions found on this item.",
                 Style::default().fg(app.theme.title_fg).bold(),
@@ -1428,7 +1493,8 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
                     Style::default().fg(app.theme.dim),
                 ),
             ]),
-        ];
+            ]
+        };
         f.render_widget(Paragraph::new(msg), chunks[0]);
     } else {
         f.render_stateful_widget(List::new(comments), chunks[0], &mut app.discussion_state);
@@ -2187,4 +2253,23 @@ fn render_home_view(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) 
         Paragraph::new(Line::from(footer_spans)).alignment(Alignment::Center),
         chunks[3],
     );
+}
+
+fn list_empty_status(app: &App) -> Option<Vec<Line<'static>>> {
+    let text = if app.list_loading() {
+        "Loading...".to_string()
+    } else if let Some(err) = &app.list_error {
+        format!(
+            "Couldn't load: {} (r to retry)",
+            crate::redaction::redact_secrets(err)
+        )
+    } else {
+        return None;
+    };
+    let style = if app.list_loading() {
+        Style::default().fg(app.theme.dim)
+    } else {
+        Style::default().fg(app.theme.failed).bold()
+    };
+    Some(vec![Line::from(Span::styled(text, style))])
 }

@@ -108,6 +108,13 @@ fn render_ui(f: &mut Frame, app: &mut App) {
                 .fg(app.theme.pending)
                 .add_modifier(Modifier::BOLD),
         ));
+    } else if app.list_error.is_some() || app.auth_failed {
+        header_spans.push(Span::styled(
+            "  ● STALE",
+            Style::default()
+                .fg(app.theme.failed)
+                .add_modifier(Modifier::BOLD),
+        ));
     } else {
         header_spans.push(Span::styled(
             "  ● LIVE",
