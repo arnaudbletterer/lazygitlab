@@ -6,13 +6,26 @@ Set MOCK_DEBUG=1 to log unhandled routes on stderr.
 
 Usage: mock_gitlab.py [PORT] [--latency-ms N] [--big] [--projects N] [--mrs N]
                       [--issues N] [--todos N] [--pipelines N]
+                      [--fail-projects IDS] [--hang-projects IDS] [--hang-s N]
 
 --latency-ms N  sleep N ms before answering every request (not /__stats).
 --big           replace the fictional world by a generated one (default 40
                 projects, 500 merge requests, 500 issues, skewed so that a few
                 projects hold most of them). Nothing is stored on disk.
-GET /__stats    JSON request counters per method and path template.
+GET /__stats    JSON request counters per method and path template, plus
+                "inflight", the number of requests being served right now.
 POST /__reset   zero the counters.
+POST /__mutate  change the data while the server runs. JSON body with any of
+                merge_mr, close_issue, add_mr, add_issue (integers: how many).
+                Merging or closing takes the first opened item; adding appends
+                a copy of the first item with a new number.
+POST /__config  JSON body with any of latency_ms, fail_projects, hang_projects
+                (lists of project ids), hang_s. Same knobs as the options below,
+                changeable while the server runs.
+
+--fail-projects IDS   answer HTTP 500 to /projects/ID/... for these ids.
+--hang-projects IDS   hold requests to /projects/ID/... for --hang-s seconds
+                      (default 60), then answer 500.
 
 List endpoints that receive page or per_page (or any list in --big mode) are
 paginated like GitLab: X-Page, X-Per-Page, X-Next-Page, X-Prev-Page, X-Total,
@@ -40,6 +53,11 @@ DEBUG = bool(os.environ.get("MOCK_DEBUG"))
 LATENCY_MS = 0.0
 BIG = False
 PROJECT_PATHS = {}
+FAIL_PROJECTS = set()
+HANG_PROJECTS = set()
+HANG_S = 60.0
+DATA_LOCK = threading.Lock()
+INFLIGHT = 0
 
 
 def load(name):
@@ -480,6 +498,64 @@ def stats_reset():
         STATS["paths"] = {}
 
 
+def mutate(spec):
+    """Apply a /__mutate request. Returns what was done."""
+    done = {}
+    with DATA_LOCK:
+        for _ in range(int(spec.get("merge_mr", 0))):
+            hit = next((m for m in MRS if m["state"] == "opened"), None)
+            if hit:
+                hit["state"] = "merged"
+                done["merge_mr"] = done.get("merge_mr", 0) + 1
+        for _ in range(int(spec.get("close_issue", 0))):
+            hit = next((i for i in ISSUES if i["state"] == "opened"), None)
+            if hit:
+                hit["state"] = "closed"
+                done["close_issue"] = done.get("close_issue", 0) + 1
+        for key, items, word in (("add_mr", MRS, "Merge request"),
+                                 ("add_issue", ISSUES, "Issue")):
+            for _ in range(int(spec.get(key, 0))):
+                if not items:
+                    break
+                new = dict(items[0])
+                new["iid"] = max(x["iid"] for x in items) + 1
+                if "gid" in new:
+                    new["gid"] = max(x["gid"] for x in items) + 1
+                new["title"] = f"{word} {new.get('gid', new['iid'])} (new)"
+                new["state"] = "opened"
+                new["age"] = "1m"
+                items.append(new)
+                done[key] = done.get(key, 0) + 1
+    return done
+
+
+def configure(spec):
+    global LATENCY_MS, HANG_S
+    if "latency_ms" in spec:
+        LATENCY_MS = float(spec["latency_ms"])
+    if "hang_s" in spec:
+        HANG_S = float(spec["hang_s"])
+    if "fail_projects" in spec:
+        FAIL_PROJECTS.clear()
+        FAIL_PROJECTS.update(int(x) for x in spec["fail_projects"])
+    if "hang_projects" in spec:
+        HANG_PROJECTS.clear()
+        HANG_PROJECTS.update(int(x) for x in spec["hang_projects"])
+
+
+def project_fault(path):
+    """Return "fail" or "hang" when the request targets a faulty project."""
+    m = re.match(r"^/projects/(\d+)(/|$)", path)
+    if not m:
+        return None
+    pid = int(m.group(1))
+    if pid in HANG_PROJECTS:
+        return "hang"
+    if pid in FAIL_PROJECTS:
+        return "fail"
+    return None
+
+
 def paginate(items, query, host, path):
     """Slice a list like GitLab and return (slice, headers)."""
     def num(name, default):
@@ -534,18 +610,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return len(data)
 
     def do_GET(self):
+        global INFLIGHT
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/__stats":
             with STATS_LOCK:
-                self._send(200, json.dumps(STATS))
+                self._send(200, json.dumps(dict(STATS, inflight=INFLIGHT)))
             return
+        with STATS_LOCK:
+            INFLIGHT += 1
+        try:
+            self._serve_get(parsed, path)
+        finally:
+            with STATS_LOCK:
+                INFLIGHT -= 1
+
+    def _serve_get(self, parsed, path):
         if LATENCY_MS:
             time.sleep(LATENCY_MS / 1000.0)
         if path.startswith("/api/v4"):
             path = path[len("/api/v4"):]
+        fault = project_fault(path)
+        if fault == "hang":
+            time.sleep(HANG_S)
+        if fault:
+            n = self._send(500, '{"message": "500 Internal Server Error"}')
+            stats_record("GET", path, n)
+            return
         query = urllib.parse.parse_qs(parsed.query)
-        result = route(path, query)
+        with DATA_LOCK:
+            result = route(path, query)
         headers = {}
         if result is None:
             if DEBUG:
@@ -570,6 +664,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         stats_record("GET", path, n)
 
     def do_POST(self):
+        if self.path in ("/__mutate", "/__config"):
+            length = int(self.headers.get("Content-Length") or 0)
+            spec = json.loads(self.rfile.read(length) or b"{}")
+            if self.path == "/__mutate":
+                self._send(200, json.dumps(mutate(spec)))
+            else:
+                configure(spec)
+                self._send(200, "{}")
+            return
         if self.path == "/__reset":
             stats_reset()
             self._send(200, "{}")
@@ -595,8 +698,14 @@ def main():
     ap.add_argument("--issues", type=int, default=500)
     ap.add_argument("--todos", type=int, default=120)
     ap.add_argument("--pipelines", type=int, default=400)
+    ap.add_argument("--fail-projects", default="")
+    ap.add_argument("--hang-projects", default="")
+    ap.add_argument("--hang-s", type=float, default=60.0)
     args = ap.parse_args()
     LATENCY_MS = args.latency_ms
+    configure({"hang_s": args.hang_s,
+               "fail_projects": [x for x in args.fail_projects.split(",") if x],
+               "hang_projects": [x for x in args.hang_projects.split(",") if x]})
     if args.big:
         BIG = True
         build_big(args.projects, args.mrs, args.issues, args.todos, args.pipelines)
