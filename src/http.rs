@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::hash::{BuildHasher, RandomState};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{OnceCell, Semaphore};
+use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
@@ -18,6 +18,7 @@ pub const PER_PAGE: u32 = 100;
 pub const MAX_PAGES: u32 = 200;
 pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(120);
 pub const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+pub const PAGES_DEADLINE: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct Resp {
@@ -59,13 +60,15 @@ struct Inner {
     client: AsyncGitlab,
     budget: Semaphore,
     gate: Mutex<Option<Instant>>,
-    inflight: Mutex<HashMap<String, Arc<OnceCell<Outcome>>>>,
+    inflight: Mutex<HashMap<String, watch::Receiver<Option<Outcome>>>>,
 }
 
-/// Request layer for one GitLab host (trusted: response bodies are buffered up to `MAX_BODY_BYTES`): the per-host budget and the 429 gate live here.
+/// Request layer for one GitLab host: the per-host budget and the 429 gate live here.
+/// The host is trusted: the gitlab client buffers each response before `MAX_BODY_BYTES` is checked.
 #[derive(Clone)]
 pub struct HttpLayer {
     inner: Arc<Inner>,
+    pages_deadline: Duration,
 }
 
 fn jitter(cap: Duration) -> Duration {
@@ -73,6 +76,7 @@ fn jitter(cap: Duration) -> Duration {
     Duration::from_millis(RandomState::new().hash_one(0u8) % cap_ms)
 }
 
+/// Only delta-seconds and RFC 2822 HTTP-dates (`Wed, 21 Oct 2015 07:28:00 GMT`) are parsed.
 fn retry_after(resp: &Resp) -> Duration {
     let parsed = resp.header("retry-after").and_then(|v| {
         let v = v.trim();
@@ -90,9 +94,10 @@ fn error_message(resp: &Resp) -> String {
     let detail = serde_json::from_slice::<serde_json::Value>(&resp.body)
         .ok()
         .and_then(|v| {
-            ["message", "error"]
-                .iter()
-                .find_map(|k| v.get(k).map(|m| m.to_string()))
+            ["message", "error"].iter().find_map(|k| {
+                v.get(k)
+                    .map(|m| m.as_str().map_or_else(|| m.to_string(), str::to_string))
+            })
         })
         .unwrap_or_default();
     let raw = format!("request failed ({}) {}", resp.status, detail);
@@ -113,7 +118,13 @@ impl HttpLayer {
                 gate: Mutex::new(None),
                 inflight: Mutex::new(HashMap::new()),
             }),
+            pages_deadline: PAGES_DEADLINE,
         }
+    }
+
+    pub fn with_pages_deadline(mut self, deadline: Duration) -> Self {
+        self.pages_deadline = deadline;
+        self
     }
 
     fn url(&self, path: &str) -> Result<String, String> {
@@ -151,7 +162,7 @@ impl HttpLayer {
         body: Vec<u8>,
         fail_fast: bool,
     ) -> Result<Resp, SendError> {
-        let fut = async {
+        async {
             let _permit = loop {
                 while let Some(until) = self.gate_until() {
                     if fail_fast {
@@ -190,10 +201,8 @@ impl HttpLayer {
                 headers: parts.headers,
                 body: Arc::from(&body[..]),
             })
-        };
-        tokio::time::timeout(MAX_RETRY_AFTER + REQUEST_TIMEOUT, fut)
-            .await
-            .map_err(|_| SendError::Other("request timed out".to_string()))?
+        }
+        .await
     }
 
     async fn execute(
@@ -239,22 +248,35 @@ impl HttpLayer {
             Err(e) => return Outcome::Failed(e),
         };
         let key = format!("{}\n{}", url, etag.unwrap_or(""));
-        let cell = {
+        let mut rx = {
             let mut map = self
                 .inner
                 .inflight
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            map.entry(key.clone()).or_default().clone()
+            if let Some(rx) = map.get(&key) {
+                rx.clone()
+            } else {
+                let (tx, rx) = watch::channel(None);
+                map.insert(key.clone(), rx.clone());
+                let layer = self.clone();
+                let etag = etag.map(str::to_string);
+                tokio::spawn(async move {
+                    let _cleanup = InflightCleanup { layer: &layer, key };
+                    let outcome = layer
+                        .execute(&http::Method::GET, &url, etag.as_deref(), Vec::new())
+                        .await;
+                    let _ = tx.send(Some(outcome));
+                });
+                rx
+            }
         };
-        let _guard = InflightGuard {
-            layer: self,
-            key,
-            cell: cell.clone(),
-        };
-        cell.get_or_init(|| self.execute(&http::Method::GET, &url, etag, Vec::new()))
-            .await
-            .clone()
+        match rx.wait_for(|v| v.is_some()).await {
+            Ok(v) => v
+                .clone()
+                .unwrap_or(Outcome::Failed("request failed".to_string())),
+            Err(_) => Outcome::Failed("request task ended unexpectedly".to_string()),
+        }
     }
 
     /// Mutation (POST, PUT, DELETE...): never retried, never coalesced, fails fast while rate limited.
@@ -268,23 +290,50 @@ impl HttpLayer {
         }
     }
 
-    /// Fetches every page of a list endpoint. `complete` is false if any page failed.
+    /// Fetches every page of a list endpoint. `complete` is false if any page failed
+    /// or the overall deadline passed; rows fetched so far are still returned.
     pub async fn get_all_pages<T>(&self, path: &str) -> Pages<T>
     where
         T: DeserializeOwned,
     {
-        let sep = if path.contains('?') { '&' } else { '?' };
-        let page_path = |n: u32| format!("{path}{sep}per_page={PER_PAGE}&page={n}");
         let mut out = Pages {
             items: Vec::new(),
             complete: true,
             rate_limited_until: None,
         };
+        let mut fetched: Vec<(u32, Outcome)> = Vec::new();
+        let run = self.fill_pages(path, &mut out, &mut fetched);
+        if tokio::time::timeout(self.pages_deadline, run)
+            .await
+            .is_err()
+        {
+            out.complete = false;
+        }
+        fetched.sort_by_key(|(n, _)| *n);
+        for (_, outcome) in fetched {
+            match outcome {
+                Outcome::Ok(resp) => {
+                    out.absorb(&resp);
+                }
+                other => out.fail(&other),
+            }
+        }
+        out
+    }
+
+    async fn fill_pages<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        out: &mut Pages<T>,
+        fetched: &mut Vec<(u32, Outcome)>,
+    ) {
+        let sep = if path.contains('?') { '&' } else { '?' };
+        let page_path = |n: u32| format!("{path}{sep}per_page={PER_PAGE}&page={n}");
         let first = match self.get(&page_path(1), None).await {
             Outcome::Ok(resp) => resp,
             other => {
                 out.fail(&other);
-                return out;
+                return;
             }
         };
         out.absorb(&first);
@@ -302,23 +351,13 @@ impl HttpLayer {
                 let p = page_path(n);
                 tasks.spawn(async move { (n, layer.get(&p, None).await) });
             }
-            let mut fetched = Vec::new();
             while let Some(joined) = tasks.join_next().await {
                 match joined {
                     Ok(pair) => fetched.push(pair),
                     Err(e) => out.fail(&Outcome::Failed(e.to_string())),
                 }
             }
-            fetched.sort_by_key(|(n, _)| *n);
-            for (_, outcome) in fetched {
-                match outcome {
-                    Outcome::Ok(resp) => {
-                        out.absorb(&resp);
-                    }
-                    other => out.fail(&other),
-                }
-            }
-            return out;
+            return;
         }
 
         let mut current = 1;
@@ -342,30 +381,22 @@ impl HttpLayer {
                 }
             }
         }
-        out
     }
 }
 
-struct InflightGuard<'a> {
+struct InflightCleanup<'a> {
     layer: &'a HttpLayer,
     key: String,
-    cell: Arc<OnceCell<Outcome>>,
 }
 
-impl Drop for InflightGuard<'_> {
+impl Drop for InflightCleanup<'_> {
     fn drop(&mut self) {
-        let mut map = self
-            .layer
+        self.layer
             .inner
             .inflight
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if map
-            .get(&self.key)
-            .is_some_and(|c| Arc::ptr_eq(c, &self.cell))
-        {
-            map.remove(&self.key);
-        }
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.key);
     }
 }
 

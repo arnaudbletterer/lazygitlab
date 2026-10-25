@@ -97,7 +97,7 @@ async fn pages_are_fetched_in_parallel_within_budget() {
     mount_paged(&server, p).await;
 
     let start = Instant::now();
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     let elapsed = start.elapsed();
     eprintln!("10 pages at 100 ms: {elapsed:?}");
 
@@ -129,7 +129,7 @@ async fn missing_total_pages_falls_back_to_sequential() {
     let (p, arrivals) = paged(4, 50, false, None);
     mount_paged(&server, p).await;
 
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(pages.complete);
     assert_eq!(pages.items.len(), 8);
     let times = arrivals.lock().unwrap().clone();
@@ -147,7 +147,7 @@ async fn failing_page_marks_incomplete_but_keeps_other_rows() {
     let (p, _) = paged(5, 0, true, Some(3));
     mount_paged(&server, p).await;
 
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(!pages.complete);
     assert_eq!(pages.items.len(), 8);
     assert!(!pages.items.contains(&30));
@@ -403,7 +403,7 @@ async fn huge_total_pages_is_capped_and_incomplete() {
             .append_header("X-Total-Pages", "4294967295"),
     )
     .await;
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(!pages.complete);
     assert_eq!(pages.items.len(), 200);
 }
@@ -420,7 +420,7 @@ async fn repeated_next_page_does_not_loop() {
             .append_header("X-Next-Page", "1"),
     )
     .await;
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(!pages.complete);
     assert_eq!(pages.items.len(), 1);
 }
@@ -444,29 +444,65 @@ async fn endless_next_page_stops_at_cap() {
         .respond_with(Endless)
         .mount(&server)
         .await;
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(!pages.complete);
     assert_eq!(pages.items.len(), 200);
 }
 
 #[tokio::test]
-async fn cancelled_first_coalescer_does_not_block_the_next() {
+async fn cancelled_first_coalescer_does_not_duplicate_the_request() {
     let server = MockServer::start().await;
     let http = layer(&server).await;
-    mount_status(
-        &server,
-        "slow",
-        ResponseTemplate::new(200)
-            .set_body_json(json!([1]))
-            .set_delay(Duration::from_millis(200)),
-    )
-    .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/slow"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!([1]))
+                .set_delay(Duration::from_millis(300)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
     let h2 = http.clone();
     let first = tokio::spawn(async move { h2.get("slow", None).await });
     tokio::time::sleep(Duration::from_millis(50)).await;
     first.abort();
     let _ = first.await;
     assert!(matches!(http.get("slow", None).await, Outcome::Ok(_)));
+    server.verify().await;
+}
+
+struct SlowAfterTwo;
+
+impl Respond for SlowAfterTwo {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let t = ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .append_header("X-Total-Pages", "5");
+        if page_of(req) <= 2 {
+            t
+        } else {
+            t.set_delay(Duration::from_secs(5))
+        }
+    }
+}
+
+#[tokio::test]
+async fn overall_deadline_returns_partial_rows() {
+    let server = MockServer::start().await;
+    let http = layer(&server)
+        .await
+        .with_pages_deadline(Duration::from_millis(400));
+    Mock::given(method("GET"))
+        .and(path("/api/v4/things"))
+        .respond_with(SlowAfterTwo)
+        .mount(&server)
+        .await;
+    let start = Instant::now();
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
+    assert!(start.elapsed() < Duration::from_secs(3));
+    assert!(!pages.complete);
+    assert_eq!(pages.items.len(), 2);
 }
 
 struct LimitedPage3;
@@ -491,7 +527,7 @@ async fn rate_limit_on_page_three_is_surfaced() {
         .respond_with(LimitedPage3)
         .mount(&server)
         .await;
-    let pages = http.get_all_pages::<u64>("things").await;
+    let pages = bounded(http.get_all_pages::<u64>("things")).await;
     assert!(!pages.complete);
     assert!(pages.rate_limited_until.is_some());
     assert_eq!(pages.items.len(), 3);
@@ -511,4 +547,11 @@ async fn gitlab_error_message_is_kept() {
         panic!("expected failure");
     };
     assert!(msg.contains("404 Project Not Found"), "{msg}");
+    assert!(!msg.contains("\"404"), "{msg}");
+}
+
+async fn bounded<F: std::future::Future>(f: F) -> F::Output {
+    tokio::time::timeout(Duration::from_secs(20), f)
+        .await
+        .expect("test future hung")
 }
