@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: help demo test test-wiremock test-live-smoke test-live-full test-live-massive seed seed-reset lint format check ci coverage clean
+.PHONY: help bench demo test test-wiremock test-live-smoke test-live-full test-live-massive seed seed-reset lint format check ci coverage clean
 
 help:
 	@echo "lazygitlab test ground targets:"
@@ -10,6 +10,7 @@ help:
 	@echo "  make seed              - populate test ground (idempotent)"
 	@echo "  make seed-massive      - populate test ground + seed a 120-file MR"
 	@echo "  make seed-reset        - DELETE test ground project (DESTRUCTIVE)"
+	@echo "  make bench             - measure list loading against the generated mock at 0, 100, 300 ms"
 	@echo "  make demo              - regenerate screenshots and demo.gif from the fictional mock"
 	@echo "  make lint              - cargo clippy --all-targets -- -D warnings"
 	@echo "  make format            - cargo fmt --all"
@@ -44,6 +45,10 @@ demo:
 	test -x tools/demo/.venv/bin/python || python3 -m venv tools/demo/.venv
 	tools/demo/.venv/bin/pip install --quiet pillow
 	tools/demo/.venv/bin/python tools/demo/make_demo.py
+
+bench:
+	cargo build --release
+	python3 tools/bench/run_bench.py
 
 lint:
 	cargo clippy --all-targets -- -D warnings
