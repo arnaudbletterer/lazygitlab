@@ -493,3 +493,17 @@ async fn metadata_cache_expires() {
     assert!(app.metadata_fresh(1));
     assert!(!app.metadata_fresh(2));
 }
+
+#[tokio::test]
+async fn user_change_drops_the_previous_users_rows() {
+    let (_server, mut app, _rx) = setup_app().await;
+    app.current_user = Some(Author::new(1, "old".into()));
+    let mr = dummy_mr(1, "mine");
+    app.merge_requests = vec![mr.clone()];
+    app.selected_mr = Some(mr);
+    app.issues = vec![issue(1, 2, "mine")];
+    assert!(app.on_user_known(2));
+    assert!(app.merge_requests.is_empty());
+    assert!(app.issues.is_empty());
+    assert!(app.selected_mr.is_none());
+}

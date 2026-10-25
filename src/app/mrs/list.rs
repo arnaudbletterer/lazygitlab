@@ -323,7 +323,7 @@ impl App {
 
     /// Returns true when the user differs from the one the shown rows were loaded for:
     /// the rows are dropped and the caller refetches.
-    pub(crate) fn on_user_known(&mut self, id: u64) -> bool {
+    pub fn on_user_known(&mut self, id: u64) -> bool {
         let Some(id) = NonZeroU64::new(id) else {
             return false;
         };
@@ -340,6 +340,13 @@ impl App {
             previous.is_some_and(|p| p != id) || previous_shown.is_some_and(|p| p != id.get());
         if changed {
             self.merge_requests.clear();
+            self.issues.clear();
+            self.todos.clear();
+            self.todos_etag = None;
+            self.selected_mr = None;
+            self.selected_issue = None;
+            self.mr_edit_snapshots.clear();
+            self.issue_edit_snapshots.clear();
             self.mr_meta.clear();
             self.mrs_cached_at = None;
             self.mrs_stale = false;
