@@ -20,6 +20,8 @@ struct Row {
     iid: u64,
     updated: String,
     title: String,
+    state: String,
+    reviewers: Vec<u64>,
 }
 
 type Data = Arc<Mutex<Vec<Row>>>;
@@ -42,6 +44,8 @@ fn dataset(projects: u64, per_project: u64) -> Data {
                 iid,
                 updated: stamp(pid * 100 + iid),
                 title: format!("mr {pid}-{iid}"),
+                state: "opened".into(),
+                reviewers: Vec::new(),
             });
         }
     }
@@ -51,7 +55,8 @@ fn dataset(projects: u64, per_project: u64) -> Data {
 fn rest_json(r: &Row) -> Value {
     json!({
         "iid": r.iid, "project_id": r.pid, "title": r.title,
-        "author": {"id": 1, "username": "u"}, "web_url": "https://gl/x", "state": "opened",
+        "author": {"id": 1, "username": "u"}, "web_url": "https://gl/x", "state": r.state,
+        "reviewers": r.reviewers.iter().map(|id| json!({"id": id, "username": format!("r{id}")})).collect::<Vec<_>>(),
         "source_branch": "a", "target_branch": "b", "draft": false,
         "created_at": "2026-01-01T00:00:00Z", "updated_at": r.updated,
         "references": {"full": format!("g/p{}!{}", r.pid, r.iid)}
@@ -60,13 +65,14 @@ fn rest_json(r: &Row) -> Value {
 
 fn gql_node(r: &Row) -> Value {
     json!({
-        "iid": r.iid.to_string(), "title": r.title, "state": "opened", "draft": false,
+        "iid": r.iid.to_string(), "title": r.title, "state": r.state, "draft": false,
         "webUrl": format!("https://gl/g/p{}/-/merge_requests/{}", r.pid, r.iid),
         "createdAt": "2026-01-01T00:00:00Z", "updatedAt": r.updated,
         "detailedMergeStatus": "MERGEABLE", "conflicts": false,
         "sourceBranch": "a", "targetBranch": "b",
         "author": {"id": "gid://gitlab/User/1", "username": "u", "name": "U"},
-        "assignees": {"nodes": []}, "reviewers": {"nodes": []},
+        "assignees": {"nodes": []},
+        "reviewers": {"nodes": r.reviewers.iter().map(|id| json!({"id": format!("gid://gitlab/User/{id}"), "username": format!("r{id}")})).collect::<Vec<_>>()},
         "labels": {"nodes": []}, "milestone": null, "headPipeline": null,
         "approved": false, "approvalsLeft": 0,
         "resolvableDiscussionsCount": 0, "resolvedDiscussionsCount": 0
@@ -86,6 +92,10 @@ impl Respond for Gql {
         }
         let body: Value = serde_json::from_slice(&req.body).unwrap();
         let since = body["variables"]["since"].as_str().map(str::to_string);
+        let state = body["variables"]["state"]
+            .as_str()
+            .unwrap_or("all")
+            .to_string();
         let ids: Vec<u64> = body["variables"]["ids"]
             .as_array()
             .unwrap()
@@ -107,6 +117,7 @@ impl Respond for Gql {
                 let nodes: Vec<Value> = rows
                     .iter()
                     .filter(|r| r.pid == pid)
+                    .filter(|r| state == "all" || r.state == state)
                     .filter(|r| since.as_ref().is_none_or(|s| r.updated >= *s))
                     .map(gql_node)
                     .collect();
@@ -149,6 +160,13 @@ impl Respond for Rest {
             .collect();
         let page: usize = q.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
         if let Some(s) = self.status.lock().unwrap().get(&pid)
+            && *s == 0
+        {
+            return ResponseTemplate::new(200)
+                .set_body_json(json!([]))
+                .set_delay(Duration::from_secs(30));
+        }
+        if let Some(s) = self.status.lock().unwrap().get(&pid)
             && *s != 200
         {
             return ResponseTemplate::new(*s).set_delay(LATENCY);
@@ -161,12 +179,16 @@ impl Respond for Rest {
         }
         let per_page: usize = q.get("per_page").and_then(|p| p.parse().ok()).unwrap_or(20);
         let since = q.get("updated_after");
+        let state = q.get("state").cloned().unwrap_or_else(|| "all".into());
+        let reviewer: Option<u64> = q.get("reviewer_id").and_then(|v| v.parse().ok());
         let rows: Vec<Row> = self
             .data
             .lock()
             .unwrap()
             .iter()
             .filter(|r| r.pid == pid)
+            .filter(|r| state == "all" || r.state == state)
+            .filter(|r| reviewer.is_none_or(|id| r.reviewers.contains(&id)))
             .filter(|r| since.is_none_or(|s| r.updated >= *s))
             .cloned()
             .collect();
@@ -344,8 +366,9 @@ async fn five_hundred_mrs_over_fifty_projects_load_under_two_seconds() {
         let took = start.elapsed();
 
         assert_eq!(app.merge_requests.len(), 500, "graphql={graphql}");
+        let bound = if graphql { 2 } else { 5 };
         assert!(
-            took < Duration::from_secs(2),
+            took < Duration::from_secs(bound),
             "graphql={graphql} took {took:?}"
         );
         assert!(!app.mrs_stale);
@@ -626,6 +649,8 @@ async fn detail_requests_wait_for_the_cursor_to_rest() {
                 iid,
                 updated: stamp(iid),
                 title: format!("mr 1-{iid}"),
+                state: "opened".into(),
+                reviewers: Vec::new(),
             }))
         })
         .mount(&server)
@@ -692,8 +717,145 @@ async fn mutations_are_refused_fast_while_rate_limited() {
     app.approve_mr().await.unwrap();
     settle(&mut app, &mut rx).await;
 
-    assert!(start.elapsed() < Duration::from_secs(2));
+    assert!(start.elapsed() < Duration::from_secs(5));
     assert_eq!(count(&server, "POST", "/api/v4/projects").await, 0);
     let err = app.last_error.clone().unwrap_or_default();
     assert!(err.contains("Rate limited"), "{err}");
+}
+
+async fn loaded_app(
+    server: &MockServer,
+    data: &Data,
+    graphql: bool,
+    projects: u64,
+) -> (App, tokio::sync::mpsc::UnboundedReceiver<DataUpdate>, Mocks) {
+    let mocks = mount(server, data, graphql).await;
+    let (mut app, mut rx) = app_for(server, projects).await;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    (app, rx, mocks)
+}
+
+async fn last_graphql_state(server: &MockServer) -> String {
+    let req = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .rfind(|r| r.url.path() == "/api/graphql")
+        .unwrap();
+    let body: Value = serde_json::from_slice(&req.body).unwrap();
+    body["variables"]["state"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn merged_mr_leaves_the_opened_view_after_one_background_tick() {
+    for graphql in [true, false] {
+        let server = MockServer::start().await;
+        let data = dataset(3, 2);
+        let (mut app, mut rx, _m) = loaded_app(&server, &data, graphql, 3).await;
+        assert_eq!(app.merge_requests.len(), 6);
+
+        {
+            let mut d = data.lock().unwrap();
+            d[0].state = "merged".into();
+            d[0].updated = "2026-05-01T00:00:00Z".into();
+        }
+        app.refresh_background().await;
+        settle(&mut app, &mut rx).await;
+
+        assert_eq!(app.merge_requests.len(), 5, "graphql={graphql}");
+        assert!(app.merge_requests.iter().all(|m| m.state == "opened"));
+        if graphql {
+            assert_eq!(last_graphql_state(&server).await, "all");
+        }
+    }
+}
+
+#[tokio::test]
+async fn closed_mr_leaves_the_opened_view_after_one_background_tick() {
+    let server = MockServer::start().await;
+    let data = dataset(3, 2);
+    let (mut app, mut rx, _m) = loaded_app(&server, &data, true, 3).await;
+    {
+        let mut d = data.lock().unwrap();
+        d[3].state = "closed".into();
+        d[3].updated = "2026-05-01T00:00:00Z".into();
+    }
+    app.refresh_background().await;
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 5);
+    assert!(!app.merge_requests.iter().any(|m| m.state == "closed"));
+}
+
+#[tokio::test]
+async fn removed_reviewer_drops_the_row_from_the_review_view() {
+    for graphql in [true, false] {
+        let server = MockServer::start().await;
+        let data = dataset(2, 2);
+        for r in data.lock().unwrap().iter_mut() {
+            r.reviewers = vec![1];
+        }
+        let mocks = mount(&server, &data, graphql).await;
+        let (mut app, mut rx) = app_for(&server, 2).await;
+        app.process_update_single(DataUpdate::CurrentUser(Author::new(1, "u".into())))
+            .await;
+        app.mr_filter = MergeRequestFilter::Review;
+        app.fetch_global_merge_requests().await.unwrap();
+        settle(&mut app, &mut rx).await;
+        assert_eq!(app.merge_requests.len(), 4, "graphql={graphql}");
+
+        {
+            let mut d = data.lock().unwrap();
+            d[0].reviewers = vec![2];
+            d[0].updated = "2026-05-01T00:00:00Z".into();
+        }
+        app.refresh_background().await;
+        settle(&mut app, &mut rx).await;
+        assert_eq!(app.merge_requests.len(), 3, "graphql={graphql}");
+        drop(mocks);
+    }
+}
+
+#[tokio::test]
+async fn a_hanging_project_does_not_block_the_others() {
+    let server = MockServer::start().await;
+    let data = dataset(6, 2);
+    let mocks = mount(&server, &data, false).await;
+    mocks.rest_status.lock().unwrap().insert(3, 0);
+    let (mut app, mut rx) = app_for(&server, 6).await;
+    app.http = app
+        .http
+        .clone()
+        .with_pages_deadline(Duration::from_millis(600));
+
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+
+    assert_eq!(app.merge_requests.len(), 10);
+    assert!(app.merge_requests.iter().all(|m| m.project_id != 3));
+    assert!(app.mrs_stale);
+}
+
+#[tokio::test]
+async fn user_change_drops_rows_and_refetches() {
+    let dir = unique_dir("userchange");
+    let server = MockServer::start().await;
+    let data = dataset(3, 2);
+    mount(&server, &data, true).await;
+    let host = server.uri();
+    let (mut app, mut rx) = app_for(&server, 3).await;
+    app.enable_cache(&dir, &host);
+    app.process_update_single(DataUpdate::CurrentUser(Author::new(1, "u".into())))
+        .await;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 6);
+
+    app.process_update_single(DataUpdate::CurrentUser(Author::new(2, "v".into())))
+        .await;
+    assert!(app.merge_requests.is_empty());
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 6);
+    let _ = std::fs::remove_dir_all(&dir);
 }

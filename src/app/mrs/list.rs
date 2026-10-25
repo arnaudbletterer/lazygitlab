@@ -12,7 +12,8 @@ pub const FULL_RECONCILE: Duration = Duration::from_secs(600);
 pub const CACHE_FLUSH_EVERY: Duration = Duration::from_secs(30);
 const REST_MAX_PAGES: u32 = 5;
 const PROGRESS_EVERY: Duration = Duration::from_millis(100);
-const REST_PROJECTS_IN_FLIGHT: usize = 12;
+const REST_PROJECTS_IN_FLIGHT: usize = 6;
+const CURSOR_MARGIN_SECS: i64 = 60;
 
 #[derive(Debug, Clone)]
 pub struct MrFetch {
@@ -34,6 +35,34 @@ pub fn state_of(scope: MergeRequestFilter) -> &'static str {
     }
 }
 
+/// An incremental pass asks for every state, so a row that left the scope shows up
+/// as changed and can be dropped locally.
+fn query_state(q: &MrFetch) -> &'static str {
+    if q.since.is_some() {
+        "all"
+    } else {
+        state_of(q.scope)
+    }
+}
+
+fn state_matches(mr: &MergeRequest, scope: MergeRequestFilter) -> bool {
+    match scope {
+        MergeRequestFilter::All => true,
+        _ => mr.state == state_of(scope),
+    }
+}
+
+fn since_with_margin(cursor: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(cursor)
+        .map(|t| {
+            (t - chrono::Duration::seconds(CURSOR_MARGIN_SECS))
+                .with_timezone(&chrono::Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string()
+        })
+        .unwrap_or_else(|_| cursor.to_string())
+}
+
 fn encode(v: &str) -> String {
     v.replace('+', "%2B")
 }
@@ -41,9 +70,10 @@ fn encode(v: &str) -> String {
 fn rest_path(q: &MrFetch, pid: u64) -> String {
     let mut path = format!(
         "projects/{pid}/merge_requests?state={}&order_by=updated_at&sort=desc&with_labels_details=true",
-        state_of(q.scope)
+        query_state(q)
     );
     match (q.scope, q.user_id) {
+        _ if q.since.is_some() => {}
         (MergeRequestFilter::Assigned, Some(id)) => path.push_str(&format!("&assignee_id={id}")),
         (MergeRequestFilter::Review, Some(id)) => path.push_str(&format!("&reviewer_id={id}")),
         _ => {}
@@ -70,6 +100,14 @@ fn secs_until(until: tokio::time::Instant) -> u64 {
         .saturating_duration_since(tokio::time::Instant::now())
         .as_secs()
         .max(1)
+}
+
+pub(super) fn matches_scope(
+    mr: &MergeRequest,
+    scope: MergeRequestFilter,
+    user: Option<u64>,
+) -> bool {
+    state_matches(mr, scope) && involves(mr, scope, user)
 }
 
 fn involves(mr: &MergeRequest, scope: MergeRequestFilter, user: Option<u64>) -> bool {
@@ -104,14 +142,14 @@ pub async fn fetch_global_mrs(
             client,
             gql,
             &q.project_ids,
-            state_of(q.scope),
+            query_state(q),
             q.since.as_deref(),
         )
         .await
         {
             Ok(res) if !(res.rows.is_empty() && !res.complete && !res.rate_limited) => {
                 for row in res.rows {
-                    if !involves(&row.mr, q.scope, q.user_id) {
+                    if q.since.is_none() && !involves(&row.mr, q.scope, q.user_id) {
                         continue;
                     }
                     out.meta.push((
@@ -246,7 +284,7 @@ fn scope_name(scope: MergeRequestFilter) -> String {
 }
 
 pub fn rate_limit_text(secs: u64) -> String {
-    format!("Rate limited by GitLab, retrying in {secs}s")
+    http::rate_limit_message(secs)
 }
 
 impl App {
@@ -258,20 +296,33 @@ impl App {
         self.list_cache = Some(Arc::new(ListCache::load(dir, host, user)));
     }
 
-    pub(crate) fn on_user_known(&mut self, id: u64) {
+    /// Returns true when the user differs from the one the shown rows were loaded for:
+    /// the rows are dropped and the caller refetches.
+    pub(crate) fn on_user_known(&mut self, id: u64) -> bool {
         let Some(id) = NonZeroU64::new(id) else {
-            return;
+            return false;
         };
-        let Some(cache) = &self.list_cache else {
-            return;
+        let previous_shown = self.current_user.as_ref().map(|u| u.id);
+        let previous = match &self.list_cache {
+            Some(cache) => {
+                let previous = cache.last_user_id();
+                cache.invalidate_user(id);
+                previous
+            }
+            None => None,
         };
-        let previous = cache.last_user_id();
-        cache.invalidate_user(id);
-        if previous.is_some_and(|p| p != id) && self.mrs_cached_at.take().is_some() {
+        let changed =
+            previous.is_some_and(|p| p != id) || previous_shown.is_some_and(|p| p != id.get());
+        if changed {
             self.merge_requests.clear();
+            self.mr_meta.clear();
+            self.mrs_cached_at = None;
+            self.mrs_stale = false;
             self.mrs_sync = MrSync::default();
+            self.mrs_force_full = true;
             self.filter_lists();
         }
+        changed
     }
 
     pub fn flush_cache(&self) {
@@ -422,7 +473,7 @@ impl App {
                 .last_full
                 .is_some_and(|t| t.elapsed() < FULL_RECONCILE);
         let since = if incremental {
-            self.mrs_sync.cursor.clone()
+            self.mrs_sync.cursor.as_deref().map(since_with_margin)
         } else {
             None
         };
@@ -433,6 +484,9 @@ impl App {
             user_id,
             since,
         };
+        if let Some(task) = self.mrs_fetch_task.take() {
+            task.abort();
+        }
         self.mrs_in_flight = Some(key);
         let (client, http, gql, tx) = (
             self.gitlab.clone(),
@@ -441,11 +495,11 @@ impl App {
             self.tx.clone(),
         );
         let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
+        self.mrs_fetch_task = Some(tokio::spawn(async move {
             let _guard = LoadingGuard::new(tx.clone());
             let update = fetch_global_mrs(&client, &http, &gql, &q, Some(&tx)).await;
             let _ = tx.send(DataUpdate::MrList(Box::new(update)));
-        });
+        }));
     }
 
     pub(crate) fn apply_mr_list(&mut self, mut u: MrListUpdate) {
@@ -478,6 +532,27 @@ impl App {
             }
             return;
         }
+        let fetched_max = u
+            .rows
+            .iter()
+            .filter_map(|m| m.updated_at.as_deref())
+            .max()
+            .map(str::to_string);
+        let mut dropped: Vec<(u64, u64)> = Vec::new();
+        if u.incremental {
+            let user = self.current_user.as_ref().map(|c| c.id).or_else(|| {
+                self.list_cache
+                    .as_ref()
+                    .and_then(|c| c.last_user_id())
+                    .map(NonZeroU64::get)
+            });
+            let (keep, gone): (Vec<_>, Vec<_>) = u
+                .rows
+                .into_iter()
+                .partition(|m| matches_scope(m, scope, user));
+            dropped = gone.iter().map(|m| (m.project_id, m.iid)).collect();
+            u.rows = keep;
+        }
         let had_rows = !u.rows.is_empty();
         let replace = !u.incremental && (u.complete || !u.failed_projects.is_empty());
         let replace_all = replace && u.complete;
@@ -494,18 +569,23 @@ impl App {
             }
             changed = self.merge_mr_rows(u.rows, &failed, replace);
         }
+        if !dropped.is_empty() {
+            for k in &dropped {
+                self.mr_meta.remove(k);
+            }
+            changed |= self.remove_mr_keys(&dropped);
+        }
         if changed {
             self.mrs_mutations += 1;
             self.mrs_page = 1;
             self.mrs_has_more = false;
             self.filter_lists();
         }
-        let max_updated = self
-            .merge_requests
-            .iter()
-            .filter_map(|m| m.updated_at.as_deref())
-            .max()
-            .map(str::to_string);
+        let max_updated = match (&self.mrs_sync.cursor, fetched_max) {
+            (Some(prev), Some(new)) if u.incremental => Some(new.max(prev.clone())),
+            (Some(prev), None) if u.incremental => Some(prev.clone()),
+            (_, new) => new,
+        };
         if u.complete && u.error.is_none() && u.rate_limited_secs.is_none() {
             self.mrs_stale = false;
             self.mrs_cached_at = None;

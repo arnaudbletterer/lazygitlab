@@ -401,3 +401,12 @@ impl App {
         true
     }
 }
+
+impl App {
+    pub(super) fn remove_mr_keys(&mut self, keys: &[Key]) -> bool {
+        let before = self.merge_requests.len();
+        self.merge_requests
+            .retain(|m| !keys.contains(&(m.project_id, m.iid)));
+        self.merge_requests.len() != before
+    }
+}
