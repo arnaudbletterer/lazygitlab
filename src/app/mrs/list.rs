@@ -178,10 +178,9 @@ pub async fn fetch_global_mrs(
         .await
         {
             Ok(res) if !(res.rows.is_empty() && !res.complete && !res.rate_limited) => {
-                let windows = windows_of(
-                    res.rows.iter().map(|r| &r.mr),
-                    |pid| res.truncated_projects.contains(&pid),
-                );
+                let windows = windows_of(res.rows.iter().map(|r| &r.mr), |pid| {
+                    res.truncated_projects.contains(&pid)
+                });
                 for row in res.rows {
                     if q.since.is_none() && !involves(&row.mr, q.scope, q.user_id) {
                         continue;
@@ -271,10 +270,10 @@ async fn rest_fan_out(
             .filter(|(_, p)| p.complete && p.items.len() >= cap)
             .map(|(pid, _)| *pid)
             .collect();
-        out.truncated_projects = windows_of(
-            results.iter().flat_map(|(_, p)| p.items.iter()),
-            |pid| capped.contains(&pid),
-        );
+        out.truncated_projects =
+            windows_of(results.iter().flat_map(|(_, p)| p.items.iter()), |pid| {
+                capped.contains(&pid)
+            });
     }
     for (pid, pages) in results {
         if !pages.complete {
@@ -684,7 +683,11 @@ impl App {
                 self.mr_meta.insert(k, m);
             }
             let keeps_older = matches!(scope, MergeRequestFilter::Merged | MergeRequestFilter::All);
-            let windows: &[MrWindow] = if keeps_older { &u.truncated_projects } else { &[] };
+            let windows: &[MrWindow] = if keeps_older {
+                &u.truncated_projects
+            } else {
+                &[]
+            };
             changed = self.merge_mr_rows(u.rows, &failed, windows, replace);
         }
         if !dropped.is_empty() {
