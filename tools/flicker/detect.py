@@ -182,7 +182,12 @@ def selected_runs(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--bin", default=str(ROOT / "target" / "release" / "lazygitlab"))
+    ap.add_argument(
+        "--bin",
+        default=str(
+            Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "release" / "lazygitlab"
+        ),
+    )
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--scenarios")
     ap.add_argument("--latencies")
