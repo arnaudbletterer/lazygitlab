@@ -46,6 +46,18 @@ async fn apply_update(app: &mut App, update: DataUpdate) {
     }
 }
 
+struct FlushOnDrop(Option<std::sync::Arc<crate::cache::ListCache>>);
+
+impl Drop for FlushOnDrop {
+    fn drop(&mut self) {
+        if let Some(cache) = &self.0
+            && let Err(e) = cache.flush()
+        {
+            tracing::warn!("list cache flush failed: {e}");
+        }
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub async fn run_app<B, E>(
     terminal: &mut Terminal<B>,
@@ -66,6 +78,7 @@ where
     if let Some(spec) = app.preselect_spec.take() {
         app.spawn_preselect(spec);
     }
+    let _flush_on_exit = FlushOnDrop(app.list_cache.clone());
     if let Err(e) = app.initial_setup().await {
         app.last_error = Some(format!("Startup failed: {}", e));
         app.last_error_since = Some(std::time::Instant::now());
@@ -172,6 +185,5 @@ where
             }
         }
     }
-    app.flush_cache();
     Ok(())
 }

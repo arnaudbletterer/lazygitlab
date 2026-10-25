@@ -1336,6 +1336,7 @@ pub struct App {
     pub mrs_stale: bool,
     pub mrs_sync: MrSync,
     pub mrs_in_flight: Option<String>,
+    pub mrs_fetch_task: Option<tokio::task::JoinHandle<()>>,
     pub mrs_force_full: bool,
     pub mrs_mutations: u64,
     pub mr_meta: std::collections::HashMap<(u64, u64), MrMeta>,

@@ -49,7 +49,11 @@ pub fn rate_limit_text(until: Instant) -> String {
         .saturating_duration_since(Instant::now())
         .as_secs()
         .max(1);
-    format!("Rate limited by GitLab, retry in {secs}s")
+    rate_limit_message(secs)
+}
+
+pub fn rate_limit_message(secs: u64) -> String {
+    format!("Rate limited by GitLab, retrying in {secs}s")
 }
 
 #[derive(Debug, Clone)]

@@ -45,6 +45,7 @@ impl App {
             mrs_stale: false,
             mrs_sync: MrSync::default(),
             mrs_in_flight: None,
+            mrs_fetch_task: None,
             mrs_force_full: false,
             mrs_mutations: 0,
             mr_meta: std::collections::HashMap::new(),
@@ -1068,9 +1069,12 @@ impl App {
             }
             DataUpdate::CurrentUser(user) => {
                 let id = user.id;
-                self.on_user_known(id);
+                let user_changed = self.on_user_known(id);
                 self.current_user = Some(user);
                 self.on_current_user(id);
+                if user_changed {
+                    self.fetch_active_global_list(true).await;
+                }
             }
             DataUpdate::RepositoryTree { project_id, data } => {
                 if self
@@ -2196,6 +2200,7 @@ impl App {
             self.mrs_cached_at = None;
             self.mrs_stale = false;
             self.mrs_sync = MrSync::default();
+            self.mr_meta.clear();
             self.abort_mr_detail();
             self.issues.clear();
             self.reset_list_paging();
