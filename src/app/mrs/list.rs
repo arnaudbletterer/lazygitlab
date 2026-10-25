@@ -500,6 +500,9 @@ impl App {
             MergeRequestFilter::Review | MergeRequestFilter::Assigned
         );
         if needs_user && user_id.is_none() {
+            if project.is_none() {
+                self.fanout_done(&format!("mr:{:?}", self.mr_filter));
+            }
             return;
         }
         let force = std::mem::take(&mut self.mrs_force_full);

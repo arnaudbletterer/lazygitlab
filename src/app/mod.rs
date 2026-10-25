@@ -1180,11 +1180,16 @@ impl App {
             }
             DataUpdate::CurrentUser(user) => {
                 let id = user.id;
+                let was_unknown = self.current_user.is_none();
                 let user_changed = self.on_user_known(id);
                 self.current_user = Some(user);
                 self.on_current_user(id);
-                if user_changed {
-                    self.fetch_active_global_list(true).await;
+                let needs_user = matches!(
+                    self.mr_filter,
+                    MergeRequestFilter::Review | MergeRequestFilter::Assigned
+                );
+                if user_changed || (was_unknown && needs_user) {
+                    self.fetch_active_global_list(user_changed).await;
                 }
             }
             DataUpdate::RepositoryTree { project_id, data } => {
