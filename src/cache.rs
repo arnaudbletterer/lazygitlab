@@ -332,6 +332,58 @@ impl ListCache {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MembershipRecord {
+    pub user_id: u64,
+    pub ids: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MembershipFile {
+    schema: u32,
+    fetched_at: u64,
+    #[serde(flatten)]
+    record: MembershipRecord,
+}
+
+fn membership_path(dir: &Path, host: &str) -> PathBuf {
+    dir.join(format!("{}-membership.json", host_hash(host)))
+}
+
+/// The last known member project ids of this host, with the user they belong to.
+/// Keyed by host only, so a warm start has them before `/user` answers.
+pub fn load_membership(dir: &Path, host: &str) -> Option<MembershipRecord> {
+    let path = membership_path(dir, host);
+    if is_symlink(&path) {
+        return None;
+    }
+    let file: MembershipFile = serde_json::from_slice(&read_file(&path)?).ok()?;
+    let fresh = now_secs().saturating_sub(file.fetched_at) <= MAX_AGE_SECS;
+    (file.schema == SCHEMA && fresh && file.record.user_id != 0).then_some(file.record)
+}
+
+pub fn save_membership(
+    dir: &Path,
+    host: &str,
+    user_id: u64,
+    ids: &std::collections::HashSet<u64>,
+) -> io::Result<()> {
+    let path = membership_path(dir, host);
+    if is_symlink(&path) {
+        return Err(io::Error::other("cache path is refused"));
+    }
+    crate::logger::ensure_private_dir(dir)?;
+    let mut ids: Vec<u64> = ids.iter().copied().collect();
+    ids.sort_unstable();
+    let body = serde_json::to_vec(&MembershipFile {
+        schema: SCHEMA,
+        fetched_at: now_secs(),
+        record: MembershipRecord { user_id, ids },
+    })
+    .map_err(io::Error::other)?;
+    write_private(&path, &body, &|| Ok(()))
+}
+
 fn write_private(
     path: &Path,
     body: &[u8],
