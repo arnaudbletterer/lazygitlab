@@ -767,6 +767,7 @@ pub struct MrListUpdate {
     pub rows: Vec<MergeRequest>,
     pub meta: Vec<((u64, u64), MrMeta)>,
     pub incremental: bool,
+    pub progress: bool,
     pub complete: bool,
     pub failed_projects: Vec<u64>,
     pub rate_limited_secs: Option<u64>,

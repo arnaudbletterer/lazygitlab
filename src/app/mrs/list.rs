@@ -11,6 +11,7 @@ use tokio::task::JoinSet;
 pub const FULL_RECONCILE: Duration = Duration::from_secs(600);
 pub const CACHE_FLUSH_EVERY: Duration = Duration::from_secs(30);
 const REST_MAX_PAGES: u32 = 5;
+const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 const REST_PROJECTS_IN_FLIGHT: usize = 12;
 
 #[derive(Debug, Clone)]
@@ -89,6 +90,7 @@ pub async fn fetch_global_mrs(
     http: &HttpLayer,
     gql: &GraphqlState,
     q: &MrFetch,
+    progress: Option<&tokio::sync::mpsc::UnboundedSender<DataUpdate>>,
 ) -> MrListUpdate {
     let mut out = MrListUpdate {
         scope: Some(q.scope),
@@ -140,11 +142,16 @@ pub async fn fetch_global_mrs(
             }
         }
     }
-    rest_fan_out(http, q, &mut out).await;
+    rest_fan_out(http, q, progress, &mut out).await;
     out
 }
 
-async fn rest_fan_out(http: &HttpLayer, q: &MrFetch, out: &mut MrListUpdate) {
+async fn rest_fan_out(
+    http: &HttpLayer,
+    q: &MrFetch,
+    progress: Option<&tokio::sync::mpsc::UnboundedSender<DataUpdate>>,
+    out: &mut MrListUpdate,
+) {
     let mut pending = q.project_ids.iter().copied();
     let mut set: JoinSet<(u64, Pages<MergeRequest>)> = JoinSet::new();
     let spawn = |set: &mut JoinSet<(u64, Pages<MergeRequest>)>, pid: u64| {
@@ -155,12 +162,23 @@ async fn rest_fan_out(http: &HttpLayer, q: &MrFetch, out: &mut MrListUpdate) {
         spawn(&mut set, pid);
     }
     let mut results = Vec::new();
+    let mut unsent: Vec<MergeRequest> = Vec::new();
+    let mut last_sent = tokio::time::Instant::now();
     while let Some(joined) = set.join_next().await {
         if let Some(pid) = pending.next() {
             spawn(&mut set, pid);
         }
         match joined {
-            Ok(r) => results.push(r),
+            Ok(r) => {
+                if progress.is_some() && q.since.is_none() {
+                    unsent.extend(r.1.items.iter().cloned());
+                    if !unsent.is_empty() && last_sent.elapsed() >= PROGRESS_EVERY {
+                        send_progress(progress, q, std::mem::take(&mut unsent));
+                        last_sent = tokio::time::Instant::now();
+                    }
+                }
+                results.push(r)
+            }
             Err(e) => {
                 out.complete = false;
                 out.error = Some(e.to_string());
@@ -199,6 +217,28 @@ impl Drop for LoadingGuard {
     fn drop(&mut self) {
         let _ = self.0.send(DataUpdate::Loading(false));
     }
+}
+
+fn send_progress(
+    tx: Option<&tokio::sync::mpsc::UnboundedSender<DataUpdate>>,
+    q: &MrFetch,
+    rows: Vec<MergeRequest>,
+) {
+    let Some(tx) = tx else {
+        return;
+    };
+    let meta = rows
+        .iter()
+        .map(|m| ((m.project_id, m.iid), meta_of(m)))
+        .collect();
+    let _ = tx.send(DataUpdate::MrList(Box::new(MrListUpdate {
+        scope: Some(q.scope),
+        project: q.project,
+        rows,
+        meta,
+        progress: true,
+        ..Default::default()
+    })));
 }
 
 fn scope_name(scope: MergeRequestFilter) -> String {
@@ -403,7 +443,7 @@ impl App {
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
             let _guard = LoadingGuard::new(tx.clone());
-            let update = fetch_global_mrs(&client, &http, &gql, &q).await;
+            let update = fetch_global_mrs(&client, &http, &gql, &q, Some(&tx)).await;
             let _ = tx.send(DataUpdate::MrList(Box::new(update)));
         });
     }
@@ -419,7 +459,7 @@ impl App {
             self.mr_filter = saved;
             key
         };
-        if self.mrs_in_flight.as_deref() == Some(key.as_str()) {
+        if !u.progress && self.mrs_in_flight.as_deref() == Some(key.as_str()) {
             self.mrs_in_flight = None;
         }
         if scope != self.mr_filter || self.current_mr_project() != Some(u.project) {
@@ -427,6 +467,16 @@ impl App {
         }
         for mr in &mut u.rows {
             self.fix_mr_labels(mr);
+        }
+        if u.progress {
+            for (k, m) in u.meta.drain(..) {
+                self.mr_meta.insert(k, m);
+            }
+            if self.merge_mr_rows(u.rows, &[], false) {
+                self.mrs_mutations += 1;
+                self.filter_lists();
+            }
+            return;
         }
         let had_rows = !u.rows.is_empty();
         let replace = !u.incremental && (u.complete || !u.failed_projects.is_empty());
