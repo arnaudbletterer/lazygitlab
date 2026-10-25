@@ -8,6 +8,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ### Added
 - **Request timing trace:** `LAZYGITLAB_TRACE=1` writes one JSON line per API request to the log (method, endpoint template, status, duration, response bytes, page, 304). The host, token, project names and query values are never recorded. `make bench` measures list loading against a generated mock at several latencies (`docs/performance.md`). `scripts/summarize_trace.py` prints per-endpoint count, p50, p95 and total time (`src/trace.rs`).
+### Changed
+- **Faster requests:** the GitLab client now negotiates HTTP/2 and gzip when the server supports them.
 
 ### Fixed
 - **Lists no longer vanish after a few minutes:** a failed, rate-limited, timed-out or partial background refresh never removes rows; partial results are merged by project and id, an empty result replaces a list only after a fully successful fetch, a page-1 refresh keeps older rows paged in later but drops rows that were merged or closed, filter and tab switches reset paging, a failed global next page is retried instead of skipped, a failed membership sync keeps the previous project set, results for a filter you left are dropped, the selected row stays selected by id, and the status bar shows "refresh failed, showing data from HH:MM". Also fixed a skipped page in project MR paging and an error cancelling unrelated loading indicators (`src/app/merge.rs`, `src/app/mod.rs`, `src/app/mrs/mod.rs`, `src/app/issues.rs`, `src/app/pipelines.rs`).

@@ -43,6 +43,7 @@ regex = "1.12.3"
 bytes = "1" # response body type in the request-tracing client wrapper (already in the tree via the gitlab crate)
 url = "2" # URL type in the same wrapper (already in the tree via the gitlab crate)
 http = "1" # ETag conditional-GET polling (If-None-Match) via gitlab crate's rest_async
+reqwest = { version = "0.13", default-features = false, features = ["http2", "gzip"] } # turns on HTTP/2 and gzip for the gitlab crate client (feature unification)
 ansi-to-tui = "8.0.1"
 chrono-humanize = "0.2.3"
 ratatui-textarea = "0.9.1"
