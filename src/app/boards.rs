@@ -1,4 +1,5 @@
 use crate::api::*;
+use crate::app::merge::LoadingGuard;
 use crate::models::*;
 use gitlab::api::{AsyncQuery, paged};
 
@@ -8,8 +9,9 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let pid = project.id;
-            let _ = tx.send(DataUpdate::Loading(true));
+            let guard = LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
+                let _guard = guard;
                 let ep = ProjectBoards { project: pid };
                 let res: Result<Result<Vec<Board>, _>, _> = tokio::time::timeout(
                     std::time::Duration::from_secs(30),
@@ -30,7 +32,6 @@ impl App {
                         let _ = tx.send(DataUpdate::Error("Boards fetch timed out".into()));
                     }
                 }
-                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
@@ -44,8 +45,10 @@ impl App {
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
             let pid = project.id;
-            let _ = tx.send(DataUpdate::Loading(true));
+            let have_lists = !self.board_lists.is_empty();
+            let guard = LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
+                let _guard = guard;
                 // 1. Fetch the label lists
                 let ep = ProjectBoardLists {
                     project: pid,
@@ -96,7 +99,6 @@ impl App {
                     board_id,
                     data: all_lists,
                 });
-                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
@@ -120,9 +122,9 @@ impl App {
                 .map(|l| l.list_type.clone())
                 .unwrap_or_default();
 
-            let _ = tx.send(DataUpdate::Loading(true));
+            let guard = LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
-                let mut data = Vec::new();
+                let _guard = guard;
 
                 let ep = ProjectBoardListIssues {
                     project: pid,
@@ -136,27 +138,27 @@ impl App {
                 )
                 .await;
 
-                match res {
-                    Ok(Ok(d)) => {
-                        data = d;
-                    }
+                let data = match res {
+                    Ok(Ok(d)) => d,
                     Ok(Err(e)) => {
                         let err_msg = e.to_string();
-                        // Special handling for backlog/closed if needed, but the endpoint should work
                         if !err_msg.contains("404") {
                             let _ = tx.send(DataUpdate::Error(format!(
                                 "List {} error: {}",
                                 list_id, err_msg
                             )));
+                            return;
                         }
+                        Vec::new()
                     }
                     Err(_) => {
                         let _ = tx.send(DataUpdate::Error(format!(
                             "List {} fetch timed out",
                             list_id
                         )));
+                        return;
                     }
-                }
+                };
 
                 let _ = tx.send(DataUpdate::BoardIssues {
                     project_id: pid,
@@ -164,7 +166,6 @@ impl App {
                     list_id,
                     data,
                 });
-                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
@@ -177,8 +178,9 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
+        let guard = LoadingGuard::start(tx.clone());
         tokio::spawn(async move {
+            let _guard = guard;
             let ep = GroupEpicIssues {
                 group: group_id,
                 epic_iid,
@@ -203,7 +205,6 @@ impl App {
                     let _ = tx.send(DataUpdate::Error("Epic issues fetch timed out".into()));
                 }
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
@@ -215,8 +216,9 @@ impl App {
                     let group_id = namespace.id;
                     let client = self.gitlab.clone();
                     let tx = self.tx.clone();
-                    let _ = tx.send(DataUpdate::Loading(true));
+                    let guard = LoadingGuard::start(tx.clone());
                     tokio::spawn(async move {
+                        let _guard = guard;
                         let ep = GroupEpics { group: group_id };
                         let res: Result<Result<Vec<Epic>, _>, _> = tokio::time::timeout(
                             std::time::Duration::from_secs(30),
@@ -234,7 +236,6 @@ impl App {
                                 let _ = tx.send(DataUpdate::Error("Epics fetch timed out".into()));
                             }
                         }
-                        let _ = tx.send(DataUpdate::Loading(false));
                     });
                 } else {
                     let _ = self.tx.send(DataUpdate::Error(format!(

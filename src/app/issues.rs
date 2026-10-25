@@ -1,4 +1,5 @@
 use crate::api::*;
+use crate::app::merge::LoadingGuard;
 use crate::models::*;
 use gitlab::api::AsyncQuery;
 
@@ -13,10 +14,11 @@ impl App {
                 IssueFilter::Closed => "closed".to_string(),
                 IssueFilter::All => "all".to_string(),
             };
-            let _ = tx.send(DataUpdate::Loading(true));
+            let guard = LoadingGuard::start(tx.clone());
             self.status_message = Some("Fetching Issues...".into());
             let scope = self.issue_filter;
             tokio::spawn(async move {
+                let _guard = guard;
                 let ep = PagedIssues {
                     project: pid,
                     state: Some(state_str),
@@ -57,18 +59,20 @@ impl App {
                         ));
                     }
                 }
-                let _ = tx.send(DataUpdate::Loading(false));
             });
         }
         Ok(())
     }
 
     pub async fn fetch_next_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.issues_has_more || self.is_loading {
+        if !self.issues_has_more {
             return Ok(());
         }
         if let Some(project) = &self.selected_project {
             let pid = project.id;
+            let Some(guard) = self.begin_page("issues") else {
+                return Ok(());
+            };
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
             let next_page = self.issues_page + 1;
@@ -77,9 +81,9 @@ impl App {
                 IssueFilter::Closed => "closed".to_string(),
                 IssueFilter::All => "all".to_string(),
             };
-            let _ = tx.send(DataUpdate::Loading(true));
             let scope = self.issue_filter;
             tokio::spawn(async move {
+                let _guard = guard;
                 let ep = PagedIssues {
                     project: pid,
                     state: Some(state_str),
@@ -102,8 +106,6 @@ impl App {
                                     data,
                                 }),
                             ));
-                        } else {
-                            let _ = tx.send(DataUpdate::Loading(false));
                         }
                     }
                     Ok(Err(e)) => {
@@ -126,16 +128,16 @@ impl App {
             IssueFilter::Closed => "closed".to_string(),
             IssueFilter::All => "all".to_string(),
         };
-        let _ = tx.send(DataUpdate::Loading(true));
+        let guard = LoadingGuard::start(tx.clone());
         self.status_message = Some("Fetching Issues...".into());
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
         let scope = self.issue_filter;
         tokio::spawn(async move {
+            let _guard = guard;
             // Sends nothing: the membership filter already hides rows of non-members.
             if project_ids.is_empty() {
-                let _ = tx.send(DataUpdate::Loading(false));
                 return;
             }
 
@@ -202,15 +204,17 @@ impl App {
                     Box::new(DataUpdate::RefreshFailed),
                 ));
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
 
     pub async fn fetch_next_global_issues(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.issues_has_more || self.is_loading {
+        if !self.issues_has_more {
             return Ok(());
         }
+        let Some(guard) = self.begin_page("issues") else {
+            return Ok(());
+        };
         let c = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.issues_page + 1;
@@ -219,14 +223,13 @@ impl App {
             IssueFilter::Closed => "closed".to_string(),
             IssueFilter::All => "all".to_string(),
         };
-        let _ = tx.send(DataUpdate::Loading(true));
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
         let scope = self.issue_filter;
         tokio::spawn(async move {
+            let _guard = guard;
             if project_ids.is_empty() {
-                let _ = tx.send(DataUpdate::Loading(false));
                 return;
             }
 
@@ -285,7 +288,6 @@ impl App {
                     Box::new(DataUpdate::RefreshFailed),
                 ));
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
@@ -301,8 +303,9 @@ impl App {
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
             let target = self.input_target;
-            let _ = tx.send(DataUpdate::Loading(true));
+            let guard = LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
+                let _guard = guard;
                 let mut ep_builder = EditIssue::builder();
                 ep_builder.project(pid).issue(iid);
                 match target {
@@ -330,7 +333,6 @@ impl App {
                         let _ = tx.send(DataUpdate::Error("Update Issue timed out".into()));
                     }
                 }
-                let _ = tx.send(DataUpdate::Loading(false));
             });
             self.input_mode = false;
         }
@@ -745,7 +747,9 @@ impl App {
 
             let c = self.gitlab.clone();
             let tx = self.tx.clone();
+            let guard = LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
+                let _guard = guard;
                 let ep = CreateIssue {
                     project: pid,
                     title,
@@ -763,7 +767,6 @@ impl App {
                         let _ = tx.send(DataUpdate::RemovePendingIssue { iid: pending_iid });
                     }
                 }
-                let _ = tx.send(DataUpdate::Loading(false));
             });
             self.show_create_issue_popup = false;
             self.input_mode = false;

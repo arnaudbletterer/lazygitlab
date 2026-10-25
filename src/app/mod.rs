@@ -230,6 +230,7 @@ impl App {
             status_since: std::time::Instant::now(),
             last_error_since: None,
             loading_tasks: 0,
+            page_in_flight: std::collections::HashSet::new(),
             diff_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
             last_fetch_todos: None,
             last_fetch_mrs: None,
@@ -374,27 +375,19 @@ impl App {
                 page,
                 has_more,
             } => {
-                for p in &data {
-                    self.project_cache.insert(p.id, p.clone());
-                }
-                if self.projects != data
-                    || self.projects_page != page
-                    || self.projects_has_more != has_more
-                {
-                    self.projects = data;
-                    self.projects_page = page;
-                    self.projects_has_more = has_more;
-                    self.filter_lists();
-                }
+                self.replace_projects(data, page, has_more);
             }
-            DataUpdate::AppendProjects(mut data) => {
-                for p in &data {
-                    self.project_cache.insert(p.id, p.clone());
-                }
-                if !data.is_empty() {
-                    self.projects_has_more = data.len() >= 50;
+            DataUpdate::AppendProjects { page, mut data } => {
+                if page == self.projects_page + 1 && !data.is_empty() {
+                    for p in &data {
+                        self.project_cache.insert(p.id, p.clone());
+                    }
+                    self.projects_has_more = data.len() >= global::PROJECTS_PER_PAGE as usize;
+                    let known: std::collections::HashSet<u64> =
+                        self.projects.iter().map(|p| p.id).collect();
+                    data.retain(|p| !known.contains(&p.id));
                     self.projects.append(&mut data);
-                    self.projects_page += 1;
+                    self.projects_page = page;
                     self.filter_lists();
                 }
             }
@@ -422,6 +415,9 @@ impl App {
                 page,
                 has_more,
             } => self.apply_todos(data, page, has_more),
+            DataUpdate::PageDone(key) => {
+                self.page_in_flight.remove(key);
+            }
             DataUpdate::AppendTodos(mut data) => {
                 for t in &data {
                     if let Some(ref p) = t.project {
@@ -441,21 +437,16 @@ impl App {
                 page,
                 has_more,
             } => {
-                if self.groups != data
-                    || self.groups_page != page
-                    || self.groups_has_more != has_more
-                {
-                    self.groups = data;
-                    self.groups_page = page;
-                    self.groups_has_more = has_more;
-                    self.filter_lists();
-                }
+                self.replace_groups(data, page, has_more);
             }
-            DataUpdate::AppendGroups(mut data) => {
-                if !data.is_empty() {
-                    self.groups_has_more = data.len() >= 50;
+            DataUpdate::AppendGroups { page, mut data } => {
+                if page == self.groups_page + 1 && !data.is_empty() {
+                    self.groups_has_more = data.len() >= global::GROUPS_PER_PAGE as usize;
+                    let known: std::collections::HashSet<u64> =
+                        self.groups.iter().map(|g| g.id).collect();
+                    data.retain(|g| !known.contains(&g.id));
                     self.groups.append(&mut data);
-                    self.groups_page += 1;
+                    self.groups_page = page;
                     self.filter_lists();
                 }
             }
@@ -1242,29 +1233,28 @@ impl App {
                     .selected_project
                     .as_ref()
                     .is_some_and(|p| p.id == project_id)
-                    && (self.commits != data
-                        || self.commits_page != page
-                        || self.commits_has_more != has_more)
                 {
-                    self.commits = data;
-                    self.commits_page = page;
-                    self.commits_has_more = has_more;
-                    self.filter_lists();
+                    self.replace_commits(data, page, has_more);
                 }
             }
             DataUpdate::AppendCommits {
                 project_id,
+                page,
                 mut data,
             } => {
                 if self
                     .selected_project
                     .as_ref()
                     .is_some_and(|p| p.id == project_id)
+                    && page == self.commits_page + 1
                     && !data.is_empty()
                 {
-                    self.commits_has_more = data.len() >= 50;
+                    self.commits_has_more = data.len() >= global::COMMITS_PER_PAGE as usize;
+                    let known: std::collections::HashSet<String> =
+                        self.commits.iter().map(|c| c.id.clone()).collect();
+                    data.retain(|c| !known.contains(&c.id));
                     self.commits.append(&mut data);
-                    self.commits_page += 1;
+                    self.commits_page = page;
                     self.filter_lists();
                 }
             }
@@ -1603,7 +1593,7 @@ impl App {
                 membership: true,
                 search: None,
                 page: 1,
-                per_page: 100,
+                per_page: global::PROJECTS_PER_PAGE,
                 simple: Some(true),
                 archived: Some(false),
                 order_by: Some("last_activity_at".into()),
@@ -1612,7 +1602,7 @@ impl App {
                 tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c2)).await;
             match res {
                 Ok(Ok(data)) => {
-                    let has_more = data.len() == 100;
+                    let has_more = data.len() == global::PROJECTS_PER_PAGE as usize;
                     let _ = t2.send(DataUpdate::Projects {
                         data,
                         page: 1,
@@ -1633,7 +1623,7 @@ impl App {
         tokio::spawn(async move {
             let ep = Groups {
                 page: Some(1),
-                per_page: Some(50),
+                per_page: Some(global::GROUPS_PER_PAGE),
                 min_access_level: Some(10),
                 top_level_only: None,
             };
@@ -1641,7 +1631,7 @@ impl App {
                 tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c3)).await;
             match res {
                 Ok(Ok(data)) => {
-                    let has_more = data.len() == 50;
+                    let has_more = data.len() == global::GROUPS_PER_PAGE as usize;
                     let _ = t3.send(DataUpdate::Groups {
                         data,
                         page: 1,
@@ -4255,6 +4245,7 @@ impl App {
             .cloned()
         {
             self.selected_project = Some(project);
+            self.page_in_flight.clear();
             self.show_project_popup = false;
             self.active_panel = Panel::Project;
             self.active_context = Context::Project;

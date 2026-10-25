@@ -3,7 +3,7 @@ mod list;
 mod meta;
 mod review;
 
-pub(crate) use list::LoadingGuard;
+pub(crate) use crate::app::merge::LoadingGuard;
 
 pub use diffs::parse_diff_context;
 pub use list::{CACHE_FLUSH_EVERY, MrFetch, fetch_global_mrs, rate_limit_text, state_of};
@@ -208,9 +208,15 @@ impl App {
         self.abort_mr_detail();
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
+        let (prev_participants, prev_reactions) = self
+            .selected_mr
+            .as_ref()
+            .filter(|m| m.iid == mr_iid && m.project_id == project_id)
+            .map(|m| (m.participants.clone(), m.reactions.clone()))
+            .unwrap_or_default();
+        let loading = crate::app::merge::LoadingGuard::start(tx.clone());
         let handle = tokio::spawn(async move {
-            let _loading = list::LoadingGuard::new(tx.clone());
+            let _loading = loading;
             let mr_endpoint = SingleMergeRequest {
                 project: project_id,
                 merge_request: mr_iid,

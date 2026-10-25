@@ -1,6 +1,77 @@
 use crate::models::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
+use tokio::sync::mpsc::UnboundedSender;
+
+/// Holds one `loading_tasks` count; a page guard also frees its in-flight key after the page's update.
+pub(crate) struct LoadingGuard {
+    tx: UnboundedSender<DataUpdate>,
+    page: Option<&'static str>,
+}
+
+impl LoadingGuard {
+    pub(crate) fn new(tx: UnboundedSender<DataUpdate>) -> Self {
+        Self { tx, page: None }
+    }
+
+    pub(crate) fn start(tx: UnboundedSender<DataUpdate>) -> Self {
+        let _ = tx.send(DataUpdate::Loading(true));
+        Self { tx, page: None }
+    }
+
+    fn page(tx: UnboundedSender<DataUpdate>, key: &'static str) -> Self {
+        let _ = tx.send(DataUpdate::Loading(true));
+        Self {
+            tx,
+            page: Some(key),
+        }
+    }
+}
+
+impl Drop for LoadingGuard {
+    fn drop(&mut self) {
+        if let Some(key) = self.page {
+            let _ = self.tx.send(DataUpdate::PageDone(key));
+        }
+        let _ = self.tx.send(DataUpdate::Loading(false));
+    }
+}
+
+/// Rows after the last row still present in a full fresh page stay loaded (no server order to compare).
+#[allow(clippy::too_many_arguments)]
+fn replace_positional<T: Clone + PartialEq, K: Hash + Eq>(
+    existing: &mut Vec<T>,
+    fresh: Vec<T>,
+    page: &mut u64,
+    has_more: &mut bool,
+    new_page: u64,
+    new_has_more: bool,
+    page_size: usize,
+    key: impl Fn(&T) -> K,
+) -> bool {
+    let fresh_keys: HashSet<K> = fresh.iter().map(&key).collect();
+    let anchor = existing.iter().rposition(|e| fresh_keys.contains(&key(e)));
+    let tail: Vec<T> = match anchor {
+        Some(i) if *page > 1 && fresh.len() >= page_size => existing[i + 1..]
+            .iter()
+            .filter(|e| !fresh_keys.contains(&key(e)))
+            .cloned()
+            .collect(),
+        _ => Vec::new(),
+    };
+    let kept = !tail.is_empty();
+    let mut next = fresh;
+    next.extend(tail);
+    let mut changed = *existing != next;
+    *existing = next;
+    if !kept && (*page != new_page || *has_more != new_has_more) {
+        *page = new_page;
+        *has_more = new_has_more;
+        changed = true;
+    }
+    changed
+}
 
 type Key = (u64, u64);
 
@@ -232,6 +303,65 @@ impl App {
             .sort_by_key(|p| std::cmp::Reverse(p.id));
         self.cross_pipelines.truncate(50);
         self.filter_lists();
+    }
+
+    /// Marks a list's next page as in flight; `None` while one already is.
+    pub(crate) fn begin_page(&mut self, key: &'static str) -> Option<LoadingGuard> {
+        if !self.page_in_flight.insert(key) {
+            return None;
+        }
+        Some(LoadingGuard::page(self.tx.clone(), key))
+    }
+
+    pub(super) fn replace_projects(&mut self, data: Vec<Project>, page: u64, has_more: bool) {
+        for p in &data {
+            self.project_cache.insert(p.id, p.clone());
+        }
+        let changed = replace_positional(
+            &mut self.projects,
+            data,
+            &mut self.projects_page,
+            &mut self.projects_has_more,
+            page,
+            has_more,
+            crate::app::global::PROJECTS_PER_PAGE as usize,
+            |p| p.id,
+        );
+        if changed {
+            self.filter_lists();
+        }
+    }
+
+    pub(super) fn replace_groups(&mut self, data: Vec<Group>, page: u64, has_more: bool) {
+        let changed = replace_positional(
+            &mut self.groups,
+            data,
+            &mut self.groups_page,
+            &mut self.groups_has_more,
+            page,
+            has_more,
+            crate::app::global::GROUPS_PER_PAGE as usize,
+            |g| g.id,
+        );
+        if changed {
+            self.filter_lists();
+        }
+    }
+
+    pub(super) fn replace_commits(&mut self, data: Vec<Commit>, page: u64, has_more: bool) {
+        let changed = replace_positional(
+            &mut self.commits,
+            data,
+            &mut self.commits_page,
+            &mut self.commits_has_more,
+            page,
+            has_more,
+            crate::app::global::COMMITS_PER_PAGE as usize,
+            |c| c.id.clone(),
+        );
+        if changed {
+            self.filter_lists();
+        }
     }
 
     pub(super) fn apply_todos(&mut self, data: Vec<Todo>, page: u64, has_more: bool) {

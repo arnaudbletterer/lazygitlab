@@ -280,20 +280,6 @@ impl Drop for FetchGuard {
     }
 }
 
-pub(crate) struct LoadingGuard(tokio::sync::mpsc::UnboundedSender<DataUpdate>);
-
-impl LoadingGuard {
-    pub(crate) fn new(tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
-        Self(tx)
-    }
-}
-
-impl Drop for LoadingGuard {
-    fn drop(&mut self) {
-        let _ = self.0.send(DataUpdate::Loading(false));
-    }
-}
-
 fn send_progress(
     tx: Option<&tokio::sync::mpsc::UnboundedSender<DataUpdate>>,
     q: &MrFetch,

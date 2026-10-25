@@ -837,7 +837,9 @@ impl App {
 
             let client = self.gitlab.clone();
             let tx = self.tx.clone();
+            let guard = crate::app::merge::LoadingGuard::start(tx.clone());
             tokio::spawn(async move {
+                let _guard = guard;
                 let ep = CreateMergeRequest {
                     project: pid,
                     source_branch,
@@ -863,7 +865,6 @@ impl App {
                         let _ = tx.send(DataUpdate::RemovePendingMR { iid: pending_iid });
                     }
                 }
-                let _ = tx.send(DataUpdate::Loading(false));
             });
             self.show_create_mr_popup = false;
             self.input_mode = false;

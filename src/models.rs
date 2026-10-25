@@ -804,13 +804,19 @@ pub enum DataUpdate {
         page: u64,
         has_more: bool,
     },
-    AppendProjects(Vec<Project>),
+    AppendProjects {
+        page: u64,
+        data: Vec<Project>,
+    },
     Groups {
         data: Vec<Group>,
         page: u64,
         has_more: bool,
     },
-    AppendGroups(Vec<Group>),
+    AppendGroups {
+        page: u64,
+        data: Vec<Group>,
+    },
     GlobalMRs {
         data: Vec<MergeRequest>,
         page: u64,
@@ -945,6 +951,7 @@ pub enum DataUpdate {
         new_path: String,
         diff: String,
     },
+    PageDone(&'static str),
     Metadata {
         project_id: u64,
         labels: Vec<Label>,
@@ -997,6 +1004,7 @@ pub enum DataUpdate {
         has_more: bool,
     },
     AppendCommits {
+        page: u64,
         project_id: u64,
         data: Vec<Commit>,
     },
@@ -1276,6 +1284,7 @@ pub struct App {
     pub status_since: std::time::Instant,
     pub last_error_since: Option<std::time::Instant>,
     pub loading_tasks: usize,
+    pub page_in_flight: std::collections::HashSet<&'static str>,
     pub diff_fetch_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
 
     // Cache timestamps

@@ -1516,6 +1516,8 @@ impl Pageable for Branches {}
 pub struct Commits {
     pub project: u64,
     pub ref_name: Option<String>,
+    pub page: u64,
+    pub per_page: u64,
 }
 impl Endpoint for Commits {
     fn method(&self) -> Method {
@@ -1529,6 +1531,8 @@ impl Endpoint for Commits {
         if let Some(r) = &self.ref_name {
             params.push("ref_name", r);
         }
+        params.push("page", self.page);
+        params.push("per_page", self.per_page);
         params
     }
 }
