@@ -6,6 +6,7 @@ pub mod config;
 pub mod errors;
 pub mod events;
 pub mod headless;
+pub mod http;
 pub mod logger;
 pub mod models;
 pub mod redaction;
