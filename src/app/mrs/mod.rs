@@ -3,7 +3,6 @@ mod list;
 mod meta;
 mod review;
 
-
 pub use diffs::parse_diff_context;
 pub use list::{CACHE_FLUSH_EVERY, MrFetch, fetch_global_mrs, rate_limit_text, state_of};
 

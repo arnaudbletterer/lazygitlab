@@ -294,14 +294,21 @@ async fn dashboard_pipelines_are_navigable_and_target_the_filtered_row() {
     assert_eq!(app.selected_pipeline.as_ref().map(|p| p.id), Some(12));
 
     app.handle_key(key(KeyCode::Char('C'))).await;
-    let posts: Vec<String> = server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .filter(|r| r.method.as_str() == "POST")
-        .map(|r| r.url.path().to_string())
-        .collect();
+    let mut posts: Vec<String> = Vec::new();
+    for _ in 0..60 {
+        posts = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.method.as_str() == "POST")
+            .map(|r| r.url.path().to_string())
+            .collect();
+        if !posts.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
     assert!(
         posts.iter().any(|p| p.ends_with("/pipelines/12/cancel")),
         "cancel went to {posts:?}"
