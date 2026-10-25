@@ -148,6 +148,7 @@ async fn test_lazy_load_mrs_diffs() {
         display_lines: vec![],
     }];
     app.is_fetching_diffs = true;
+    app.detail_section = DetailSection::Metadata;
 
     // Select target Todo pointing to a DIFFERENT MR (iid = 2)
     let todo = Todo {
