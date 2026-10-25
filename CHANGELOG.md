@@ -6,6 +6,8 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-25
+
 ### Added
 - **Request timing trace:** `LAZYGITLAB_TRACE=1` writes one JSON line per API request to the log (method, endpoint template, status, duration, response bytes, page, 304). The host, token, project names and query values are never recorded. `make bench` measures list loading against a generated mock at several latencies (`docs/performance.md`). `scripts/summarize_trace.py` prints per-endpoint count, p50, p95 and total time (`src/trace.rs`).
 - **Merge request lists appear fast and stay cached:** the dashboard list asks the server in batched queries (one per 20 projects, in parallel) and falls back to REST with 100 rows per page and a bounded number of requests in flight. Rows from the last session are drawn first with a "cached N min ago" label until the fresh result arrives, and background refreshes only ask for merge requests changed since the last fetch (a full reconcile runs every 10 minutes or on `r`). Rate limits show "Rate limited by GitLab, retrying in Ns" and approve or unapprove are refused at once while limited (`src/app/mrs/list.rs`).
