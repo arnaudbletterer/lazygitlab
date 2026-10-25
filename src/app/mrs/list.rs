@@ -141,8 +141,9 @@ pub async fn fetch_global_mrs(
         ..Default::default()
     };
     if q.project.is_none() {
-        match graphql::fetch_merge_requests(
+        match graphql::fetch_merge_requests_via(
             client,
+            Some(http),
             gql,
             &q.project_ids,
             query_state(q),
@@ -165,6 +166,12 @@ pub async fn fetch_global_mrs(
                     out.rows.push(row.mr);
                 }
                 out.complete = res.complete;
+                out.failed_projects = res.failed_projects;
+                if q.since.is_some() {
+                    out.complete &= res.truncated_projects.is_empty();
+                } else {
+                    out.truncated_projects = res.truncated_projects;
+                }
                 if res.rate_limited {
                     out.rate_limited_secs = Some(http::DEFAULT_RETRY_AFTER.as_secs());
                 }
@@ -590,7 +597,7 @@ impl App {
             for (k, m) in u.meta.drain(..) {
                 self.mr_meta.insert(k, m);
             }
-            if self.merge_mr_rows(u.rows, &[], false) {
+            if self.merge_mr_rows(u.rows, &[], &[], false) {
                 self.mrs_mutations += 1;
                 self.filter_lists();
             }
@@ -631,7 +638,7 @@ impl App {
             for (k, m) in u.meta.drain(..) {
                 self.mr_meta.insert(k, m);
             }
-            changed = self.merge_mr_rows(u.rows, &failed, replace);
+            changed = self.merge_mr_rows(u.rows, &failed, &u.truncated_projects, replace);
         }
         if !dropped.is_empty() {
             for k in &dropped {

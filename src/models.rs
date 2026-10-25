@@ -771,6 +771,9 @@ pub struct MrListUpdate {
     pub fetch_gen: u64,
     pub complete: bool,
     pub failed_projects: Vec<u64>,
+    /// Projects whose rows are only the most recently updated window; older local
+    /// rows of these projects are kept.
+    pub truncated_projects: Vec<u64>,
     pub rate_limited_secs: Option<u64>,
     pub error: Option<String>,
 }

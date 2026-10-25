@@ -507,6 +507,7 @@ impl App {
         &mut self,
         rows: Vec<MergeRequest>,
         failed: &[u64],
+        truncated: &[u64],
         replace: bool,
     ) -> bool {
         if !replace {
@@ -515,7 +516,27 @@ impl App {
         let (answered, failed_rows): (Vec<_>, Vec<_>) = rows
             .into_iter()
             .partition(|m| !failed.contains(&m.project_id));
+        let mut oldest: HashMap<u64, &MergeRequest> = HashMap::new();
+        for m in answered.iter().filter(|m| truncated.contains(&m.project_id)) {
+            let slot = oldest.entry(m.project_id).or_insert(m);
+            if mr_cmp(m, slot) == Ordering::Greater {
+                *slot = m;
+            }
+        }
+        let fresh_keys: HashSet<Key> = answered.iter().map(|m| (m.project_id, m.iid)).collect();
+        let older: Vec<MergeRequest> = self
+            .merge_requests
+            .iter()
+            .filter(|m| {
+                oldest
+                    .get(&m.project_id)
+                    .is_some_and(|last| mr_cmp(m, last) == Ordering::Greater)
+                    && !fresh_keys.contains(&(m.project_id, m.iid))
+            })
+            .cloned()
+            .collect();
         let mut next = answered;
+        next.extend(older);
         next.extend(
             self.merge_requests
                 .iter()

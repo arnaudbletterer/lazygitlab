@@ -10,6 +10,7 @@
 //! query drops exactly that group and retries; the level is remembered per (host, kind) in
 //! [`GraphqlState`].
 
+use crate::http::HttpLayer;
 use crate::models::{Author, Issue, Label, MergeRequest, Milestone, PipelineMin, References};
 use crate::trace::TracedClient;
 use serde::Deserialize;
@@ -130,8 +131,15 @@ impl std::error::Error for GraphqlError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListResult<T> {
     pub rows: Vec<T>,
+    /// False when any batch or project failed. A deliberate page cap does not count: it
+    /// is reported in `truncated_projects` and the rows are a complete window.
     pub complete: bool,
     pub rate_limited: bool,
+    /// Projects whose pages failed, so their rows are not a full answer.
+    pub failed_projects: Vec<u64>,
+    /// Projects that stopped at the follow-up cap: the rows are the most recently
+    /// updated ones, older ones were not asked for.
+    pub truncated_projects: Vec<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -597,6 +605,7 @@ impl<N, T> Clone for Kind<N, T> {
 impl<N, T> Copy for Kind<N, T> {}
 
 struct Request {
+    http: Option<HttpLayer>,
     url: String,
     state: String,
     since: Option<String>,
@@ -639,14 +648,29 @@ async fn post(
         .header(http::header::CONTENT_TYPE, "application/json")
         .header(http::header::ACCEPT, "application/json");
     let _permit = req.sem.acquire().await;
-    let resp = tokio::time::timeout(
-        REQUEST_TIMEOUT,
-        client.rest_async(http_req, body.to_string().into_bytes()),
-    )
-    .await
-    .map_err(|_| GraphqlError::Failed("request timed out".into()))?
-    .map_err(|e| GraphqlError::Failed(e.to_string()))?;
-    let status = resp.status();
+    let (status, resp_body) = match &req.http {
+        Some(layer) => {
+            let resp = layer
+                .send_once(&http::Method::POST, &req.url, body.to_string().into_bytes())
+                .await
+                .map_err(|o| match o {
+                    crate::http::Outcome::RateLimited { .. } => GraphqlError::RateLimited,
+                    crate::http::Outcome::Failed(m) => GraphqlError::Failed(m),
+                    _ => GraphqlError::Failed("request failed".into()),
+                })?;
+            (resp.status, resp.body.to_vec())
+        }
+        None => {
+            let resp = tokio::time::timeout(
+                REQUEST_TIMEOUT,
+                client.rest_async(http_req, body.to_string().into_bytes()),
+            )
+            .await
+            .map_err(|_| GraphqlError::Failed("request timed out".into()))?
+            .map_err(|e| GraphqlError::Failed(e.to_string()))?;
+            (resp.status(), resp.body().to_vec())
+        }
+    };
     if status == http::StatusCode::TOO_MANY_REQUESTS {
         return Err(GraphqlError::RateLimited.into());
     }
@@ -656,7 +680,7 @@ async fn post(
     if !status.is_success() {
         return Err(GraphqlError::Failed(format!("HTTP {status}")).into());
     }
-    let env: Envelope = serde_json::from_slice(resp.body())
+    let env: Envelope = serde_json::from_slice(&resp_body)
         .map_err(|_| GraphqlError::Failed("response is not GraphQL JSON".into()))?;
     let data = match env.data {
         Some(d) if !d.is_null() => d,
@@ -705,6 +729,8 @@ struct BatchOut<T> {
     level: Level,
     over_limit: bool,
     rate_limited: bool,
+    failed: Vec<u64>,
+    truncated: Vec<u64>,
 }
 
 fn project_nodes(data: &Value) -> Result<&Vec<Value>, GraphqlError> {
@@ -744,6 +770,7 @@ where
     let conn = node.get(kind.field).filter(|c| !c.is_null())?;
     let Some(items) = conn.get("nodes").and_then(Value::as_array) else {
         out.complete = false;
+        out.failed.push(pid);
         return None;
     };
     for item in items.iter().filter(|i| !i.is_null()) {
@@ -752,12 +779,16 @@ where
             .and_then(|n| (kind.map)(pid, path, n));
         match row {
             Ok((r, ok)) => {
-                out.complete &= ok;
+                if !ok {
+                    out.complete = false;
+                    out.failed.push(pid);
+                }
                 out.rows.push(r);
             }
             Err(e) => {
                 tracing::warn!("skipping unparsable graphql node: {e}");
                 out.complete = false;
+                out.failed.push(pid);
             }
         }
     }
@@ -772,6 +803,7 @@ where
         Some(_) => None,
         None => {
             out.complete = false;
+            out.failed.push(pid);
             None
         }
     }
@@ -810,6 +842,8 @@ where
         level,
         over_limit: false,
         rate_limited: false,
+        failed: Vec::new(),
+        truncated: Vec::new(),
     };
     let mut followups: Vec<(u64, String)> = Vec::new();
     for node in project_nodes(&page.data)? {
@@ -817,13 +851,14 @@ where
             followups.push(next);
         }
     }
-    for (pid, mut cursor) in followups {
+    let mut queue = followups.into_iter();
+    while let Some((pid, mut cursor)) = queue.next() {
         let mut pages = 0;
         loop {
             if pages >= MAX_FOLLOWUP_PAGES_PER_PROJECT
                 || req.followups.fetch_add(1, Ordering::Relaxed) >= MAX_FOLLOWUP_REQUESTS_PER_CALL
             {
-                out.complete = false;
+                out.truncated.push(pid);
                 break;
             }
             pages += 1;
@@ -832,21 +867,26 @@ where
                 Err(Fail::ComplexityExceeded) => {
                     out.complete = false;
                     out.over_limit = true;
+                    out.failed.push(pid);
                     break;
                 }
                 Err(Fail::NotFound) => {
                     out.complete = false;
+                    out.failed.push(pid);
                     break;
                 }
                 Err(Fail::UnknownFields(_)) => return Err(GraphqlError::Unsupported.into()),
                 Err(Fail::Err(GraphqlError::RateLimited)) => {
                     out.complete = false;
                     out.rate_limited = true;
+                    out.failed.push(pid);
+                    out.failed.extend(queue.map(|(p, _)| p));
                     return Ok(out);
                 }
                 Err(Fail::Err(GraphqlError::Failed(m))) => {
                     tracing::warn!("graphql follow-up page failed: {m}");
                     out.complete = false;
+                    out.failed.push(pid);
                     break;
                 }
                 Err(e) => return Err(e),
@@ -885,6 +925,7 @@ fn grow(size: usize) -> usize {
 
 async fn fetch<N, T, C>(
     client: &C,
+    http: Option<&HttpLayer>,
     state: &GraphqlState,
     kind: Kind<N, T>,
     project_ids: &[u64],
@@ -904,6 +945,7 @@ where
         return Err(GraphqlError::Unsupported);
     }
     let req = Arc::new(Request {
+        http: http.cloned(),
         url: url.clone(),
         state: list_state.to_string(),
         since: since.map(str::to_string),
@@ -912,7 +954,8 @@ where
         sem: Semaphore::new(MAX_IN_FLIGHT),
     });
     let mut set = JoinSet::new();
-    for (idx, chunk) in project_ids.chunks(snapshot.size).enumerate() {
+    let chunks: Vec<&[u64]> = project_ids.chunks(snapshot.size).collect();
+    for (idx, chunk) in chunks.iter().enumerate() {
         let (client, req, chunk) = (client.clone(), req.clone(), chunk.to_vec());
         let level = snapshot.level;
         set.spawn(async move { (idx, run_batch(client, req, kind, level, chunk).await) });
@@ -937,10 +980,15 @@ where
     let mut rows = Vec::new();
     let mut complete = true;
     let mut over_limit = false;
+    let mut failed_projects: Vec<u64> = Vec::new();
+    let mut truncated_projects: Vec<u64> = Vec::new();
     let mut level = snapshot.level;
-    for (_, r) in results {
+    for (idx, r) in results {
+        let chunk = chunks.get(idx).copied().unwrap_or(&[]);
         match r {
             Ok(b) => {
+                failed_projects.extend(b.failed);
+                truncated_projects.extend(b.truncated);
                 any_ok = true;
                 merge_complexity(&mut worst, b.max_score);
                 complete &= b.complete;
@@ -952,18 +1000,24 @@ where
             Err(Fail::Err(GraphqlError::Unsupported)) | Err(Fail::UnknownFields(_)) => {
                 unsupported = true
             }
-            Err(Fail::Err(GraphqlError::RateLimited)) => rate_limited = true,
+            Err(Fail::Err(GraphqlError::RateLimited)) => {
+                rate_limited = true;
+                failed_projects.extend_from_slice(chunk);
+            }
             Err(Fail::NotFound) => {
                 not_found = true;
                 complete = false;
+                failed_projects.extend_from_slice(chunk);
             }
             Err(Fail::ComplexityExceeded) => {
                 over_limit = true;
                 complete = false;
+                failed_projects.extend_from_slice(chunk);
             }
             Err(Fail::Err(GraphqlError::Failed(m))) => {
                 tracing::warn!("graphql batch failed: {m}");
                 complete = false;
+                failed_projects.extend_from_slice(chunk);
             }
         }
     }
@@ -1002,15 +1056,35 @@ where
     if rate_limited && rows.is_empty() {
         return Err(GraphqlError::RateLimited);
     }
+    failed_projects.sort_unstable();
+    failed_projects.dedup();
+    truncated_projects.sort_unstable();
+    truncated_projects.dedup();
+    truncated_projects.retain(|p| !failed_projects.contains(p));
     Ok(ListResult {
         rows,
         complete: complete && !rate_limited,
         rate_limited,
+        failed_projects,
+        truncated_projects,
     })
 }
 
 pub async fn fetch_merge_requests<C: Clone + Into<TracedClient>>(
     client: &C,
+    state: &GraphqlState,
+    project_ids: &[u64],
+    list_state: &str,
+    since: Option<&str>,
+) -> Result<ListResult<MrRow>, GraphqlError> {
+    fetch_merge_requests_via(client, None, state, project_ids, list_state, since).await
+}
+
+/// Like [`fetch_merge_requests`], but the requests go through the shared request layer:
+/// they honour its rate-limit gate and a 429 raises it for every other request.
+pub async fn fetch_merge_requests_via<C: Clone + Into<TracedClient>>(
+    client: &C,
+    http: Option<&HttpLayer>,
     state: &GraphqlState,
     project_ids: &[u64],
     list_state: &str,
@@ -1022,7 +1096,7 @@ pub async fn fetch_merge_requests<C: Clone + Into<TracedClient>>(
         field: "mergeRequests",
         map: map_mr,
     };
-    fetch(client, state, kind, project_ids, list_state, since).await
+    fetch(client, http, state, kind, project_ids, list_state, since).await
 }
 
 pub async fn fetch_issues<C: Clone + Into<TracedClient>>(
@@ -1038,5 +1112,5 @@ pub async fn fetch_issues<C: Clone + Into<TracedClient>>(
         field: "issues",
         map: map_issue,
     };
-    fetch(client, state, kind, project_ids, list_state, since).await
+    fetch(client, None, state, kind, project_ids, list_state, since).await
 }

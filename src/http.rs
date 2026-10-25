@@ -324,6 +324,27 @@ impl HttpLayer {
         }
     }
 
+    /// One attempt of a request to an absolute URL (for example the GraphQL endpoint):
+    /// counted against the budget, refused while rate limited, and a 429 raises the
+    /// gate for every other request. The caller reads the status of the response.
+    pub async fn send_once(
+        &self,
+        method: &http::Method,
+        url: &str,
+        body: Vec<u8>,
+    ) -> Result<Resp, Outcome> {
+        match self.send(method, url, None, body, true).await {
+            Ok(resp) => {
+                if resp.status == http::StatusCode::TOO_MANY_REQUESTS {
+                    self.raise_gate(Instant::now() + retry_after(&resp));
+                }
+                Ok(resp)
+            }
+            Err(SendError::Gated(until)) => Err(Outcome::RateLimited { until }),
+            Err(SendError::Other(e)) => Err(Outcome::Failed(crate::errors::friendly_error(&e))),
+        }
+    }
+
     /// Mutation (POST, PUT, DELETE...): never retried, never coalesced, fails fast while rate limited.
     pub async fn send_mutation(&self, method: http::Method, path: &str, body: Vec<u8>) -> Outcome {
         if method == http::Method::GET || method == http::Method::HEAD {
