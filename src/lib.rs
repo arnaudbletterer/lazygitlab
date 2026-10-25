@@ -7,6 +7,7 @@ pub mod client;
 pub mod config;
 pub mod errors;
 pub mod events;
+pub mod graphql;
 pub mod headless;
 pub mod http;
 pub mod logger;
