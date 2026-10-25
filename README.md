@@ -89,7 +89,7 @@ lazygitlab --url https://gitlab.example.com
 
 `--insecure` skips TLS certificate verification, for self-signed certificates. It prints a warning at every start and the header shows `TLS NOT VERIFIED`; prefer adding your CA to the system trust store. For plain HTTP, use an `http://` URL. With no credentials configured, a first-run prompt asks for the URL and token and can save them to `~/.config/lazygitlab/config.toml`.
 
-Logs are written to `~/.local/state/lazygitlab/lazygitlab.log` (or under `$XDG_STATE_HOME`), readable only by you. Set `LAZYGITLAB_LOG` to choose another path.
+Logs are written to `~/.local/state/lazygitlab/lazygitlab.log` (or under `$XDG_STATE_HOME`), readable only by you. Set `LAZYGITLAB_LOG` to choose another path. To find out why a list is slow on your instance, run with `LAZYGITLAB_TRACE=1` and summarize the log with `scripts/summarize_trace.py`: it records only endpoint templates and timings, never the host, token or project names (see [docs/performance.md](docs/performance.md)).
 
 Settings are resolved in this order: command-line flags, environment variables (`.env` files are not read), then the config file:
 

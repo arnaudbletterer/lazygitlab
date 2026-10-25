@@ -92,7 +92,10 @@ async fn trace_lines_carry_no_host_token_project_or_query_value() {
 
     let endpoint = format!("projects/{PROJECT}/merge_requests?search={QUERY_VALUE}&page=2");
     assert_eq!(get(&client, &endpoint, None).await, 200);
-    assert_eq!(get(&client, "todos?state=pending", Some("\"abc\"")).await, 304);
+    assert_eq!(
+        get(&client, "todos?state=pending", Some("\"abc\"")).await,
+        304
+    );
 
     let out = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
     let lines: Vec<&str> = out.lines().filter(|l| l.contains("\"trace\":1")).collect();
@@ -163,5 +166,8 @@ fn templates_replace_ids_and_unknown_segments() {
         "/projects/:id/repository/branches/:x"
     );
     assert_eq!(template("/api/v4/user"), "/user");
-    assert_eq!(template("/api/v4/groups/team/projects"), "/groups/:path/projects");
+    assert_eq!(
+        template("/api/v4/groups/team/projects"),
+        "/groups/:path/projects"
+    );
 }
