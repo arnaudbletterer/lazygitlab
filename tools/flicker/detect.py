@@ -10,7 +10,7 @@ Usage: detect.py [--quick] [--scenarios S1,S2] [--latencies 0,100,300]
                  [--fixtures small,big] [--out DIR] [--bin PATH] [--jobs N]
                  [--report-only] [--probe SCRIPT --latency N --big]
 
---quick        S1-S5 at 100 ms on the big fixtures (about a minute and a half).
+--quick        S1, S2, S4, S9 at 100 ms on the big fixtures (about a minute).
 --out DIR      write DIR/report.json and DIR/summary.md.
 --report-only  always exit 0.
 --probe        run one raw script file and print a line per frame (debugging).

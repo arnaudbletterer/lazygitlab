@@ -148,9 +148,9 @@ def s9(lat):
 SCENARIOS = {
     "S1": (s1, "g m, g i, g m, g i every 1.5 s", False, True),
     "S2": (s2, "20 fast switches every 150 ms", False, True),
-    "S3": (s3, "m/i switching while scrolling with j", False, True),
+    "S3": (s3, "m/i switching while scrolling with j", False, False),
     "S4": (s4, "scope and state filter A to B to A", False, True),
-    "S5": (s5, "Enter into an item and Esc back, repeated", False, True),
+    "S5": (s5, "Enter into an item and Esc back, repeated", False, False),
     "S6": (s6, "Pipelines, Todos, Projects, Groups and back", False, False),
     "S7": (s7, "idle 90 s while the mock merges, closes and adds", False, False),
     "S9": (s9, "switch MRs and Issues through the sidebar (Tab, j, k)", False, True),
