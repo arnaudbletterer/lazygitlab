@@ -1264,12 +1264,24 @@ impl App {
                     .as_ref()
                     .is_some_and(|p| p.id == project_id)
                 {
+                    let prev_index = self.project_boards_state.selected();
+                    let prev_id = prev_index
+                        .and_then(|i| self.project_boards.get(i))
+                        .map(|b| b.id)
+                        .or_else(|| self.selected_board.as_ref().map(|b| b.id));
                     self.project_boards = data;
+                    let keep = prev_id
+                        .and_then(|id| self.project_boards.iter().position(|b| b.id == id))
+                        .or_else(|| {
+                            prev_index
+                                .filter(|_| !self.project_boards.is_empty())
+                                .map(|i| i.min(self.project_boards.len() - 1))
+                        });
                     self.project_boards_state
                         .select(if self.project_boards.is_empty() {
                             None
                         } else {
-                            Some(0)
+                            Some(keep.unwrap_or(0))
                         });
                 }
             }
@@ -1307,7 +1319,7 @@ impl App {
             }
             DataUpdate::BoardIssues {
                 project_id,
-                board_id: _,
+                board_id,
                 list_id,
                 data,
             } => {
@@ -1315,15 +1327,38 @@ impl App {
                     .selected_project
                     .as_ref()
                     .is_some_and(|p| p.id == project_id)
+                    && self
+                        .selected_board
+                        .as_ref()
+                        .is_some_and(|b| b.id == board_id)
                 {
                     self.board_issues.insert(list_id, data);
                     self.filter_lists();
                 }
             }
-            DataUpdate::Epics { group_id: _, data } => {
-                self.epics = data;
-                self.epics_state
-                    .select(if self.epics.is_empty() { None } else { Some(0) });
+            DataUpdate::Epics { group_id, data } => {
+                if self
+                    .selected_project
+                    .as_ref()
+                    .and_then(|p| p.namespace.as_ref())
+                    .is_some_and(|n| n.id == group_id)
+                {
+                    let prev_index = self.epics_state.selected();
+                    let prev_id = prev_index.and_then(|i| self.epics.get(i)).map(|e| e.id);
+                    self.epics = data;
+                    let keep = prev_id
+                        .and_then(|id| self.epics.iter().position(|e| e.id == id))
+                        .or_else(|| {
+                            prev_index
+                                .filter(|_| !self.epics.is_empty())
+                                .map(|i| i.min(self.epics.len() - 1))
+                        });
+                    self.epics_state.select(if self.epics.is_empty() {
+                        None
+                    } else {
+                        Some(keep.unwrap_or(0))
+                    });
+                }
             }
             DataUpdate::EpicIssues {
                 group_id,
@@ -1335,14 +1370,29 @@ impl App {
                     .as_ref()
                     .is_some_and(|e| e.group_id == Some(group_id) && e.iid == epic_iid)
                 {
+                    let prev_index = self.epic_issues_state.selected();
+                    let prev_key = prev_index
+                        .and_then(|i| self.filtered_epic_issues.get(i))
+                        .map(|i| (i.project_id, i.iid));
                     self.epic_issues = data;
+                    self.filter_lists();
+                    let keep = prev_key
+                        .and_then(|k| {
+                            self.filtered_epic_issues
+                                .iter()
+                                .position(|i| (i.project_id, i.iid) == k)
+                        })
+                        .or_else(|| {
+                            prev_index
+                                .filter(|_| !self.filtered_epic_issues.is_empty())
+                                .map(|i| i.min(self.filtered_epic_issues.len() - 1))
+                        });
                     self.epic_issues_state
-                        .select(if self.epic_issues.is_empty() {
+                        .select(if self.filtered_epic_issues.is_empty() {
                             None
                         } else {
-                            Some(0)
+                            Some(keep.unwrap_or(0))
                         });
-                    self.filter_lists();
                 }
             }
             DataUpdate::TerminalEscape(_) => {} // Handled in main loop

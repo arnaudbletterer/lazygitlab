@@ -295,6 +295,11 @@ async fn test_kanban_board_lists_cursor_preservation_on_update() {
 async fn test_kanban_board_issues_state_synchronization() {
     let (_server, mut app) = setup_app().await;
     app.selected_project = Some(sample_project(1));
+    app.selected_board = Some(Board {
+        id: 99,
+        name: "b".into(),
+        lists: None,
+    });
     app.board_lists = vec![BoardList {
         id: 10,
         label: None,
