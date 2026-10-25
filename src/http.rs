@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::hash::{BuildHasher, RandomState};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{Semaphore, watch};
+use tokio::sync::{Notify, Semaphore, watch};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
@@ -75,7 +75,15 @@ struct Inner {
     client: TracedClient,
     budget: Semaphore,
     gate: Mutex<Option<Instant>>,
-    inflight: Mutex<HashMap<String, watch::Receiver<Option<Outcome>>>>,
+    inflight: Mutex<HashMap<String, Inflight>>,
+}
+
+/// One coalesced GET. The task that runs it stops when its last waiter goes away,
+/// so an aborted caller does not keep a budget permit for the whole timeout.
+struct Inflight {
+    rx: watch::Receiver<Option<Outcome>>,
+    waiters: usize,
+    abandon: Arc<Notify>,
 }
 
 /// Request layer for one GitLab host: the per-host budget and the 429 gate live here.
@@ -263,28 +271,50 @@ impl HttpLayer {
             Err(e) => return Outcome::Failed(e),
         };
         let key = format!("{}\n{}", url, etag.unwrap_or(""));
-        let mut rx = {
+        let (mut rx, token) = {
             let mut map = self
                 .inner
                 .inflight
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            if let Some(rx) = map.get(&key) {
-                rx.clone()
+            if let Some(entry) = map.get_mut(&key) {
+                entry.waiters += 1;
+                (entry.rx.clone(), entry.abandon.clone())
             } else {
                 let (tx, rx) = watch::channel(None);
-                map.insert(key.clone(), rx.clone());
+                let abandon = Arc::new(Notify::new());
+                map.insert(
+                    key.clone(),
+                    Inflight {
+                        rx: rx.clone(),
+                        waiters: 1,
+                        abandon: abandon.clone(),
+                    },
+                );
                 let layer = self.clone();
                 let etag = etag.map(str::to_string);
+                let task_token = abandon.clone();
+                let task_key = key.clone();
                 tokio::spawn(async move {
-                    let _cleanup = InflightCleanup { layer: &layer, key };
-                    let outcome = layer
-                        .execute(&http::Method::GET, &url, etag.as_deref(), Vec::new())
-                        .await;
-                    let _ = tx.send(Some(outcome));
+                    let _cleanup = InflightCleanup {
+                        layer: &layer,
+                        key: task_key,
+                        token: task_token.clone(),
+                    };
+                    tokio::select! {
+                        outcome = layer.execute(&http::Method::GET, &url, etag.as_deref(), Vec::new()) => {
+                            let _ = tx.send(Some(outcome));
+                        }
+                        _ = task_token.notified() => {}
+                    }
                 });
-                rx
+                (rx, abandon)
             }
+        };
+        let _waiter = Waiter {
+            layer: self,
+            key,
+            token,
         };
         match rx.wait_for(|v| v.is_some()).await {
             Ok(v) => v
@@ -418,16 +448,52 @@ impl HttpLayer {
 struct InflightCleanup<'a> {
     layer: &'a HttpLayer,
     key: String,
+    token: Arc<Notify>,
 }
 
 impl Drop for InflightCleanup<'_> {
     fn drop(&mut self) {
-        self.layer
+        let mut map = self
+            .layer
             .inner
             .inflight
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&self.key);
+            .unwrap_or_else(|e| e.into_inner());
+        if map
+            .get(&self.key)
+            .is_some_and(|e| Arc::ptr_eq(&e.abandon, &self.token))
+        {
+            map.remove(&self.key);
+        }
+    }
+}
+
+/// One caller waiting on a coalesced GET. The last one to leave stops the request.
+struct Waiter<'a> {
+    layer: &'a HttpLayer,
+    key: String,
+    token: Arc<Notify>,
+}
+
+impl Drop for Waiter<'_> {
+    fn drop(&mut self) {
+        let mut map = self
+            .layer
+            .inner
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let Some(entry) = map.get_mut(&self.key) else {
+            return;
+        };
+        if !Arc::ptr_eq(&entry.abandon, &self.token) {
+            return;
+        }
+        entry.waiters -= 1;
+        if entry.waiters == 0 {
+            map.remove(&self.key);
+            self.token.notify_one();
+        }
     }
 }
 
