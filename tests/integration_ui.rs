@@ -127,6 +127,11 @@ async fn test_mr_visual_completeness() {
     app.active_selection = MenuSelection::MergeRequests;
 
     app.fetch_discussions(1, 123).await.unwrap();
+    let start = std::time::Instant::now();
+    while app.discussions.is_empty() && start.elapsed() < std::time::Duration::from_secs(5) {
+        app.process_updates(&mut rx).await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     wait_for_loading_finish(&mut app, &mut rx).await;
 
     app.view_mode = ViewMode::List;

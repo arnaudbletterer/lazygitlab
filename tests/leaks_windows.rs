@@ -220,7 +220,7 @@ async fn refresh_keeps_projects_from_later_pages() {
         page: 2,
         data: projects(101..=110),
     })
-        .await;
+    .await;
     assert_eq!(app.projects.len(), 110);
     assert_eq!(app.projects_page, 2);
 
@@ -272,7 +272,7 @@ async fn refresh_keeps_groups_from_later_pages() {
         page: 2,
         data: groups(51..=60),
     })
-        .await;
+    .await;
     assert_eq!(app.groups.len(), 60);
     app.process_update_single(DataUpdate::Groups {
         data: groups(1..=50),
@@ -609,21 +609,29 @@ async fn next_projects_page_skips_rows_that_moved_up() {
     .await;
     app.process_update_single(DataUpdate::AppendProjects {
         page: 3,
-        data: projects(201..=210).into_iter().chain(projects(150..=160)).collect(),
+        data: projects(201..=210)
+            .into_iter()
+            .chain(projects(150..=160))
+            .collect(),
     })
     .await;
     let mut ids: Vec<u64> = app.projects.iter().map(|p| p.id).collect();
     let total = ids.len();
     ids.sort();
     ids.dedup();
-    assert_eq!(ids.len(), total, "a row that moved up is not appended twice");
+    assert_eq!(
+        ids.len(),
+        total,
+        "a row that moved up is not appended twice"
+    );
 }
 
 #[tokio::test]
 async fn next_groups_page_skips_rows_that_moved_up() {
     let (_server, mut app, _rx) = setup().await;
     let groups = |r: std::ops::RangeInclusive<u64>| -> Vec<Group> {
-        r.map(|i| serde_json::from_value(group(i)).unwrap()).collect()
+        r.map(|i| serde_json::from_value(group(i)).unwrap())
+            .collect()
     };
     app.process_update_single(DataUpdate::Groups {
         data: groups(1..=50),
