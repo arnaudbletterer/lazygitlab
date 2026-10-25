@@ -9,6 +9,8 @@ use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
+pub use ::http::Method;
+
 pub const MAX_IN_FLIGHT: usize = 6;
 pub const MAX_ATTEMPTS: u32 = 3;
 pub const RETRY_BASE: Duration = Duration::from_millis(200);
@@ -39,6 +41,15 @@ impl Resp {
     fn page_header(&self, name: &str) -> Option<u32> {
         self.header(name).and_then(|v| v.trim().parse().ok())
     }
+}
+
+/// Text for the status line when the server asks the client to back off.
+pub fn rate_limit_text(until: Instant) -> String {
+    let secs = until
+        .saturating_duration_since(Instant::now())
+        .as_secs()
+        .max(1);
+    format!("Rate limited by GitLab, retry in {secs}s")
 }
 
 #[derive(Debug, Clone)]

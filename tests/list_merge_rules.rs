@@ -156,7 +156,10 @@ async fn global_mrs_total_failure_keeps_list() {
 
     assert_eq!(mr_ids(&app), vec![1, 2, 3]);
     let msg = app.status_message.clone().unwrap_or_default();
-    assert!(msg.starts_with("Rate limited by GitLab"), "status was {msg:?}");
+    assert!(
+        msg.starts_with("Rate limited by GitLab"),
+        "status was {msg:?}"
+    );
     assert!(app.mrs_stale);
 }
 

@@ -55,7 +55,11 @@ fn rest_path(q: &MrFetch, pid: u64) -> String {
 
 fn meta_of(mr: &MergeRequest) -> MrMeta {
     MrMeta {
-        pipeline_id: mr.head_pipeline.as_ref().map(|p| p.id).filter(|id| *id != 0),
+        pipeline_id: mr
+            .head_pipeline
+            .as_ref()
+            .map(|p| p.id)
+            .filter(|id| *id != 0),
         milestone_id: mr.milestone.as_ref().map(|m| m.id).filter(|id| *id != 0),
     }
 }
@@ -139,7 +143,6 @@ pub async fn fetch_global_mrs(
     rest_fan_out(http, q, &mut out).await;
     out
 }
-
 
 async fn rest_fan_out(http: &HttpLayer, q: &MrFetch, out: &mut MrListUpdate) {
     let mut pending = q.project_ids.iter().copied();
@@ -315,7 +318,11 @@ impl App {
     pub fn mr_pipeline_id(&self, mr: &MergeRequest) -> Option<u64> {
         match self.mr_meta.get(&(mr.project_id, mr.iid)) {
             Some(m) => m.pipeline_id,
-            None => mr.head_pipeline.as_ref().map(|p| p.id).filter(|id| *id != 0),
+            None => mr
+                .head_pipeline
+                .as_ref()
+                .map(|p| p.id)
+                .filter(|id| *id != 0),
         }
     }
 
@@ -344,16 +351,12 @@ impl App {
         if project.is_none() && project_ids.is_empty() {
             return;
         }
-        let user_id = self
-            .current_user
-            .as_ref()
-            .map(|u| u.id)
-            .or_else(|| {
-                self.list_cache
-                    .as_ref()
-                    .and_then(|c| c.last_user_id())
-                    .map(NonZeroU64::get)
-            });
+        let user_id = self.current_user.as_ref().map(|u| u.id).or_else(|| {
+            self.list_cache
+                .as_ref()
+                .and_then(|c| c.last_user_id())
+                .map(NonZeroU64::get)
+        });
         let needs_user = matches!(
             self.mr_filter,
             MergeRequestFilter::Review | MergeRequestFilter::Assigned
@@ -503,8 +506,8 @@ impl App {
         let Some((pid, iid, since)) = self.pending_mr_detail else {
             return;
         };
-        let rested = since.elapsed() >= Duration::from_millis(250)
-            || self.active_panel == Panel::MainDetail;
+        let rested =
+            since.elapsed() >= Duration::from_millis(250) || self.active_panel == Panel::MainDetail;
         if !rested {
             return;
         }

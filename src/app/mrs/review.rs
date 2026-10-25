@@ -227,20 +227,19 @@ impl App {
             let iid = mr.iid;
             self.status_message = Some(format!("Approving MR !{}...", iid));
             let client = self.gitlab.clone();
+            let http = self.http.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let endpoint = ApproveMergeRequest {
-                    project: pid,
-                    merge_request: iid,
-                };
-                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    endpoint.query_async(&client),
-                )
-                .await;
-                match res {
-                    Ok(Ok(_)) => {
+                let outcome = http
+                    .send_mutation(
+                        crate::http::Method::POST,
+                        &format!("projects/{pid}/merge_requests/{iid}/approve"),
+                        Vec::new(),
+                    )
+                    .await;
+                match outcome {
+                    crate::http::Outcome::Ok(_) | crate::http::Outcome::NotModified => {
                         let mr_endpoint = SingleMergeRequest {
                             project: pid,
                             merge_request: iid,
@@ -255,11 +254,11 @@ impl App {
                             let _ = tx.send(DataUpdate::MRDetail(updated_mr));
                         }
                     }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Approve MR failed: {}", e)));
+                    crate::http::Outcome::RateLimited { until } => {
+                        let _ = tx.send(DataUpdate::Error(crate::http::rate_limit_text(until)));
                     }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Approve MR timed out".into()));
+                    crate::http::Outcome::Failed(e) => {
+                        let _ = tx.send(DataUpdate::Error(format!("Approve MR failed: {e}")));
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -274,20 +273,19 @@ impl App {
             let iid = mr.iid;
             self.status_message = Some(format!("Unapproving MR !{}...", iid));
             let client = self.gitlab.clone();
+            let http = self.http.clone();
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
-                let endpoint = UnapproveMergeRequest {
-                    project: pid,
-                    merge_request: iid,
-                };
-                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    endpoint.query_async(&client),
-                )
-                .await;
-                match res {
-                    Ok(Ok(_)) => {
+                let outcome = http
+                    .send_mutation(
+                        crate::http::Method::POST,
+                        &format!("projects/{pid}/merge_requests/{iid}/unapprove"),
+                        Vec::new(),
+                    )
+                    .await;
+                match outcome {
+                    crate::http::Outcome::Ok(_) | crate::http::Outcome::NotModified => {
                         let mr_endpoint = SingleMergeRequest {
                             project: pid,
                             merge_request: iid,
@@ -302,11 +300,11 @@ impl App {
                             let _ = tx.send(DataUpdate::MRDetail(updated_mr));
                         }
                     }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Unapprove MR failed: {}", e)));
+                    crate::http::Outcome::RateLimited { until } => {
+                        let _ = tx.send(DataUpdate::Error(crate::http::rate_limit_text(until)));
                     }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Unapprove MR timed out".into()));
+                    crate::http::Outcome::Failed(e) => {
+                        let _ = tx.send(DataUpdate::Error(format!("Unapprove MR failed: {e}")));
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));

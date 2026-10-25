@@ -10,8 +10,8 @@
 //! query drops exactly that group and retries; the level is remembered per (host, kind) in
 //! [`GraphqlState`].
 
-use crate::trace::TracedClient;
 use crate::models::{Author, Issue, Label, MergeRequest, Milestone, PipelineMin, References};
+use crate::trace::TracedClient;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
