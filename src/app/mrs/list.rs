@@ -22,6 +22,7 @@ pub struct MrFetch {
     pub project_ids: Vec<u64>,
     pub user_id: Option<u64>,
     pub since: Option<String>,
+    pub fetch_gen: u64,
 }
 
 pub fn state_of(scope: MergeRequestFilter) -> &'static str {
@@ -135,6 +136,8 @@ pub async fn fetch_global_mrs(
         project: q.project,
         incremental: q.since.is_some(),
         complete: true,
+        user_id: q.user_id,
+        fetch_gen: q.fetch_gen,
         ..Default::default()
     };
     if q.project.is_none() {
@@ -243,6 +246,40 @@ async fn rest_fan_out(
     }
 }
 
+/// Ends one list fetch: always releases the loading marker and, when the task died
+/// before sending its result (abort or panic), reports the failure so the in-flight
+/// marker is released.
+struct FetchGuard {
+    tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
+    scope: MergeRequestFilter,
+    project: Option<u64>,
+    fetch_gen: u64,
+    sent: bool,
+}
+
+impl FetchGuard {
+    fn send(&mut self, update: MrListUpdate) {
+        self.sent = true;
+        let _ = self.tx.send(DataUpdate::MrList(Box::new(update)));
+    }
+}
+
+impl Drop for FetchGuard {
+    fn drop(&mut self) {
+        if !self.sent {
+            let _ = self.tx.send(DataUpdate::MrList(Box::new(MrListUpdate {
+                scope: Some(self.scope),
+                project: self.project,
+                complete: false,
+                error: Some("list fetch ended unexpectedly".into()),
+                fetch_gen: self.fetch_gen,
+                ..Default::default()
+            })));
+        }
+        let _ = self.tx.send(DataUpdate::Loading(false));
+    }
+}
+
 pub(super) struct LoadingGuard(tokio::sync::mpsc::UnboundedSender<DataUpdate>);
 
 impl LoadingGuard {
@@ -275,6 +312,8 @@ fn send_progress(
         rows,
         meta,
         progress: true,
+        user_id: q.user_id,
+        fetch_gen: q.fetch_gen,
         ..Default::default()
     })));
 }
@@ -365,7 +404,7 @@ impl App {
     }
 
     fn paint_cached_mrs(&mut self, key: &str) {
-        if !self.merge_requests.is_empty() || self.mrs_cached_at.is_some() {
+        if !self.merge_requests.is_empty() {
             return;
         }
         let Some(entry) = self.list_cache.as_ref().and_then(|c| c.get(key)) else {
@@ -471,7 +510,7 @@ impl App {
             && self
                 .mrs_sync
                 .last_full
-                .is_some_and(|t| t.elapsed() < FULL_RECONCILE);
+                .is_some_and(|t| t.elapsed().is_ok_and(|e| e < FULL_RECONCILE));
         let since = if incremental {
             self.mrs_sync.cursor.as_deref().map(since_with_margin)
         } else {
@@ -483,10 +522,19 @@ impl App {
             project_ids,
             user_id,
             since,
+            fetch_gen: self.mrs_fetch_gen + 1,
         };
+        let fanout_key = format!("mr:{:?}", self.mr_filter);
         if let Some(task) = self.mrs_fetch_task.take() {
             task.abort();
+            if let Some(old) = self.mrs_fetch_key.take()
+                && old != fanout_key
+            {
+                self.fanout_done(&old);
+            }
         }
+        self.mrs_fetch_gen += 1;
+        self.mrs_fetch_key = Some(fanout_key);
         self.mrs_in_flight = Some(key);
         let (client, http, gql, tx) = (
             self.gitlab.clone(),
@@ -495,17 +543,27 @@ impl App {
             self.tx.clone(),
         );
         let _ = tx.send(DataUpdate::Loading(true));
+        let mut guard = FetchGuard {
+            tx: tx.clone(),
+            scope: q.scope,
+            project,
+            fetch_gen: q.fetch_gen,
+            sent: false,
+        };
         self.mrs_fetch_task = Some(tokio::spawn(async move {
-            let _guard = LoadingGuard::new(tx.clone());
             let update = fetch_global_mrs(&client, &http, &gql, &q, Some(&tx)).await;
-            let _ = tx.send(DataUpdate::MrList(Box::new(update)));
+            guard.send(update);
         }));
     }
 
-    pub(crate) fn apply_mr_list(&mut self, mut u: MrListUpdate) {
+    /// Returns false when the update belongs to a superseded fetch and was ignored.
+    pub(crate) fn apply_mr_list(&mut self, mut u: MrListUpdate) -> bool {
         let Some(scope) = u.scope else {
-            return;
+            return false;
         };
+        if u.fetch_gen != 0 && u.fetch_gen != self.mrs_fetch_gen {
+            return false;
+        }
         let key = {
             let saved = self.mr_filter;
             self.mr_filter = scope;
@@ -517,7 +575,12 @@ impl App {
             self.mrs_in_flight = None;
         }
         if scope != self.mr_filter || self.current_mr_project() != Some(u.project) {
-            return;
+            return true;
+        }
+        if let (Some(fetched_for), Some(me)) = (u.user_id, self.current_user.as_ref().map(|c| c.id))
+            && fetched_for != me
+        {
+            return !u.progress;
         }
         for mr in &mut u.rows {
             self.fix_mr_labels(mr);
@@ -530,7 +593,7 @@ impl App {
                 self.mrs_mutations += 1;
                 self.filter_lists();
             }
-            return;
+            return false;
         }
         let fetched_max = u
             .rows
@@ -592,7 +655,7 @@ impl App {
             self.last_list_refresh_ok = Some(chrono::Local::now());
             if !u.incremental {
                 self.mrs_sync.cursor = max_updated.clone();
-                self.mrs_sync.last_full = Some(std::time::Instant::now());
+                self.mrs_sync.last_full = Some(std::time::SystemTime::now());
             } else if max_updated.is_some() {
                 self.mrs_sync.cursor = max_updated.clone();
             }
@@ -611,6 +674,8 @@ impl App {
             if !u.incremental {
                 self.mrs_sync.cursor = None;
                 self.mrs_sync.last_full = None;
+            } else if u.rate_limited_secs.is_none() {
+                self.mrs_sync.last_full = None;
             }
             let when = self
                 .last_list_refresh_ok
@@ -621,6 +686,7 @@ impl App {
                 None => format!("refresh failed{when}"),
             });
         }
+        true
     }
 
     /// Cancels the detail fetch of the row the cursor left.

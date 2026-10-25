@@ -859,3 +859,169 @@ async fn user_change_drops_rows_and_refetches() {
     assert_eq!(app.merge_requests.len(), 6);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn switch_filter(app: &mut App, filter: MergeRequestFilter) {
+    app.mr_filter = filter;
+    app.merge_requests.clear();
+    app.filter_lists();
+}
+
+#[tokio::test]
+async fn switching_filters_away_and_back_still_loads_the_first_list() {
+    let dir = unique_dir("aba");
+    let server = MockServer::start().await;
+    let data = dataset(6, 2);
+    mount(&server, &data, true).await;
+    let host = server.uri();
+    let (mut app, mut rx) = app_for(&server, 6).await;
+    app.enable_cache(&dir, &host);
+    app.process_update_single(DataUpdate::CurrentUser(Author::new(1, "u".into())))
+        .await;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 12);
+
+    switch_filter(&mut app, MergeRequestFilter::Merged);
+    app.refresh().await;
+    switch_filter(&mut app, MergeRequestFilter::Opened);
+    app.refresh().await;
+    assert_eq!(app.merge_requests.len(), 12, "cached rows paint on return");
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 12);
+    assert!(!app.is_loading);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn switching_away_and_back_during_a_hanging_fetch_recovers() {
+    let server = MockServer::start().await;
+    let data = dataset(6, 2);
+    let mocks = mount(&server, &data, false).await;
+    mocks.rest_status.lock().unwrap().insert(3, 0);
+    let (mut app, mut rx) = app_for(&server, 6).await;
+    app.http = app
+        .http
+        .clone()
+        .with_pages_deadline(Duration::from_millis(600));
+
+    app.refresh().await;
+    switch_filter(&mut app, MergeRequestFilter::Merged);
+    app.refresh().await;
+    switch_filter(&mut app, MergeRequestFilter::Opened);
+    app.refresh().await;
+    settle(&mut app, &mut rx).await;
+
+    assert_eq!(app.merge_requests.len(), 10);
+    assert!(
+        !app.is_loading,
+        "an aborted fetch must end its loading marker"
+    );
+}
+
+#[tokio::test]
+async fn manual_refresh_during_a_pass_queues_one_full_rerun() {
+    let server = MockServer::start().await;
+    let data = dataset(45, 1);
+    let (mut app, mut rx, _m) = loaded_app(&server, &data, true, 45).await;
+    let base = count(&server, "POST", "/api/graphql").await;
+    assert_eq!(base, 3);
+
+    app.refresh_background().await;
+    app.refresh().await;
+    settle(&mut app, &mut rx).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    settle(&mut app, &mut rx).await;
+
+    let posts = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() == "/api/graphql")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        posts.len(),
+        base + 6,
+        "one incremental pass and one full rerun"
+    );
+    let last: Value = serde_json::from_slice(&posts.last().unwrap().body).unwrap();
+    assert!(
+        last["variables"]["since"].is_null(),
+        "the rerun is a full pass"
+    );
+}
+
+#[tokio::test]
+async fn background_tick_keeps_a_pending_full_request() {
+    let server = MockServer::start().await;
+    let data = dataset(5, 1);
+    let (mut app, mut rx, _m) = loaded_app(&server, &data, true, 5).await;
+    app.mrs_force_full = true;
+    app.refresh_background().await;
+    assert!(
+        !app.mrs_force_full || app.mrs_in_flight.is_some(),
+        "the full pass was started or is still pending"
+    );
+    settle(&mut app, &mut rx).await;
+    let last = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .rfind(|r| r.url.path() == "/api/graphql")
+        .unwrap();
+    let body: Value = serde_json::from_slice(&last.body).unwrap();
+    assert!(body["variables"]["since"].is_null());
+}
+
+#[tokio::test]
+async fn update_for_another_user_is_dropped() {
+    let server = MockServer::start().await;
+    let data = dataset(2, 1);
+    mount(&server, &data, true).await;
+    let (mut app, _rx) = app_for(&server, 2).await;
+    app.process_update_single(DataUpdate::CurrentUser(Author::new(2, "v".into())))
+        .await;
+    let row: MergeRequest = serde_json::from_value(rest_json(&Row {
+        pid: 1,
+        iid: 1,
+        updated: stamp(1),
+        title: "stale".into(),
+        state: "opened".into(),
+        reviewers: Vec::new(),
+    }))
+    .unwrap();
+    app.process_update_single(DataUpdate::MrList(Box::new(MrListUpdate {
+        scope: Some(MergeRequestFilter::Opened),
+        project: None,
+        rows: vec![row],
+        complete: true,
+        user_id: Some(1),
+        ..Default::default()
+    })))
+    .await;
+    assert!(app.merge_requests.is_empty());
+}
+
+#[tokio::test]
+async fn failed_incremental_pass_is_followed_by_a_full_one() {
+    let server = MockServer::start().await;
+    let data = dataset(4, 2);
+    let (mut app, mut rx, mocks) = loaded_app(&server, &data, false, 4).await;
+    mocks.rest_status.lock().unwrap().insert(2, 500);
+    app.refresh_background().await;
+    settle(&mut app, &mut rx).await;
+    mocks.rest_status.lock().unwrap().clear();
+    let seen = mocks.queries.lock().unwrap().len();
+
+    app.refresh_background().await;
+    settle(&mut app, &mut rx).await;
+
+    let queries = mocks.queries.lock().unwrap().clone();
+    assert!(queries.len() > seen);
+    assert!(
+        queries[seen..].iter().all(|q| !q.contains("updated_after")),
+        "{:?}",
+        &queries[seen..]
+    );
+}

@@ -768,6 +768,8 @@ pub struct MrListUpdate {
     pub meta: Vec<((u64, u64), MrMeta)>,
     pub incremental: bool,
     pub progress: bool,
+    pub user_id: Option<u64>,
+    pub fetch_gen: u64,
     pub complete: bool,
     pub failed_projects: Vec<u64>,
     pub rate_limited_secs: Option<u64>,
@@ -779,7 +781,7 @@ pub struct MrListUpdate {
 pub struct MrSync {
     pub key: String,
     pub cursor: Option<String>,
-    pub last_full: Option<std::time::Instant>,
+    pub last_full: Option<std::time::SystemTime>,
 }
 
 #[derive(Debug)]
@@ -1337,6 +1339,8 @@ pub struct App {
     pub mrs_sync: MrSync,
     pub mrs_in_flight: Option<String>,
     pub mrs_fetch_task: Option<tokio::task::JoinHandle<()>>,
+    pub mrs_fetch_key: Option<String>,
+    pub mrs_fetch_gen: u64,
     pub mrs_force_full: bool,
     pub mrs_mutations: u64,
     pub mr_meta: std::collections::HashMap<(u64, u64), MrMeta>,

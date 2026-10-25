@@ -46,6 +46,8 @@ impl App {
             mrs_sync: MrSync::default(),
             mrs_in_flight: None,
             mrs_fetch_task: None,
+            mrs_fetch_key: None,
+            mrs_fetch_gen: 0,
             mrs_force_full: false,
             mrs_mutations: 0,
             mr_meta: std::collections::HashMap::new(),
@@ -1058,8 +1060,9 @@ impl App {
             DataUpdate::MrList(update) => {
                 let scope = update.scope;
                 let ends = !update.progress;
-                self.apply_mr_list(*update);
+                let current = self.apply_mr_list(*update);
                 if ends
+                    && current
                     && let Some(scope) = scope
                     && self.fanout_done(&format!("mr:{scope:?}"))
                 {
@@ -1830,7 +1833,9 @@ impl App {
 
     pub async fn refresh_impl(&mut self, force_detail: bool) {
         self.last_refresh = std::time::Instant::now();
-        self.mrs_force_full = force_detail;
+        if force_detail {
+            self.mrs_force_full = true;
+        }
 
         if force_detail {
             self.membership_sync_attempted = false;
@@ -1879,7 +1884,7 @@ impl App {
                 }
                 MenuSelection::MergeRequests => {
                     if should_fetch_lists {
-                        self.fetch_global_mrs_guarded(false).await;
+                        self.fetch_global_mrs_guarded(force_detail).await;
                     }
                 }
                 MenuSelection::Issues => {
