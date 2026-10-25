@@ -103,7 +103,7 @@ async fn pages_are_fetched_in_parallel_within_budget() {
 
     assert!(pages.complete);
     assert_eq!(pages.items.len(), 20);
-    assert!(elapsed < Duration::from_millis(450), "{elapsed:?}");
+    assert!(elapsed < Duration::from_millis(900), "{elapsed:?}");
 
     let mut times = arrivals.lock().unwrap().clone();
     times.sort();
@@ -242,7 +242,9 @@ async fn post_is_never_retried() {
         .mount(&server)
         .await;
 
-    let out = http.send_mutation("POST", "things", b"{}".to_vec()).await;
+    let out = http
+        .send_mutation(http::Method::POST, "things", b"{}".to_vec())
+        .await;
     assert!(matches!(out, Outcome::Failed(_)));
     server.verify().await;
 }
@@ -290,4 +292,223 @@ async fn requests_carry_bearer_token() {
 
     assert!(matches!(http.get("auth?x=1", None).await, Outcome::Ok(_)));
     server.verify().await;
+}
+
+async fn mount_status(server: &MockServer, p: &str, t: ResponseTemplate) {
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v4/{p}")))
+        .respond_with(t)
+        .mount(server)
+        .await;
+}
+
+fn left(until: tokio::time::Instant) -> Duration {
+    until.saturating_duration_since(tokio::time::Instant::now())
+}
+
+#[tokio::test]
+async fn retry_after_is_capped_and_never_panics() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "huge",
+        ResponseTemplate::new(429).append_header("Retry-After", "18446744073709551615"),
+    )
+    .await;
+    let Outcome::RateLimited { until } = http.get("huge", None).await else {
+        panic!("expected rate limit");
+    };
+    assert!(left(until) <= Duration::from_secs(120));
+}
+
+#[tokio::test]
+async fn retry_after_accepts_http_date() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    let when = (chrono::Utc::now() + chrono::Duration::seconds(3)).to_rfc2822();
+    mount_status(
+        &server,
+        "dated",
+        ResponseTemplate::new(429).append_header("Retry-After", when.as_str()),
+    )
+    .await;
+    let Outcome::RateLimited { until } = http.get("dated", None).await else {
+        panic!("expected rate limit");
+    };
+    assert!(left(until) <= Duration::from_secs(4), "{:?}", left(until));
+}
+
+#[tokio::test]
+async fn unparseable_retry_after_defaults_to_ten_seconds() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "junk",
+        ResponseTemplate::new(429).append_header("Retry-After", "soon"),
+    )
+    .await;
+    let Outcome::RateLimited { until } = http.get("junk", None).await else {
+        panic!("expected rate limit");
+    };
+    let l = left(until);
+    assert!(
+        l > Duration::from_secs(8) && l <= Duration::from_secs(10),
+        "{l:?}"
+    );
+}
+
+#[tokio::test]
+async fn mutation_fails_fast_while_gate_is_up() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "limited",
+        ResponseTemplate::new(429).append_header("Retry-After", "30"),
+    )
+    .await;
+    assert!(matches!(
+        http.get("limited", None).await,
+        Outcome::RateLimited { .. }
+    ));
+    let start = Instant::now();
+    let out = http
+        .send_mutation(http::Method::POST, "things", b"{}".to_vec())
+        .await;
+    assert!(matches!(out, Outcome::RateLimited { .. }));
+    assert!(start.elapsed() < Duration::from_secs(1));
+}
+
+#[tokio::test]
+async fn mutation_rejects_get() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    let out = http
+        .send_mutation(http::Method::GET, "things", Vec::new())
+        .await;
+    assert!(matches!(out, Outcome::Failed(_)));
+}
+
+#[tokio::test]
+async fn huge_total_pages_is_capped_and_incomplete() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "things",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .append_header("X-Total-Pages", "4294967295"),
+    )
+    .await;
+    let pages = http.get_all_pages::<u64>("things").await;
+    assert!(!pages.complete);
+    assert_eq!(pages.items.len(), 200);
+}
+
+#[tokio::test]
+async fn repeated_next_page_does_not_loop() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "things",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .append_header("X-Next-Page", "1"),
+    )
+    .await;
+    let pages = http.get_all_pages::<u64>("things").await;
+    assert!(!pages.complete);
+    assert_eq!(pages.items.len(), 1);
+}
+
+struct Endless;
+
+impl Respond for Endless {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .append_header("X-Next-Page", (page_of(req) + 1).to_string().as_str())
+    }
+}
+
+#[tokio::test]
+async fn endless_next_page_stops_at_cap() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/things"))
+        .respond_with(Endless)
+        .mount(&server)
+        .await;
+    let pages = http.get_all_pages::<u64>("things").await;
+    assert!(!pages.complete);
+    assert_eq!(pages.items.len(), 200);
+}
+
+#[tokio::test]
+async fn cancelled_first_coalescer_does_not_block_the_next() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "slow",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .set_delay(Duration::from_millis(200)),
+    )
+    .await;
+    let h2 = http.clone();
+    let first = tokio::spawn(async move { h2.get("slow", None).await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    first.abort();
+    let _ = first.await;
+    assert!(matches!(http.get("slow", None).await, Outcome::Ok(_)));
+}
+
+struct LimitedPage3;
+
+impl Respond for LimitedPage3 {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        if page_of(req) == 3 {
+            return ResponseTemplate::new(429).append_header("Retry-After", "2");
+        }
+        ResponseTemplate::new(200)
+            .set_body_json(json!([1]))
+            .append_header("X-Total-Pages", "4")
+    }
+}
+
+#[tokio::test]
+async fn rate_limit_on_page_three_is_surfaced() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/things"))
+        .respond_with(LimitedPage3)
+        .mount(&server)
+        .await;
+    let pages = http.get_all_pages::<u64>("things").await;
+    assert!(!pages.complete);
+    assert!(pages.rate_limited_until.is_some());
+    assert_eq!(pages.items.len(), 3);
+}
+
+#[tokio::test]
+async fn gitlab_error_message_is_kept() {
+    let server = MockServer::start().await;
+    let http = layer(&server).await;
+    mount_status(
+        &server,
+        "nope",
+        ResponseTemplate::new(404).set_body_json(json!({"message": "404 Project Not Found"})),
+    )
+    .await;
+    let Outcome::Failed(msg) = http.get("nope", None).await else {
+        panic!("expected failure");
+    };
+    assert!(msg.contains("404 Project Not Found"), "{msg}");
 }

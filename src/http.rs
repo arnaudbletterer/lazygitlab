@@ -6,6 +6,7 @@ use std::hash::{BuildHasher, RandomState};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{OnceCell, Semaphore};
+use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 pub const MAX_IN_FLIGHT: usize = 6;
@@ -14,12 +15,15 @@ pub const RETRY_BASE: Duration = Duration::from_millis(200);
 pub const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const PER_PAGE: u32 = 100;
+pub const MAX_PAGES: u32 = 200;
+pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(120);
+pub const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Resp {
     pub status: http::StatusCode,
     pub headers: http::HeaderMap,
-    pub body: Vec<u8>,
+    pub body: Arc<[u8]>,
 }
 
 impl Resp {
@@ -58,7 +62,7 @@ struct Inner {
     inflight: Mutex<HashMap<String, Arc<OnceCell<Outcome>>>>,
 }
 
-/// Request layer for one GitLab host: the per-host budget and the 429 gate live here.
+/// Request layer for one GitLab host (trusted: response bodies are buffered up to `MAX_BODY_BYTES`): the per-host budget and the 429 gate live here.
 #[derive(Clone)]
 pub struct HttpLayer {
     inner: Arc<Inner>,
@@ -70,10 +74,34 @@ fn jitter(cap: Duration) -> Duration {
 }
 
 fn retry_after(resp: &Resp) -> Duration {
-    resp.header("retry-after")
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .map(Duration::from_secs)
-        .unwrap_or(DEFAULT_RETRY_AFTER)
+    let parsed = resp.header("retry-after").and_then(|v| {
+        let v = v.trim();
+        if let Ok(secs) = v.parse::<u64>() {
+            return Some(Duration::from_secs(secs));
+        }
+        let date = chrono::DateTime::parse_from_rfc2822(v).ok()?;
+        let delta = date.with_timezone(&chrono::Utc) - chrono::Utc::now();
+        Some(delta.to_std().unwrap_or(Duration::ZERO))
+    });
+    parsed.unwrap_or(DEFAULT_RETRY_AFTER).min(MAX_RETRY_AFTER)
+}
+
+fn error_message(resp: &Resp) -> String {
+    let detail = serde_json::from_slice::<serde_json::Value>(&resp.body)
+        .ok()
+        .and_then(|v| {
+            ["message", "error"]
+                .iter()
+                .find_map(|k| v.get(k).map(|m| m.to_string()))
+        })
+        .unwrap_or_default();
+    let raw = format!("request failed ({}) {}", resp.status, detail);
+    crate::errors::friendly_error(raw.trim())
+}
+
+enum SendError {
+    Gated(Instant),
+    Other(String),
 }
 
 impl HttpLayer {
@@ -117,52 +145,75 @@ impl HttpLayer {
     /// Single choke point: every upstream request goes through here, once per attempt.
     async fn send(
         &self,
-        method: &str,
+        method: &http::Method,
         url: &str,
         etag: Option<&str>,
         body: Vec<u8>,
-    ) -> Result<Resp, String> {
-        let _permit = loop {
-            while let Some(until) = self.gate_until() {
-                tokio::time::sleep_until(until).await;
+        fail_fast: bool,
+    ) -> Result<Resp, SendError> {
+        let fut = async {
+            let _permit = loop {
+                while let Some(until) = self.gate_until() {
+                    if fail_fast {
+                        return Err(SendError::Gated(until));
+                    }
+                    tokio::time::sleep_until(until).await;
+                }
+                let permit = self
+                    .inner
+                    .budget
+                    .acquire()
+                    .await
+                    .map_err(|e| SendError::Other(e.to_string()))?;
+                if self.gate_until().is_none() {
+                    break permit;
+                }
+            };
+            let mut req = http::Request::builder().method(method).uri(url);
+            if let Some(etag) = etag {
+                req = req.header(http::header::IF_NONE_MATCH, etag);
             }
-            let permit = self
-                .inner
-                .budget
-                .acquire()
-                .await
-                .map_err(|e| e.to_string())?;
-            if self.gate_until().is_none() {
-                break permit;
+            if !body.is_empty() {
+                req = req.header(http::header::CONTENT_TYPE, "application/json");
             }
+            let resp =
+                tokio::time::timeout(REQUEST_TIMEOUT, self.inner.client.rest_async(req, body))
+                    .await
+                    .map_err(|_| SendError::Other("request timed out".to_string()))?
+                    .map_err(|e| SendError::Other(e.to_string()))?;
+            let (parts, body) = resp.into_parts();
+            if body.len() > MAX_BODY_BYTES {
+                return Err(SendError::Other("response body too large".to_string()));
+            }
+            Ok(Resp {
+                status: parts.status,
+                headers: parts.headers,
+                body: Arc::from(&body[..]),
+            })
         };
-        let mut req = http::Request::builder().method(method).uri(url);
-        if let Some(etag) = etag {
-            req = req.header(http::header::IF_NONE_MATCH, etag);
-        }
-        if !body.is_empty() {
-            req = req.header(http::header::CONTENT_TYPE, "application/json");
-        }
-        let resp = tokio::time::timeout(REQUEST_TIMEOUT, self.inner.client.rest_async(req, body))
+        tokio::time::timeout(MAX_RETRY_AFTER + REQUEST_TIMEOUT, fut)
             .await
-            .map_err(|_| "request timed out".to_string())?
-            .map_err(|e| e.to_string())?;
-        let (parts, body) = resp.into_parts();
-        Ok(Resp {
-            status: parts.status,
-            headers: parts.headers,
-            body: body.to_vec(),
-        })
+            .map_err(|_| SendError::Other("request timed out".to_string()))?
     }
 
-    async fn execute(&self, method: &str, url: &str, etag: Option<&str>, body: Vec<u8>) -> Outcome {
-        let attempts = if method == "GET" { MAX_ATTEMPTS } else { 1 };
+    async fn execute(
+        &self,
+        method: &http::Method,
+        url: &str,
+        etag: Option<&str>,
+        body: Vec<u8>,
+    ) -> Outcome {
+        let idempotent = method == http::Method::GET;
+        let attempts = if idempotent { MAX_ATTEMPTS } else { 1 };
         let mut last = String::new();
         for attempt in 0..attempts {
             if attempt > 0 {
                 tokio::time::sleep(jitter(RETRY_BASE * 2u32.pow(attempt - 1))).await;
             }
-            match self.send(method, url, etag, body.clone()).await {
+            match self
+                .send(method, url, etag, body.clone(), !idempotent)
+                .await
+            {
                 Ok(resp) if resp.status == http::StatusCode::NOT_MODIFIED => {
                     return Outcome::NotModified;
                 }
@@ -171,12 +222,11 @@ impl HttpLayer {
                     self.raise_gate(until);
                     return Outcome::RateLimited { until };
                 }
-                Ok(resp) if resp.status.is_server_error() => {
-                    last = format!("server error: {}", resp.status);
-                }
+                Ok(resp) if resp.status.is_server_error() => last = error_message(&resp),
                 Ok(resp) if resp.status.is_success() => return Outcome::Ok(resp),
-                Ok(resp) => return Outcome::Failed(format!("request failed: {}", resp.status)),
-                Err(e) => last = e,
+                Ok(resp) => return Outcome::Failed(error_message(&resp)),
+                Err(SendError::Gated(until)) => return Outcome::RateLimited { until },
+                Err(SendError::Other(e)) => last = crate::errors::friendly_error(&e),
             }
         }
         Outcome::Failed(last)
@@ -197,25 +247,23 @@ impl HttpLayer {
                 .unwrap_or_else(|e| e.into_inner());
             map.entry(key.clone()).or_default().clone()
         };
-        let outcome = cell
-            .get_or_init(|| self.execute("GET", &url, etag, Vec::new()))
+        let _guard = InflightGuard {
+            layer: self,
+            key,
+            cell: cell.clone(),
+        };
+        cell.get_or_init(|| self.execute(&http::Method::GET, &url, etag, Vec::new()))
             .await
-            .clone();
-        let mut map = self
-            .inner
-            .inflight
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if map.get(&key).is_some_and(|c| Arc::ptr_eq(c, &cell)) {
-            map.remove(&key);
-        }
-        outcome
+            .clone()
     }
 
-    /// Mutation (POST, PUT, DELETE...): never retried, never coalesced.
-    pub async fn send_mutation(&self, method: &str, path: &str, body: Vec<u8>) -> Outcome {
+    /// Mutation (POST, PUT, DELETE...): never retried, never coalesced, fails fast while rate limited.
+    pub async fn send_mutation(&self, method: http::Method, path: &str, body: Vec<u8>) -> Outcome {
+        if method == http::Method::GET || method == http::Method::HEAD {
+            return Outcome::Failed("send_mutation does not accept GET or HEAD".to_string());
+        }
         match self.url(path) {
-            Ok(url) => self.execute(method, &url, None, body).await,
+            Ok(url) => self.execute(&method, &url, None, body).await,
             Err(e) => Outcome::Failed(e),
         }
     }
@@ -242,27 +290,45 @@ impl HttpLayer {
         out.absorb(&first);
 
         if let Some(total) = first.page_header("x-total-pages") {
-            let tasks: Vec<_> = (2..=total)
-                .map(|n| {
-                    let layer = self.clone();
-                    let p = page_path(n);
-                    tokio::spawn(async move { layer.get(&p, None).await })
-                })
-                .collect();
-            for task in tasks {
-                match task.await {
-                    Ok(Outcome::Ok(resp)) => {
+            let last_page = if total > MAX_PAGES {
+                out.complete = false;
+                MAX_PAGES
+            } else {
+                total
+            };
+            let mut tasks = JoinSet::new();
+            for n in 2..=last_page {
+                let layer = self.clone();
+                let p = page_path(n);
+                tasks.spawn(async move { (n, layer.get(&p, None).await) });
+            }
+            let mut fetched = Vec::new();
+            while let Some(joined) = tasks.join_next().await {
+                match joined {
+                    Ok(pair) => fetched.push(pair),
+                    Err(e) => out.fail(&Outcome::Failed(e.to_string())),
+                }
+            }
+            fetched.sort_by_key(|(n, _)| *n);
+            for (_, outcome) in fetched {
+                match outcome {
+                    Outcome::Ok(resp) => {
                         out.absorb(&resp);
                     }
-                    Ok(other) => out.fail(&other),
-                    Err(e) => out.fail(&Outcome::Failed(e.to_string())),
+                    other => out.fail(&other),
                 }
             }
             return out;
         }
 
+        let mut current = 1;
         let mut next = first.page_header("x-next-page");
         while let Some(n) = next {
+            if n <= current || current >= MAX_PAGES {
+                out.complete = false;
+                break;
+            }
+            current = n;
             match self.get(&page_path(n), None).await {
                 Outcome::Ok(resp) => {
                     next = resp.page_header("x-next-page");
@@ -277,6 +343,29 @@ impl HttpLayer {
             }
         }
         out
+    }
+}
+
+struct InflightGuard<'a> {
+    layer: &'a HttpLayer,
+    key: String,
+    cell: Arc<OnceCell<Outcome>>,
+}
+
+impl Drop for InflightGuard<'_> {
+    fn drop(&mut self) {
+        let mut map = self
+            .layer
+            .inner
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if map
+            .get(&self.key)
+            .is_some_and(|c| Arc::ptr_eq(c, &self.cell))
+        {
+            map.remove(&self.key);
+        }
     }
 }
 
