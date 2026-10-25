@@ -1,4 +1,4 @@
-use gitlab::AsyncGitlab;
+use crate::trace::TracedClient;
 use gitlab::api::{AsyncClient, RestClient};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ pub struct Pages<T> {
 }
 
 struct Inner {
-    client: AsyncGitlab,
+    client: TracedClient,
     budget: Semaphore,
     gate: Mutex<Option<Instant>>,
     inflight: Mutex<HashMap<String, watch::Receiver<Option<Outcome>>>>,
@@ -110,10 +110,10 @@ enum SendError {
 }
 
 impl HttpLayer {
-    pub fn new(client: AsyncGitlab) -> Self {
+    pub fn new(client: impl Into<TracedClient>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                client,
+                client: client.into(),
                 budget: Semaphore::new(MAX_IN_FLIGHT),
                 gate: Mutex::new(None),
                 inflight: Mutex::new(HashMap::new()),

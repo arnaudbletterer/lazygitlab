@@ -10,6 +10,7 @@
 //! query drops exactly that group and retries; the level is remembered per (host, kind) in
 //! [`GraphqlState`].
 
+use crate::trace::TracedClient;
 use crate::models::{Author, Issue, Label, MergeRequest, Milestone, PipelineMin, References};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -213,7 +214,7 @@ impl GraphqlState {
 
     fn read<R>(
         &self,
-        client: &gitlab::AsyncGitlab,
+        client: &impl gitlab::api::RestClient,
         kind: ListKind,
         f: impl FnOnce(&KindState) -> R,
         default: R,
@@ -226,31 +227,30 @@ impl GraphqlState {
 
     pub fn last_complexity(
         &self,
-        client: &gitlab::AsyncGitlab,
+        client: &impl gitlab::api::RestClient,
         kind: ListKind,
     ) -> Option<Complexity> {
         self.read(client, kind, |k| k.last, None)
     }
 
-    pub fn batch_size(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> usize {
+    pub fn batch_size(&self, client: &impl gitlab::api::RestClient, kind: ListKind) -> usize {
         self.read(client, kind, |k| k.size, MAX_BATCH)
     }
 
-    pub fn first_size(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> usize {
+    pub fn first_size(&self, client: &impl gitlab::api::RestClient, kind: ListKind) -> usize {
         self.read(client, kind, |k| k.first, MAX_BATCH)
     }
 
-    pub fn is_unsupported(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> bool {
+    pub fn is_unsupported(&self, client: &impl gitlab::api::RestClient, kind: ListKind) -> bool {
         self.read(client, kind, |k| k.unsupported, false)
     }
 
-    pub fn level(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> Level {
+    pub fn level(&self, client: &impl gitlab::api::RestClient, kind: ListKind) -> Level {
         self.read(client, kind, |k| k.level, Level::FULL)
     }
 }
 
-pub fn graphql_url(client: &gitlab::AsyncGitlab) -> Result<String, GraphqlError> {
-    use gitlab::api::RestClient;
+pub fn graphql_url(client: &impl gitlab::api::RestClient) -> Result<String, GraphqlError> {
     let probe = client
         .rest_endpoint("x")
         .map_err(|e| GraphqlError::Failed(e.to_string()))?;
@@ -612,7 +612,7 @@ struct Page {
 }
 
 async fn post(
-    client: &gitlab::AsyncGitlab,
+    client: &TracedClient,
     req: &Request,
     query: &str,
     ids: &[u64],
@@ -778,7 +778,7 @@ where
 }
 
 async fn run_batch<N, T>(
-    client: gitlab::AsyncGitlab,
+    client: TracedClient,
     req: Arc<Request>,
     kind: Kind<N, T>,
     start: Level,
@@ -883,8 +883,8 @@ fn grow(size: usize) -> usize {
     }
 }
 
-async fn fetch<N, T>(
-    client: &gitlab::AsyncGitlab,
+async fn fetch<N, T, C>(
+    client: &C,
     state: &GraphqlState,
     kind: Kind<N, T>,
     project_ids: &[u64],
@@ -894,7 +894,10 @@ async fn fetch<N, T>(
 where
     N: DeserializeOwned + Send + 'static,
     T: Send + 'static,
+    C: Clone + Into<TracedClient>,
 {
+    let client: TracedClient = client.clone().into();
+    let client = &client;
     let url = graphql_url(client)?;
     let snapshot = state.with(&url, kind.list, |k| *k);
     if snapshot.unsupported {
@@ -1006,8 +1009,8 @@ where
     })
 }
 
-pub async fn fetch_merge_requests(
-    client: &gitlab::AsyncGitlab,
+pub async fn fetch_merge_requests<C: Clone + Into<TracedClient>>(
+    client: &C,
     state: &GraphqlState,
     project_ids: &[u64],
     list_state: &str,
@@ -1022,8 +1025,8 @@ pub async fn fetch_merge_requests(
     fetch(client, state, kind, project_ids, list_state, since).await
 }
 
-pub async fn fetch_issues(
-    client: &gitlab::AsyncGitlab,
+pub async fn fetch_issues<C: Clone + Into<TracedClient>>(
+    client: &C,
     state: &GraphqlState,
     project_ids: &[u64],
     list_state: &str,
