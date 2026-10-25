@@ -170,13 +170,17 @@ async fn failed_mutation_shows_error_and_releases_loading() {
         .and(path("/api/v4/projects/1/pipelines/9/cancel"))
         .respond_with(
             ResponseTemplate::new(403)
+                .set_delay(DELAY)
                 .set_body_json(serde_json::json!({"message": "403 Forbidden"})),
         )
         .mount(&server)
         .await;
     pipelines_screen(&mut app);
 
+    let t = Instant::now();
     app.handle_key(key(KeyCode::Char('C'))).await;
+    assert!(t.elapsed() < BOUND, "C blocked for {:?}", t.elapsed());
+    assert!(app.last_error.is_none());
     assert!(
         pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
             .last_error
@@ -399,10 +403,11 @@ async fn running_job_log_has_one_request_in_flight() {
             .is_empty())
         .await
     );
-    assert_eq!(trace_requests(&server).await, 1);
+    pump_until(&mut app, &mut rx, Duration::from_millis(900), |_| false).await;
+    assert_eq!(trace_requests(&server).await, 2, "one coalesced refetch");
     app.fetch_job_log(5, 7).await.unwrap();
     pump_until(&mut app, &mut rx, Duration::from_millis(900), |_| false).await;
-    assert_eq!(trace_requests(&server).await, 2);
+    assert_eq!(trace_requests(&server).await, 3);
 }
 
 #[tokio::test]
@@ -427,6 +432,7 @@ async fn overlapping_log_responses_never_shrink_the_log() {
         seq,
         raw: "line\n".repeat(n),
         lines: lazygitlab::app::pipelines::parse_job_log(&"line\n".repeat(n)),
+        dropped: 0,
     };
     app.process_update_single(update(2, 100)).await;
     app.process_update_single(update(1, 10)).await;
@@ -439,6 +445,7 @@ async fn overlapping_log_responses_never_shrink_the_log() {
         seq: 3,
         raw: "line\n".repeat(5),
         lines: lazygitlab::app::pipelines::parse_job_log(&"line\n".repeat(5)),
+        dropped: 0,
     })
     .await;
     assert_eq!(app.job_log_lines.len(), 100, "stale generation applied");
@@ -448,7 +455,8 @@ async fn overlapping_log_responses_never_shrink_the_log() {
 fn oversized_log_keeps_the_tail_with_a_notice() {
     let line = "0123456789abcdef\n";
     let data = line.repeat(lazygitlab::app::pipelines::JOB_LOG_MAX_BYTES / line.len() + 1000);
-    let kept = lazygitlab::app::pipelines::tail_log(data.as_bytes());
+    let (kept, dropped) = lazygitlab::app::pipelines::tail_log(data.as_bytes());
+    assert!(dropped > 0 && kept.contains(&format!("{dropped} earlier lines dropped")));
     assert!(kept.len() <= lazygitlab::app::pipelines::JOB_LOG_MAX_BYTES + 100);
     assert!(kept.starts_with("[log truncated"));
     assert!(kept.ends_with(line));
@@ -609,4 +617,301 @@ async fn late_diff_updates_for_another_mr_are_dropped() {
         "another MR's response cleared the flag"
     );
     assert_eq!(app.mr_diffs.len(), 1);
+}
+
+async fn count(server: &MockServer, http_method: &str, p: &str) -> usize {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == http_method && r.url.path() == p)
+        .count()
+}
+
+#[tokio::test]
+async fn pressing_cancel_twice_sends_one_request() {
+    let (server, mut app, mut rx) = setup().await;
+    mock_slow_post(
+        &server,
+        "/api/v4/projects/1/pipelines/9/cancel",
+        pipeline_json(1, 9),
+    )
+    .await;
+    pipelines_screen(&mut app);
+    app.handle_key(key(KeyCode::Char('C'))).await;
+    app.handle_key(key(KeyCode::Char('C'))).await;
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("already in progress"))
+    );
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("cancelled")))
+        .await
+    );
+    assert_eq!(
+        count(&server, "POST", "/api/v4/projects/1/pipelines/9/cancel").await,
+        1
+    );
+    app.handle_key(key(KeyCode::Char('C'))).await;
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("Cancelling"))
+    );
+}
+
+#[tokio::test]
+async fn rate_limited_mutation_says_it_was_not_sent() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v4/projects/1/pipelines/9/cancel"))
+        .respond_with(ResponseTemplate::new(429).append_header("Retry-After", "30"))
+        .mount(&server)
+        .await;
+    pipelines_screen(&mut app);
+    app.handle_key(key(KeyCode::Char('C'))).await;
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("Cancel not sent: rate limited")))
+        .await,
+        "status {:?}",
+        app.status_message
+    );
+    assert!(pump_until(&mut app, &mut rx, Duration::from_secs(2), |a| !a.is_loading).await);
+}
+
+#[tokio::test]
+async fn launch_sends_ref_and_variables_as_json() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v4/projects/1/pipeline"))
+        .and(wiremock::matchers::body_json(serde_json::json!({
+            "ref": "main",
+            "variables": [{"key": "K", "value": "V"}]
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pipeline_json(1, 10)))
+        .mount(&server)
+        .await;
+    app.selected_project = Some(project(1));
+    app.show_pipeline_popup = true;
+    app.pipeline_ref_input = "main".into();
+    app.pipeline_variables = vec![PipelineVariable {
+        key: "K".into(),
+        value: "V".into(),
+    }];
+    app.handle_key(ctrl(KeyCode::Char('r'))).await;
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("launched")))
+        .await,
+        "status {:?}",
+        app.status_message
+    );
+}
+
+#[tokio::test]
+async fn create_branch_sends_branch_and_ref_query() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v4/projects/1/repository/branches"))
+        .and(wiremock::matchers::query_param("branch", "feat/x y"))
+        .and(wiremock::matchers::query_param("ref", "main"))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(serde_json::json!({"name": "feat/x y"})),
+        )
+        .mount(&server)
+        .await;
+    app.selected_project = Some(project(1));
+    app.create_branch(1, "feat/x y".into(), "main".into())
+        .await
+        .unwrap();
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("created")))
+        .await,
+        "status {:?}",
+        app.status_message
+    );
+}
+
+#[tokio::test]
+async fn delete_branch_with_slash_encodes_the_name() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v4/projects/1/repository/branches/feature%2Fx"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    app.delete_branch(1, "feature/x".into()).await.unwrap();
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("deleted")))
+        .await,
+        "status {:?}",
+        app.status_message
+    );
+}
+
+#[tokio::test]
+async fn project_switch_during_mutation_keeps_the_new_project_branches() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v4/projects/1/repository/branches"))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_delay(Duration::from_millis(500))
+                .set_body_json(serde_json::json!({"name": "feat"})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/1/repository/branches"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!([{"name": "feat"}])),
+        )
+        .mount(&server)
+        .await;
+    app.selected_project = Some(project(1));
+    app.create_branch(1, "feat".into(), "main".into())
+        .await
+        .unwrap();
+    app.selected_project = Some(project(2));
+    app.project_branches = vec![Branch {
+        name: "other".into(),
+        merged: None,
+        protected: None,
+        default: None,
+        web_url: None,
+    }];
+    pump_until(&mut app, &mut rx, Duration::from_millis(1500), |_| false).await;
+    assert_eq!(app.project_branches.len(), 1);
+    assert_eq!(app.project_branches[0].name, "other");
+}
+
+struct Growing(Mutex<usize>);
+
+impl Respond for Growing {
+    fn respond(&self, _: &Request) -> ResponseTemplate {
+        let mut n = self.0.lock().unwrap();
+        *n += 1;
+        let body = if *n == 1 { "a\n" } else { "a\nfinal\n" };
+        ResponseTemplate::new(200)
+            .set_delay(Duration::from_millis(300))
+            .set_body_string(body)
+    }
+}
+
+#[tokio::test]
+async fn log_is_refetched_when_the_job_finishes_during_a_fetch() {
+    let (server, mut app, mut rx) = setup().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/5/jobs/7/trace"))
+        .respond_with(Growing(Mutex::new(0)))
+        .mount(&server)
+        .await;
+    dashboard_job_screen(&mut app, "running");
+    app.open_selected_job().await;
+    app.process_update_single(DataUpdate::Jobs {
+        project_id: 5,
+        pipeline_id: 3,
+        data: vec![job(7, "success")],
+    })
+    .await;
+    assert!(
+        pump_until(&mut app, &mut rx, Duration::from_secs(5), |a| a
+            .job_log
+            .contains("final"))
+        .await,
+        "final output never loaded: {:?}",
+        app.job_log
+    );
+}
+
+#[tokio::test]
+async fn changes_tab_diffs_survive_losing_panel_focus() {
+    let (_server, mut app, _rx) = setup().await;
+    app.selected_mr = Some(mr(1));
+    app.view_mode = ViewMode::List;
+    app.active_panel = Panel::Main;
+    app.detail_section = DetailSection::Changes;
+    app.mr_diffs = diffs(3);
+    app.release_idle_view_state();
+    assert_eq!(app.mr_diffs.len(), 3);
+    app.detail_section = DetailSection::Metadata;
+    app.release_idle_view_state();
+    assert!(app.mr_diffs.is_empty());
+}
+
+#[tokio::test]
+async fn aborted_diff_fan_out_releases_every_loading_count() {
+    let (_server, mut app, mut rx, _files) = diff_screen(8, Duration::from_millis(300)).await;
+    app.fetch_all_missing_diffs().await.unwrap();
+    tokio::task::yield_now().await;
+    app.selected_mr = Some(mr(2));
+    app.release_idle_view_state();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let (mut on, mut off) = (0, 0);
+    while let Ok(u) = rx.try_recv() {
+        match u {
+            DataUpdate::Loading(true) => on += 1,
+            DataUpdate::Loading(false) => off += 1,
+            _ => {}
+        }
+    }
+    assert!(on > 0);
+    assert_eq!(on, off, "loading leaked");
+}
+
+#[tokio::test]
+async fn release_view_tasks_aborts_and_clears_keys() {
+    let (_server, mut app, _rx, _files) = diff_screen(8, Duration::from_millis(300)).await;
+    app.fetch_all_missing_diffs().await.unwrap();
+    app.diffs_fetching_key = Some((1, 1));
+    app.is_fetching_diffs = true;
+    app.job_log_key = Some((1, 2));
+    let gen_before = app.job_log_gen;
+    app.release_view_tasks();
+    assert!(app.diff_fan_task.is_none());
+    assert!(app.diffs_fetching_key.is_none() && !app.is_fetching_diffs);
+    assert!(app.job_log_key.is_none());
+    assert!(app.job_log_gen > gen_before);
+}
+
+#[tokio::test]
+async fn truncated_log_shifts_cursor_by_the_dropped_lines() {
+    let (_server, mut app, _rx) = setup().await;
+    dashboard_job_screen(&mut app, "running");
+    app.view_mode = ViewMode::JobLog;
+    app.job_log_key = Some((5, 7));
+    let upd = |seq: u64, dropped: usize, n: usize| {
+        let raw = "line\n".repeat(n);
+        DataUpdate::JobLog {
+            project_id: 5,
+            job_id: 7,
+            generation: 0,
+            seq,
+            lines: lazygitlab::app::pipelines::parse_job_log(&raw),
+            raw,
+            dropped,
+        }
+    };
+    app.process_update_single(upd(1, 0, 10)).await;
+    app.job_log_cursor = 5;
+    app.process_update_single(upd(2, 2, 11)).await;
+    assert_eq!(app.job_log_cursor, 4, "5 + notice line - 2 dropped");
+    app.process_update_single(upd(3, 5, 11)).await;
+    assert_eq!(app.job_log_cursor, 1, "shifted by 3 more dropped lines");
 }
