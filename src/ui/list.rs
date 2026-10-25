@@ -448,27 +448,27 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No todos match this view or filter.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to cycle Pending, Done",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No todos match this view or filter.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to cycle Pending, Done",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -577,43 +577,43 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No merge requests match this view or filter.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to create a new merge request",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to cycle status filters",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("I", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to toggle involved-only filter",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No merge requests match this view or filter.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to create a new merge request",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to cycle status filters",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("I", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to toggle involved-only filter",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -728,40 +728,43 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No issues match this view or filter.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(" to create a new issue", Style::default().fg(app.theme.dim)),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to cycle status filters",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("I", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to toggle involved-only filter",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No issues match this view or filter.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to create a new issue",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to cycle status filters",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("I", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to toggle involved-only filter",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -836,35 +839,35 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No pipelines match this view or filter.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to launch a new pipeline",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to cycle status filters (All, Running, Failed, Passed)",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No pipelines match this view or filter.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to launch a new pipeline",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to cycle status filters (All, Running, Failed, Passed)",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1084,27 +1087,27 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No Branches found.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("n", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to create a new branch",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No Branches found.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("n", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to create a new branch",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1154,19 +1157,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No Commits found on this branch.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No Commits found on this branch.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1205,19 +1208,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                     status
                 } else {
                     vec![
-                    Line::from(Span::styled(
-                        "No Issue Boards found for this project.",
-                        Style::default().fg(app.theme.title_fg).bold(),
-                    )),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                        Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                        Span::styled(
-                            " to refresh from GitLab",
-                            Style::default().fg(app.theme.dim),
-                        ),
-                    ]),
+                        Line::from(Span::styled(
+                            "No Issue Boards found for this project.",
+                            Style::default().fg(app.theme.title_fg).bold(),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                            Span::styled(
+                                " to refresh from GitLab",
+                                Style::default().fg(app.theme.dim),
+                            ),
+                        ]),
                     ]
                 };
                 f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1318,19 +1321,19 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         status
                     } else {
                         vec![
-                        Line::from(Span::styled(
-                            "No Epics found for this group.",
-                            Style::default().fg(app.theme.title_fg).bold(),
-                        )),
-                        Line::from(""),
-                        Line::from(vec![
-                            Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                            Span::styled("r", Style::default().fg(app.theme.accent).bold()),
-                            Span::styled(
-                                " to refresh from GitLab",
-                                Style::default().fg(app.theme.dim),
-                            ),
-                        ]),
+                            Line::from(Span::styled(
+                                "No Epics found for this group.",
+                                Style::default().fg(app.theme.title_fg).bold(),
+                            )),
+                            Line::from(""),
+                            Line::from(vec![
+                                Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                                Span::styled("r", Style::default().fg(app.theme.accent).bold()),
+                                Span::styled(
+                                    " to refresh from GitLab",
+                                    Style::default().fg(app.theme.dim),
+                                ),
+                            ]),
                         ]
                     };
                     f.render_widget(Paragraph::new(msg), list_chunks[1]);
@@ -1480,19 +1483,19 @@ pub fn render_discussions_panel(f: &mut Frame, app: &mut App, area: Rect) {
             ))]
         } else {
             vec![
-            Line::from(Span::styled(
-                "No discussions found on this item.",
-                Style::default().fg(app.theme.title_fg).bold(),
-            )),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
-                Span::styled("c", Style::default().fg(app.theme.accent).bold()),
-                Span::styled(
-                    " to start a new discussion / comment",
-                    Style::default().fg(app.theme.dim),
-                ),
-            ]),
+                Line::from(Span::styled(
+                    "No discussions found on this item.",
+                    Style::default().fg(app.theme.title_fg).bold(),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
+                    Span::styled("c", Style::default().fg(app.theme.accent).bold()),
+                    Span::styled(
+                        " to start a new discussion / comment",
+                        Style::default().fg(app.theme.dim),
+                    ),
+                ]),
             ]
         };
         f.render_widget(Paragraph::new(msg), chunks[0]);

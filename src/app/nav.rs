@@ -1,6 +1,4 @@
-use crate::models::{
-    App, Context, DetailSection, MenuSelection, Panel, Project, ViewMode,
-};
+use crate::models::{App, Context, DetailSection, MenuSelection, Panel, Project, ViewMode};
 
 const NAV_WAIT: std::time::Duration = std::time::Duration::from_millis(750);
 
@@ -128,9 +126,7 @@ impl App {
     /// cards and keys open the project picker instead of inventing a project context.
     pub async fn jump(&mut self, selection: MenuSelection) {
         match selection {
-            MenuSelection::MergeRequests
-            | MenuSelection::Issues
-            | MenuSelection::Pipelines => {
+            MenuSelection::MergeRequests | MenuSelection::Issues | MenuSelection::Pipelines => {
                 let ctx = self.jump_context();
                 self.navigate(ctx, selection).await;
             }
@@ -148,8 +144,12 @@ impl App {
     pub async fn open_project(&mut self, project: Project) {
         self.show_project_popup = false;
         self.set_project(project);
-        self.navigate_to(Context::Project, MenuSelection::MergeRequests, Panel::Project)
-            .await;
+        self.navigate_to(
+            Context::Project,
+            MenuSelection::MergeRequests,
+            Panel::Project,
+        )
+        .await;
     }
 
     pub fn set_project(&mut self, project: Project) {

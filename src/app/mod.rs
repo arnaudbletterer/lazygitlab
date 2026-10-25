@@ -552,6 +552,7 @@ impl App {
                 }
             }
             DataUpdate::RefreshFailed => {
+                self.list_error = Some("refresh failed".to_string());
                 self.status_message = Some(match self.last_list_refresh_ok {
                     Some(t) => format!("refresh failed, showing data from {}", t.format("%H:%M")),
                     None => "refresh failed".to_string(),
@@ -1081,7 +1082,6 @@ impl App {
             DataUpdate::Loading(b) => {
                 if b {
                     self.loading_tasks += 1;
-                    self.list_error = None;
                     self.nav_wait = None;
                 } else {
                     self.loading_tasks = self.loading_tasks.saturating_sub(1);
@@ -1127,9 +1127,17 @@ impl App {
             },
             DataUpdate::Error(e) => {
                 let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));
-                if ["MRs", "Todos", "Projects", "Groups", "Issues", "Pipelines", "Commits"]
-                    .iter()
-                    .any(|k| e.starts_with(&format!("{k} fetch")))
+                if [
+                    "MRs",
+                    "Todos",
+                    "Projects",
+                    "Groups",
+                    "Issues",
+                    "Pipelines",
+                    "Commits",
+                ]
+                .iter()
+                .any(|k| e.starts_with(&format!("{k} fetch")))
                 {
                     self.list_error = Some(e.clone());
                 }
@@ -2073,6 +2081,7 @@ impl App {
             return;
         }
 
+        self.list_error = None;
         self.start_user_fetch(false);
 
         if self.member_project_ids.is_empty()
@@ -3662,7 +3671,8 @@ impl App {
                 }) {
                     let inner_y = y.saturating_sub(r.y).saturating_sub(1) as usize;
                     if let Some(sel) = nav::selection_for(Context::Explore, inner_y) {
-                        self.navigate_to(Context::Explore, sel, Panel::Explore).await;
+                        self.navigate_to(Context::Explore, sel, Panel::Explore)
+                            .await;
                     }
                     return;
                 }
@@ -3673,7 +3683,8 @@ impl App {
                     if inner_y < self.project_nav_rows()
                         && let Some(sel) = nav::selection_for(Context::Project, inner_y)
                     {
-                        self.navigate_to(Context::Project, sel, Panel::Project).await;
+                        self.navigate_to(Context::Project, sel, Panel::Project)
+                            .await;
                     }
                     return;
                 }

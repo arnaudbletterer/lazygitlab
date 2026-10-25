@@ -627,7 +627,10 @@ impl App {
             HelpAction::OpenBrowser => self.open_in_browser(),
             HelpAction::CopyUrl => self.copy_url(),
             HelpAction::GotoHome => self.navigate(Context::Dashboard, MenuSelection::Home).await,
-            HelpAction::GotoTodos => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
+            HelpAction::GotoTodos => {
+                self.navigate(Context::Dashboard, MenuSelection::Todos)
+                    .await
+            }
             HelpAction::GotoMRs => self.jump(MenuSelection::MergeRequests).await,
             HelpAction::GotoIssues => self.jump(MenuSelection::Issues).await,
             HelpAction::GotoPipelines => self.jump(MenuSelection::Pipelines).await,
@@ -731,7 +734,10 @@ impl App {
             self.pending_g_prefix = false;
             match processed_key.code {
                 KeyCode::Char('h') => self.navigate(Context::Dashboard, MenuSelection::Home).await,
-                KeyCode::Char('t') => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
+                KeyCode::Char('t') => {
+                    self.navigate(Context::Dashboard, MenuSelection::Todos)
+                        .await
+                }
                 KeyCode::Char('m') => self.jump(MenuSelection::MergeRequests).await,
                 KeyCode::Char('i') => self.jump(MenuSelection::Issues).await,
                 KeyCode::Char('p') => self.jump(MenuSelection::Pipelines).await,
@@ -2434,11 +2440,23 @@ impl App {
 
     async fn home_card_action(&mut self, card: usize) {
         match card {
-            0 => self.navigate(Context::Dashboard, MenuSelection::MergeRequests).await,
-            1 => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
-            2 => self.navigate(Context::Dashboard, MenuSelection::Issues).await,
+            0 => {
+                self.navigate(Context::Dashboard, MenuSelection::MergeRequests)
+                    .await
+            }
+            1 => {
+                self.navigate(Context::Dashboard, MenuSelection::Todos)
+                    .await
+            }
+            2 => {
+                self.navigate(Context::Dashboard, MenuSelection::Issues)
+                    .await
+            }
             3 => self.jump(MenuSelection::Boards).await,
-            4 => self.navigate(Context::Dashboard, MenuSelection::Pipelines).await,
+            4 => {
+                self.navigate(Context::Dashboard, MenuSelection::Pipelines)
+                    .await
+            }
             5 => self.jump(MenuSelection::Repository).await,
             6 => {
                 self.show_project_popup = true;
