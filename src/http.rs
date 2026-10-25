@@ -21,6 +21,9 @@ pub const MAX_PAGES: u32 = 200;
 pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(120);
 pub const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
 pub const PAGES_DEADLINE: Duration = Duration::from_secs(60);
+/// A coalesced request nobody waits for any more is dropped after this, unless a new
+/// caller joins it first.
+pub const ABANDON_GRACE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 pub struct Resp {
@@ -298,14 +301,29 @@ impl HttpLayer {
                 tokio::spawn(async move {
                     let _cleanup = InflightCleanup {
                         layer: &layer,
-                        key: task_key,
+                        key: task_key.clone(),
                         token: task_token.clone(),
                     };
-                    tokio::select! {
-                        outcome = layer.execute(&http::Method::GET, &url, etag.as_deref(), Vec::new()) => {
-                            let _ = tx.send(Some(outcome));
+                    let exec =
+                        layer.execute(&http::Method::GET, &url, etag.as_deref(), Vec::new());
+                    tokio::pin!(exec);
+                    let mut grace: Option<std::pin::Pin<Box<tokio::time::Sleep>>> = None;
+                    loop {
+                        tokio::select! {
+                            outcome = &mut exec => {
+                                let _ = tx.send(Some(outcome));
+                                break;
+                            }
+                            _ = task_token.notified() => {
+                                grace = Some(Box::pin(tokio::time::sleep(ABANDON_GRACE)));
+                            }
+                            _ = async { grace.as_mut().expect("grace is set").await }, if grace.is_some() => {
+                                if layer.abandoned(&task_key, &task_token) {
+                                    break;
+                                }
+                                grace = None;
+                            }
                         }
-                        _ = task_token.notified() => {}
                     }
                 });
                 (rx, abandon)
@@ -321,6 +339,23 @@ impl HttpLayer {
                 .clone()
                 .unwrap_or(Outcome::Failed("request failed".to_string())),
             Err(_) => Outcome::Failed("request task ended unexpectedly".to_string()),
+        }
+    }
+
+    /// True, and the entry is gone, when nobody waits on the request any more.
+    fn abandoned(&self, key: &str, token: &Arc<Notify>) -> bool {
+        let mut map = self
+            .inner
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match map.get(key) {
+            Some(e) if Arc::ptr_eq(&e.abandon, token) && e.waiters > 0 => false,
+            Some(e) if Arc::ptr_eq(&e.abandon, token) => {
+                map.remove(key);
+                true
+            }
+            _ => true,
         }
     }
 
@@ -512,7 +547,6 @@ impl Drop for Waiter<'_> {
         }
         entry.waiters -= 1;
         if entry.waiters == 0 {
-            map.remove(&self.key);
             self.token.notify_one();
         }
     }
