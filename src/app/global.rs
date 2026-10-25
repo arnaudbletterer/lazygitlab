@@ -174,7 +174,7 @@ impl App {
 
     fn todos_state_param(&self) -> &'static str {
         match self.todo_filter {
-            TodoFilter::Pending | TodoFilter::Snoozed => "pending",
+            TodoFilter::Pending => "pending",
             TodoFilter::Done => "done",
         }
     }
@@ -190,7 +190,9 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let state = self.todos_state_param();
-        let etag = if self.todos_etag_state == Some(state) {
+        let etag = if self.todos_etag_state == Some(state)
+            && (!self.todos.is_empty() || self.todos_etag_empty)
+        {
             self.todos_etag.clone()
         } else {
             None
@@ -243,30 +245,26 @@ impl App {
     pub async fn fetch_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
+        let guard = LoadingGuard::start(tx.clone());
         self.status_message = Some("Fetching Todos...".into());
-        let state_str = match self.todo_filter {
-            TodoFilter::Pending => "pending".to_string(),
-            TodoFilter::Snoozed => "pending".to_string(), // Snoozed are still pending in GL
-            TodoFilter::Done => "done".to_string(),
-        };
+        let state = self.todos_state_param();
 
         tokio::spawn(async move {
+            let _guard = guard;
             let ep = Todos {
                 page: Some(1),
                 per_page: Some(50),
-                state: Some(state_str),
+                state: Some(state.to_string()),
             };
             let res: Result<Result<Vec<Todo>, _>, _> =
                 tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client))
                     .await;
             match res {
                 Ok(Ok(data)) => {
-                    let has_more = data.len() == 50;
-                    let _ = tx.send(DataUpdate::Todos {
+                    let _ = tx.send(DataUpdate::TodosPolled {
+                        state,
+                        etag: None,
                         data,
-                        page: 1,
-                        has_more,
                     });
                 }
                 Ok(Err(e)) => {
@@ -276,29 +274,27 @@ impl App {
                     let _ = tx.send(DataUpdate::Error("Todos fetch timed out".into()));
                 }
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
     }
 
     pub async fn fetch_next_todos(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.todos_has_more || self.is_loading {
+        if !self.todos_has_more {
             return Ok(());
         }
+        let Some(guard) = self.begin_page("todos") else {
+            return Ok(());
+        };
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let next_page = self.todos_page + 1;
-        let _ = tx.send(DataUpdate::Loading(true));
-        let state_str = match self.todo_filter {
-            TodoFilter::Pending => "pending".to_string(),
-            TodoFilter::Snoozed => "pending".to_string(),
-            TodoFilter::Done => "done".to_string(),
-        };
+        let state = self.todos_state_param();
         tokio::spawn(async move {
+            let _guard = guard;
             let ep = Todos {
                 page: Some(next_page),
                 per_page: Some(50),
-                state: Some(state_str),
+                state: Some(state.to_string()),
             };
             let res: Result<Result<Vec<Todo>, _>, _> =
                 tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&client))
@@ -306,9 +302,11 @@ impl App {
             match res {
                 Ok(Ok(data)) => {
                     if !data.is_empty() {
-                        let _ = tx.send(DataUpdate::AppendTodos(data));
-                    } else {
-                        let _ = tx.send(DataUpdate::Loading(false));
+                        let _ = tx.send(DataUpdate::TodosNextPage {
+                            state,
+                            page: next_page,
+                            data,
+                        });
                     }
                 }
                 Ok(Err(e)) => {

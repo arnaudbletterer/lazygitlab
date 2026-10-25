@@ -243,7 +243,7 @@ async fn test_ux_interaction_refinements() {
     app.active_selection = MenuSelection::Todos;
     app.todo_filter = lazygitlab::models::TodoFilter::Pending;
     app.handle_key(key_event(KeyCode::Char(']'))).await;
-    assert_eq!(app.todo_filter, lazygitlab::models::TodoFilter::Snoozed);
+    assert_eq!(app.todo_filter, lazygitlab::models::TodoFilter::Done);
 
     app.active_panel = Panel::MainDetail;
     app.active_selection = MenuSelection::MergeRequests;

@@ -214,6 +214,7 @@ impl App {
             todos_etag: None,
             todos_poll_in_flight: false,
             todos_etag_state: None,
+            todos_etag_empty: false,
             open_job_when_loaded: None,
             filtered_mrs: Vec::new(),
             filtered_issues: Vec::new(),
@@ -395,13 +396,17 @@ impl App {
             DataUpdate::TodosPolled { state, etag, data } => {
                 // Drop results for a filter the user has since left.
                 let current = match self.todo_filter {
-                    TodoFilter::Pending | TodoFilter::Snoozed => "pending",
+                    TodoFilter::Pending => "pending",
                     TodoFilter::Done => "done",
                 };
                 if state == current {
                     if etag.is_some() {
                         self.todos_etag = etag;
                         self.todos_etag_state = Some(state);
+                        self.todos_etag_empty = data.is_empty();
+                    } else if self.todos_etag_state != Some(state) {
+                        self.todos_etag = None;
+                        self.todos_etag_state = None;
                     }
                     let has_more = data.len() == 50;
                     self.apply_todos(data, 1, has_more);
@@ -417,6 +422,15 @@ impl App {
             } => self.apply_todos(data, page, has_more),
             DataUpdate::PageDone(key) => {
                 self.page_in_flight.remove(key);
+            }
+            DataUpdate::TodosNextPage { state, page, data } => {
+                let current = match self.todo_filter {
+                    TodoFilter::Pending => "pending",
+                    TodoFilter::Done => "done",
+                };
+                if state == current && page == self.todos_page + 1 {
+                    Box::pin(self.process_update_single(DataUpdate::AppendTodos(data))).await;
+                }
             }
             DataUpdate::AppendTodos(mut data) => {
                 for t in &data {
@@ -3598,7 +3612,7 @@ impl App {
                                 vec!["Opened", "Review", "Assigned", "Merged", "Closed", "All"]
                             }
                             MenuSelection::Issues => vec!["Opened", "Closed", "All"],
-                            MenuSelection::Todos => vec!["Pending", "Snoozed", "Done"],
+                            MenuSelection::Todos => vec!["Pending", "Done"],
                             _ => vec!["List"],
                         };
 
@@ -3627,7 +3641,6 @@ impl App {
                                     MenuSelection::Todos => {
                                         self.todo_filter = match idx {
                                             0 => TodoFilter::Pending,
-                                            1 => TodoFilter::Snoozed,
                                             _ => TodoFilter::Done,
                                         };
                                     }

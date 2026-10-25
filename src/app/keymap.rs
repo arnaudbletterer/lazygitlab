@@ -2234,8 +2234,7 @@ impl App {
                         MenuSelection::Todos => {
                             self.todo_filter = match self.todo_filter {
                                 TodoFilter::Pending => TodoFilter::Done,
-                                TodoFilter::Snoozed => TodoFilter::Pending,
-                                TodoFilter::Done => TodoFilter::Snoozed,
+                                TodoFilter::Done => TodoFilter::Pending,
                             }
                         }
                         MenuSelection::MergeRequests => {
@@ -2283,8 +2282,7 @@ impl App {
                     match self.active_selection {
                         MenuSelection::Todos => {
                             self.todo_filter = match self.todo_filter {
-                                TodoFilter::Pending => TodoFilter::Snoozed,
-                                TodoFilter::Snoozed => TodoFilter::Done,
+                                TodoFilter::Pending => TodoFilter::Done,
                                 TodoFilter::Done => TodoFilter::Pending,
                             }
                         }

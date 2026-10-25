@@ -307,11 +307,10 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
 
     let (titles, selected) = match app.active_selection {
         MenuSelection::Todos => (
-            vec!["Pending", "Snoozed", "Done"],
+            vec!["Pending", "Done"],
             Some(match app.todo_filter {
                 TodoFilter::Pending => 0,
-                TodoFilter::Snoozed => 1,
-                TodoFilter::Done => 2,
+                TodoFilter::Done => 1,
             }),
         ),
         MenuSelection::MergeRequests => (
@@ -433,7 +432,7 @@ fn render_main_list(f: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled("  • Press ", Style::default().fg(app.theme.dim)),
                         Span::styled("[ / ]", Style::default().fg(app.theme.accent).bold()),
                         Span::styled(
-                            " to cycle Pending, Snoozed, Done",
+                            " to cycle Pending, Done",
                             Style::default().fg(app.theme.dim),
                         ),
                     ]),

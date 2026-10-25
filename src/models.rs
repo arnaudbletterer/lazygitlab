@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum TodoFilter {
     Pending,
-    Snoozed,
     Done,
 }
 
@@ -952,6 +951,11 @@ pub enum DataUpdate {
         diff: String,
     },
     PageDone(&'static str),
+    TodosNextPage {
+        state: &'static str,
+        page: u64,
+        data: Vec<Todo>,
+    },
     Metadata {
         project_id: u64,
         labels: Vec<Label>,
@@ -1266,6 +1270,7 @@ pub struct App {
     pub todos_etag: Option<String>,
     pub todos_poll_in_flight: bool,
     pub todos_etag_state: Option<&'static str>,
+    pub todos_etag_empty: bool,
     pub open_job_when_loaded: Option<(u64, u64)>,
     pub filtered_mrs: Vec<GroupedItem<MergeRequest>>,
     pub filtered_issues: Vec<GroupedItem<Issue>>,
