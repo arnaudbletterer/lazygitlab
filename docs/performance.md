@@ -56,6 +56,34 @@ Reading the tables:
 - Pipelines take 106, 608 and 1627 ms warm, and 5.2 to 6.6 s cold.
 - No scenario reached the full 500 rows in 20 s. Merge requests stayed at 50 (117 at 0 ms latency), issues at 117, todos at 50 (100 at 0 ms).
 
+## After the startup chain
+
+Same method, same mock, same machine, release build at the commit that adds this section. The machine was quiet: no compile running, load average 1.7 at the start of the cold run and 0.7 at the end of the warm run. One run per cell, so differences under about 100 ms are noise. Raw results: `docs/performance-data-cold-after.json` and `docs/performance-data-warm-after.json`. The baseline column is the "Cold" and "Warm" table above (`docs/performance-data-cold.json`, `docs/performance-data-warm.json`).
+
+What changed: the first frame is drawn before any request (the client is built without the connection check, which was a blocking `/user`), `/user` is fetched once and in parallel with the membership sync, a screen opened before the ids arrive fetches when they arrive, network results wake the event loop, and Home's merge request prefetch is delayed and dropped when you leave Home. The mock has no persistent cache here (each scenario starts from an empty state), so the warm-start cache path is covered by `tests/startup_chain.rs`, not by these numbers.
+
+Cold (navigation key at startup), first rows after navigation in ms, baseline then after:
+
+| screen | 0 ms | 100 ms | 300 ms |
+|---|---|---|---|
+| todos | 102 then 3 | 204 then 106 | 407 then 307 |
+| merge_requests | 205 then 31 | 407 then 227 | 711 then 628 |
+| issues | 205 then 28 | 305 then 221 | 810 then 624 |
+| pipelines | 5165 then 20 | 5577 then 616 | 6613 then 1817 |
+
+First frame (since process start): 11, 111 and 311 ms at 0, 100 and 300 ms latency before; 10, 10 and 10 ms after, whatever the latency.
+
+Warm pipelines first rows: 104, 609, 1521 ms before; 20, 516, 1516 ms after. Warm merge requests are 1 to 2 ms after because the Home prefetch had finished during the 1 s settle; issues are 26, 121, 322 ms against 220, 204, 405 before.
+
+Requests: `/user` 1 instead of 3 per run; the cold pipelines run needs 45 requests instead of 49.
+
+Caveats:
+
+- The cold Pipelines row improves by 5 s because the fetch now starts when the member ids arrive instead of at the next 5 s refresh. The remaining 616 and 1817 ms are the 8-wide pipeline fan-out (sink 2), unchanged.
+- The pipelines rows at 100 and 300 ms are one round trip for `/user` and the membership sync (parallel now) plus 5 waves of 8 requests; they were not touched here.
+- "Rows reached" went from 50 or 117 to 424 or 500 for merge requests and issues. This comes from applying results immediately, so the scroll script paginates faster, not from a change to the merge rules; it also makes the total request and byte counts of those scenarios larger than the baseline, so compare first rows, not totals. The warm pipelines run shows 85 requests and 823 KB against 48 and 152 KB because the Home prefetch of 40 merge request lists now completes during the settle (before, the prefetch ran with no member ids and fetched nothing).
+- First frame in headless mode is the `TestBackend` draw time; a real terminal adds its own paint time.
+
 ## Top five time sinks
 
 Ranked by what a user waits for. Each item cites the measurement that supports it.
