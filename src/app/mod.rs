@@ -269,6 +269,10 @@ impl App {
             cached_user_id: None,
             user_fetch_in_flight: Default::default(),
             fanouts_started: std::collections::HashMap::new(),
+            fanout_rerun: std::collections::HashSet::new(),
+            auth_failed: false,
+            exit_on_connect_failure: false,
+            fatal_error: None,
             home_prefetch_due: None,
             membership_sync_attempted: false,
             last_input: std::time::Instant::now(),
@@ -296,13 +300,14 @@ impl App {
             }
             DataUpdate::MemberProjectIds(ids) => {
                 let changed = ids != self.member_project_ids;
+                self.cached_user_id = None;
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
                 self.membership_sync_attempted = true;
                 self.filter_lists();
                 self.save_membership_cache();
                 if changed {
-                    self.fetch_active_global_list().await;
+                    self.fetch_active_global_list(true).await;
                 }
             }
             DataUpdate::SearchResults { data, search_id } => {
@@ -452,15 +457,33 @@ impl App {
                 }
             }
             DataUpdate::ScopedMr(scope, inner) => {
-                self.fanout_done(&format!("mr:{scope:?}"));
+                let key = format!("mr:{scope:?}");
+                let ends_fanout = matches!(
+                    *inner,
+                    DataUpdate::GlobalMRs { .. }
+                        | DataUpdate::GlobalMRsPartial { .. }
+                        | DataUpdate::RefreshFailed
+                );
                 if scope == self.mr_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
+                if ends_fanout && self.fanout_done(&key) {
+                    self.fetch_global_mrs_guarded(false).await;
+                }
             }
             DataUpdate::ScopedIssue(scope, inner) => {
-                self.fanout_done(&format!("issues:{scope:?}"));
+                let key = format!("issues:{scope:?}");
+                let ends_fanout = matches!(
+                    *inner,
+                    DataUpdate::GlobalIssues { .. }
+                        | DataUpdate::GlobalIssuesPartial { .. }
+                        | DataUpdate::RefreshFailed
+                );
                 if scope == self.issue_filter {
                     Box::pin(self.process_update_single(*inner)).await;
+                }
+                if ends_fanout && self.fanout_done(&key) {
+                    self.fetch_global_issues_guarded(false).await;
                 }
             }
             DataUpdate::RefreshFailed => {
@@ -945,6 +968,20 @@ impl App {
                     }
                 }
             }
+            DataUpdate::Error(_) if self.auth_failed => {}
+            DataUpdate::UserFetchFailed { error, auth } => {
+                self.on_user_fetch_failed(&error, auth);
+            }
+            DataUpdate::Preselected(result) => match result {
+                Ok(project) => {
+                    self.apply_preselected(project);
+                    self.refresh().await;
+                }
+                Err(e) => {
+                    self.last_error = Some(e);
+                    self.last_error_since = Some(std::time::Instant::now());
+                }
+            },
             DataUpdate::Error(e) => {
                 let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));
                 if e.contains("Diffs") {
@@ -1743,6 +1780,10 @@ impl App {
             self.membership_sync_attempted = false;
         }
 
+        if self.auth_failed {
+            return;
+        }
+
         self.start_user_fetch(false);
 
         if self.member_project_ids.is_empty()
@@ -1782,12 +1823,12 @@ impl App {
                 }
                 MenuSelection::MergeRequests => {
                     if should_fetch_lists {
-                        self.fetch_global_mrs_guarded().await;
+                        self.fetch_global_mrs_guarded(false).await;
                     }
                 }
                 MenuSelection::Issues => {
                     if should_fetch_lists {
-                        self.fetch_global_issues_guarded().await;
+                        self.fetch_global_issues_guarded(false).await;
                     }
                 }
                 MenuSelection::Pipelines => {
@@ -2039,6 +2080,7 @@ impl App {
             }
         }
         if self.last_error.is_some()
+            && !self.auth_failed
             && self
                 .last_error_since
                 .map(|t| t.elapsed())
@@ -4009,24 +4051,28 @@ impl App {
         self.show_project_popup = true;
         let _ = self.fetch_projects().await;
     }
-    pub async fn preselect_project(&mut self, spec: &str) -> Result<(), String> {
-        use gitlab::api::AsyncQuery;
-        let endpoint = gitlab::api::projects::Project::builder()
-            .project(spec)
-            .build()
-            .map_err(|e| format!("invalid project '{spec}': {e}"))?;
-        let project: Project = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            endpoint.query_async(&self.gitlab),
-        )
-        .await
-        .map_err(|_| format!("timed out loading project '{spec}'"))?
-        .map_err(|e| format!("cannot load project '{spec}': {e}"))?;
+    pub(crate) fn apply_preselected(&mut self, project: Project) {
         self.selected_project = Some(project);
         self.active_panel = Panel::Project;
         self.active_context = Context::Project;
         self.project_menu_state.select(Some(0));
         self.active_selection = MenuSelection::MergeRequests;
+    }
+
+    /// Loads the `--project` target without blocking the event loop.
+    pub fn spawn_preselect(&self, spec: String) {
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(DataUpdate::Preselected(
+                fetch_preselect_project(&client, &spec).await,
+            ));
+        });
+    }
+
+    pub async fn preselect_project(&mut self, spec: &str) -> Result<(), String> {
+        let project = fetch_preselect_project(&self.gitlab, spec).await?;
+        self.apply_preselected(project);
         Ok(())
     }
 
@@ -4123,4 +4169,22 @@ pub(crate) fn is_selectable_diff_line(dl: &DiffDisplayLine) -> bool {
         DiffDisplayLine::Discussion(_) => true,
         DiffDisplayLine::Code(_, old, new) => old.unwrap_or(0) > 0 || new.unwrap_or(0) > 0,
     }
+}
+
+async fn fetch_preselect_project(
+    client: &crate::trace::TracedClient,
+    spec: &str,
+) -> Result<Project, String> {
+    use gitlab::api::AsyncQuery;
+    let endpoint = gitlab::api::projects::Project::builder()
+        .project(spec)
+        .build()
+        .map_err(|e| format!("invalid project '{spec}': {e}"))?;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        endpoint.query_async(client),
+    )
+    .await
+    .map_err(|_| format!("timed out loading project '{spec}'"))?
+    .map_err(|e| format!("cannot load project '{spec}': {e}"))
 }

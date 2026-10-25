@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// A fan-out that never reported back (its task died) stops blocking new ones after this.
-const FANOUT_STALE: Duration = Duration::from_secs(90);
+const FANOUT_STALE: Duration = Duration::from_secs(65);
 /// How long Home waits before prefetching merge requests, so a screen opened
 /// right away gets the network first.
 pub const HOME_PREFETCH_DELAY: Duration = Duration::from_millis(400);
@@ -47,19 +47,27 @@ impl App {
         });
     }
 
-    /// Drops cached ids that belong to another user once `/user` answers.
+    /// Drops ids that came from the cache when they belong to another user.
+    /// Ids from a membership sync that already answered are never touched.
     pub(crate) fn on_current_user(&mut self, id: u64) {
-        if self.cached_user_id.is_some_and(|cached| cached != id) {
+        if self
+            .cached_user_id
+            .take()
+            .is_some_and(|cached| cached != id)
+        {
             self.member_project_ids.clear();
+            self.membership_sync_attempted = false;
             self.filter_lists();
         }
-        self.cached_user_id = Some(id);
         self.save_membership_cache();
     }
 
     /// Fetches `/user` once: later calls do nothing while one is in flight or the user is known.
     pub(crate) fn start_user_fetch(&mut self, counted: bool) {
-        if self.current_user.is_some() || self.user_fetch_in_flight.swap(true, Ordering::AcqRel) {
+        if self.current_user.is_some()
+            || self.auth_failed
+            || self.user_fetch_in_flight.swap(true, Ordering::AcqRel)
+        {
             return;
         }
         let guard = ClearOnDrop(self.user_fetch_in_flight.clone());
@@ -73,10 +81,12 @@ impl App {
                     let _ = tx.send(DataUpdate::CurrentUser(user));
                 }
                 Err(e) => {
-                    let _ = tx.send(DataUpdate::Error(format!(
-                        "Could not connect to GitLab: {}",
-                        crate::errors::friendly_error(&e.to_string())
-                    )));
+                    let error = e.to_string();
+                    let lower = error.to_ascii_lowercase();
+                    let auth = ["401", "403", "unauthorized", "forbidden"]
+                        .iter()
+                        .any(|m| lower.contains(m));
+                    let _ = tx.send(DataUpdate::UserFetchFailed { error, auth });
                 }
             }
             if counted {
@@ -85,44 +95,78 @@ impl App {
         });
     }
 
+    pub(crate) fn on_user_fetch_failed(&mut self, error: &str, auth: bool) {
+        let friendly = crate::errors::friendly_error(error);
+        if self.exit_on_connect_failure {
+            self.fatal_error = Some(format!("Could not connect to GitLab: {friendly}"));
+            self.should_quit = true;
+        } else if auth {
+            self.auth_failed = true;
+            self.last_error = Some(format!("{friendly}. Press q to quit or r to retry"));
+            self.last_error_since = None;
+        } else {
+            self.last_error = Some(friendly);
+            self.last_error_since = Some(Instant::now());
+        }
+    }
+
+    /// `r` after an authentication failure: one more attempt, background refreshes stay off until it works.
+    pub(crate) async fn retry_after_auth_failure(&mut self) {
+        self.auth_failed = false;
+        self.last_error = None;
+        self.last_error_since = None;
+        self.start_user_fetch(false);
+        self.refresh().await;
+    }
+
     fn fanout_in_flight(&self, key: &str) -> bool {
         self.fanouts_started
             .get(key)
             .is_some_and(|t| t.elapsed() < FANOUT_STALE)
     }
 
-    pub(crate) fn fanout_done(&mut self, key: &str) {
+    /// Marks a fan-out as finished. Returns true when a follow-up was requested meanwhile.
+    pub(crate) fn fanout_done(&mut self, key: &str) -> bool {
         self.fanouts_started.remove(key);
+        self.fanout_rerun.remove(key)
+    }
+
+    fn begin_fanout(&mut self, key: String, rerun_if_busy: bool) -> bool {
+        if self.member_project_ids.is_empty() {
+            if self.is_syncing_membership {
+                self.status_message = Some("Loading projects...".into());
+            }
+            return false;
+        }
+        if self.fanout_in_flight(&key) {
+            if rerun_if_busy {
+                self.fanout_rerun.insert(key);
+            }
+            return false;
+        }
+        self.fanouts_started.insert(key, Instant::now());
+        true
     }
 
     /// Global issues fan-out, skipped while one for the same filter is in flight.
-    pub(crate) async fn fetch_global_issues_guarded(&mut self) {
-        if self.member_project_ids.is_empty() {
-            return;
-        }
+    /// With `rerun_if_busy` a follow-up runs when the running one ends.
+    pub(crate) async fn fetch_global_issues_guarded(&mut self, rerun_if_busy: bool) {
         let key = format!("issues:{:?}", self.issue_filter);
-        if self.fanout_in_flight(&key) {
-            return;
+        if self.begin_fanout(key, rerun_if_busy) {
+            let _ = self.fetch_global_issues().await;
         }
-        self.fanouts_started.insert(key, Instant::now());
-        let _ = self.fetch_global_issues().await;
     }
 
-    /// Global merge request fan-out, skipped while one for the same filter is in flight.
-    pub(crate) async fn fetch_global_mrs_guarded(&mut self) {
-        if self.member_project_ids.is_empty() {
-            return;
-        }
+    pub(crate) async fn fetch_global_mrs_guarded(&mut self, rerun_if_busy: bool) {
         let key = format!("mr:{:?}", self.mr_filter);
-        if self.fanout_in_flight(&key) {
-            return;
+        if self.begin_fanout(key, rerun_if_busy) {
+            let _ = self.fetch_global_merge_requests().await;
         }
-        self.fanouts_started.insert(key, Instant::now());
-        let _ = self.fetch_global_merge_requests().await;
     }
 
     /// Starts the fetch of the cross-project list the user is looking at.
-    pub(crate) async fn fetch_active_global_list(&mut self) {
+    /// `ids_changed` asks for a follow-up when a fan-out over the old ids is still running.
+    pub(crate) async fn fetch_active_global_list(&mut self, ids_changed: bool) {
         let on_list = matches!(self.active_context, Context::Dashboard | Context::Explore)
             && self.view_mode == ViewMode::List
             && self.active_panel != Panel::MainDetail;
@@ -130,10 +174,14 @@ impl App {
             return;
         }
         match self.active_selection {
-            MenuSelection::Issues => self.fetch_global_issues_guarded().await,
-            MenuSelection::MergeRequests => self.fetch_global_mrs_guarded().await,
+            MenuSelection::Issues => self.fetch_global_issues_guarded(ids_changed).await,
+            MenuSelection::MergeRequests => self.fetch_global_mrs_guarded(ids_changed).await,
             MenuSelection::Pipelines => {
-                let _ = self.fetch_cross_pipelines().await;
+                let _ = if ids_changed {
+                    self.fetch_cross_pipelines_manual().await
+                } else {
+                    self.fetch_cross_pipelines().await
+                };
             }
             MenuSelection::Home => self.schedule_home_prefetch(),
             _ => {}
@@ -168,7 +216,7 @@ impl App {
             && self.active_selection == MenuSelection::Home
             && self.view_mode == ViewMode::List;
         if on_home {
-            self.fetch_global_mrs_guarded().await;
+            self.fetch_global_mrs_guarded(false).await;
         }
     }
 }

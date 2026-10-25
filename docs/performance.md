@@ -82,6 +82,7 @@ Caveats:
 - The cold Pipelines row improves by 5 s because the fetch now starts when the member ids arrive instead of at the next 5 s refresh. The remaining 616 and 1817 ms are the 8-wide pipeline fan-out (sink 2), unchanged.
 - The pipelines rows at 100 and 300 ms are one round trip for `/user` and the membership sync (parallel now) plus 5 waves of 8 requests; they were not touched here.
 - "Rows reached" went from 50 or 117 to 424 or 500 for merge requests and issues. This comes from applying results immediately, so the scroll script paginates faster, not from a change to the merge rules; it also makes the total request and byte counts of those scenarios larger than the baseline, so compare first rows, not totals. The warm pipelines run shows 85 requests and 823 KB against 48 and 152 KB because the Home prefetch of 40 merge request lists now completes during the settle (before, the prefetch ran with no member ids and fetched nothing).
+- Warm-start numbers (a populated membership cache) are unmeasured: every scenario above starts from an empty state, and each cell is one run.
 - First frame in headless mode is the `TestBackend` draw time; a real terminal adds its own paint time.
 
 ## Top five time sinks

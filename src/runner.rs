@@ -12,6 +12,9 @@ use crate::ui::ui;
 pub type FrameCaptureFn<B> = Box<dyn for<'a> FnMut(&'a Terminal<B>)>;
 
 const INPUT_POLL: Duration = Duration::from_millis(100);
+/// A flood of results must not starve input: at most this many (or this long) per loop turn.
+const MAX_UPDATES_PER_TICK: usize = 64;
+const MAX_DRAIN_TIME: Duration = Duration::from_millis(8);
 
 fn draw_frame<B>(
     terminal: &mut Terminal<B>,
@@ -60,11 +63,8 @@ where
     draw_frame(terminal, app, frame_capture)?;
     let mut last_draw = std::time::Instant::now();
 
-    if let Some(spec) = app.preselect_spec.take()
-        && let Err(e) = app.preselect_project(&spec).await
-    {
-        app.last_error = Some(e);
-        app.last_error_since = Some(std::time::Instant::now());
+    if let Some(spec) = app.preselect_spec.take() {
+        app.spawn_preselect(spec);
     }
     if let Err(e) = app.initial_setup().await {
         app.last_error = Some(format!("Startup failed: {}", e));
@@ -83,8 +83,12 @@ where
         }
 
         let mut got_update = false;
-        while let Ok(update) = rx.try_recv() {
+        let drain_started = std::time::Instant::now();
+        let mut drained = 0;
+        while drained < MAX_UPDATES_PER_TICK && drain_started.elapsed() < MAX_DRAIN_TIME {
+            let Ok(update) = rx.try_recv() else { break };
             got_update = true;
+            drained += 1;
             apply_update(app, update).await;
         }
         if got_update {
@@ -131,17 +135,16 @@ where
         // input future is kept across wake-ups so that no event is lost.
         let event = tokio::select! {
             biased;
-            update = rx.recv() => {
-                if let Some(update) = update {
-                    apply_update(app, update).await;
-                    app.update_preview().await;
-                    needs_draw = true;
-                }
-                None
-            }
             res = &mut pending => {
                 pending = Box::pin(event_source.next_event(INPUT_POLL));
                 res?
+            }
+            update = rx.recv() => {
+                if let Some(update) = update {
+                    apply_update(app, update).await;
+                    needs_draw = true;
+                }
+                None
             }
         };
 

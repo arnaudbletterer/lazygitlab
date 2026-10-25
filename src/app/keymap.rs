@@ -742,6 +742,12 @@ impl App {
 
         self.last_input = std::time::Instant::now();
 
+        if self.auth_failed && key.code == KeyCode::Char('r') && key.modifiers == KeyModifiers::NONE
+        {
+            self.retry_after_auth_failure().await;
+            return;
+        }
+
         // --- 0. PRE-PROCESSING ---
         let mut processed_key = key;
         if matches!(processed_key.code, KeyCode::Char(_))

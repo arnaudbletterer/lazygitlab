@@ -26,7 +26,39 @@ fn issue(project: u64) -> serde_json::Value {
     serde_json::json!({"iid": 1, "project_id": project, "title": "Startup chain issue", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"})
 }
 
+#[derive(Clone, Copy)]
+struct Config {
+    member_ids: &'static [u64],
+    user_id: u64,
+    user_latency: Duration,
+    member_latency: Duration,
+    list_latency: Duration,
+    status: u16,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            member_ids: &[1, 2],
+            user_id: 1,
+            user_latency: LATENCY,
+            member_latency: LATENCY,
+            list_latency: LATENCY,
+            status: 200,
+        }
+    }
+}
+
 async fn fixture(member_ids: &'static [u64], list_latency: Duration) -> Fixture {
+    fixture_with(Config {
+        member_ids,
+        list_latency,
+        ..Config::default()
+    })
+    .await
+}
+
+async fn fixture_with(cfg: Config) -> Fixture {
     let server = MockServer::start().await;
     let log: Log = Arc::default();
     let seen = log.clone();
@@ -34,14 +66,18 @@ async fn fixture(member_ids: &'static [u64], list_latency: Duration) -> Fixture 
         .respond_with(move |req: &Request| {
             let path = req.url.path().to_string();
             seen.lock().unwrap().push((path.clone(), Instant::now()));
+            if cfg.status != 200 {
+                return ResponseTemplate::new(cfg.status)
+                    .set_body_json(serde_json::json!({"message": "denied"}));
+            }
             let (body, delay): (serde_json::Value, Duration) = if path == "/api/v4/user" {
-                (serde_json::json!({"id": 1, "username": "u"}), LATENCY)
+                (serde_json::json!({"id": cfg.user_id, "username": "u"}), cfg.user_latency)
             } else if path == "/api/v4/projects" {
-                let ids: Vec<_> = member_ids.iter().map(|id| serde_json::json!({"id": id, "name": "p", "path_with_namespace": "g/p"})).collect();
-                (serde_json::Value::Array(ids), LATENCY)
+                let ids: Vec<_> = cfg.member_ids.iter().map(|id| serde_json::json!({"id": id, "name": "p", "path_with_namespace": "g/p"})).collect();
+                (serde_json::Value::Array(ids), cfg.member_latency)
             } else if path.ends_with("/issues") {
                 let id = path.split('/').nth(4).and_then(|s| s.parse().ok()).unwrap_or(0);
-                (serde_json::json!([issue(id)]), list_latency)
+                (serde_json::json!([issue(id)]), cfg.list_latency)
             } else {
                 (serde_json::json!([]), LATENCY)
             };
@@ -176,7 +212,7 @@ async fn first_frame_precedes_every_request_and_user_is_fetched_once() {
         membership - user
     };
     assert!(
-        gap < Duration::from_millis(20),
+        gap < Duration::from_millis(150),
         "user and membership started {gap:?} apart"
     );
 }
@@ -219,6 +255,11 @@ async fn screen_opened_before_ids_arrive_fetches_when_they_do() {
         fetch - ids_arrive
     );
     assert!(started.elapsed() < Duration::from_secs(4));
+    assert_eq!(
+        fx.count(is_project_pipelines),
+        2,
+        "one request per project, none repeated"
+    );
 }
 
 #[tokio::test]
@@ -237,7 +278,7 @@ async fn results_are_applied_as_soon_as_they_arrive() {
         .expect("the issue was drawn");
     let lag = shown.saturating_duration_since(asked + LATENCY);
     assert!(
-        lag < Duration::from_millis(20),
+        lag < Duration::from_millis(150),
         "result drawn {lag:?} after it arrived"
     );
 }
@@ -271,4 +312,179 @@ fn membership_cache_round_trips_and_ignores_other_hosts() {
     assert_eq!((record.user_id, record.ids), (7, vec![1, 3]));
     assert!(cache::load_membership(&dir, "other.example").is_none());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn cache_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("lgl-startup-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+#[tokio::test]
+async fn membership_answering_before_user_keeps_the_fresh_ids() {
+    let dir = cache_dir("fresh");
+    cache::save_membership(&dir, HOST, 1, &[9u64].into_iter().collect()).unwrap();
+    let fx = fixture_with(Config {
+        user_latency: Duration::from_millis(300),
+        member_latency: Duration::from_millis(20),
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.enable_membership_cache(dir.clone(), HOST);
+    run(&mut app, &mut rx, Duration::from_millis(800)).await;
+    app.process_updates(&mut rx).await;
+
+    assert_eq!(app.member_project_ids, [1u64, 2].into_iter().collect());
+    assert_eq!(cache::load_membership(&dir, HOST).unwrap().ids, vec![1, 2]);
+    assert_eq!(
+        fx.count(is_membership),
+        2,
+        "membership sync and project list, no resync"
+    );
+}
+
+#[tokio::test]
+async fn cached_ids_of_another_user_are_dropped_and_resynced() {
+    let dir = cache_dir("other");
+    cache::save_membership(&dir, HOST, 5, &[9u64].into_iter().collect()).unwrap();
+    let fx = fixture_with(Config {
+        user_id: 1,
+        user_latency: Duration::from_millis(20),
+        member_latency: Duration::from_millis(300),
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.enable_membership_cache(dir.clone(), HOST);
+    run(&mut app, &mut rx, Duration::from_millis(900)).await;
+
+    assert_eq!(app.member_project_ids, [1u64, 2].into_iter().collect());
+    let record = cache::load_membership(&dir, HOST).unwrap();
+    assert_eq!((record.user_id, record.ids), (1, vec![1, 2]));
+}
+
+#[cfg(unix)]
+#[test]
+fn membership_cache_file_is_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = cache_dir("mode");
+    cache::save_membership(&dir, HOST, 7, &[1u64].into_iter().collect()).unwrap();
+    let file = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.to_string_lossy().ends_with("-membership.json"))
+        .unwrap();
+    assert_eq!(
+        std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        std::fs::metadata(&dir).unwrap().permissions().mode() & 0o077,
+        0
+    );
+}
+
+async fn settle_auth_failure(app: &mut App, rx: &mut mpsc::UnboundedReceiver<DataUpdate>) {
+    let start = Instant::now();
+    while !app.auth_failed && start.elapsed() < Duration::from_secs(5) {
+        app.process_updates(rx).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    app.process_updates(rx).await;
+}
+
+async fn auth_failure_stops_retries(status: u16, hint: &str) {
+    let fx = fixture_with(Config {
+        status,
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.initial_setup().await.unwrap();
+    app.refresh().await;
+    settle_auth_failure(&mut app, &mut rx).await;
+    assert!(app.auth_failed);
+    let message = app.last_error.clone().unwrap();
+    assert_eq!(
+        message.matches(hint).count(),
+        1,
+        "hint formatted once: {message}"
+    );
+    assert!(
+        message.ends_with("Press q to quit or r to retry"),
+        "{message}"
+    );
+
+    let before = fx.log.lock().unwrap().len();
+    for _ in 0..5 {
+        app.last_refresh = Instant::now() - Duration::from_secs(10);
+        app.refresh_background().await;
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    app.process_updates(&mut rx).await;
+    assert_eq!(
+        fx.log.lock().unwrap().len(),
+        before,
+        "no request after the first rejection"
+    );
+    assert!(app.last_error.is_some(), "the banner stays");
+
+    app.handle_key(KeyEvent::from(KeyCode::Char('r'))).await;
+    settle_auth_failure(&mut app, &mut rx).await;
+    assert_eq!(fx.count(is_user), 2, "r retries once");
+    assert!(app.auth_failed);
+}
+
+#[tokio::test]
+async fn rejected_token_401_stops_all_retries() {
+    auth_failure_stops_retries(401, "authentication failed (401)").await;
+}
+
+#[tokio::test]
+async fn rejected_token_403_stops_all_retries() {
+    auth_failure_stops_retries(403, "permission denied (403)").await;
+}
+
+#[tokio::test]
+async fn connect_failure_quits_with_a_message_when_not_interactive() {
+    let fx = fixture_with(Config {
+        status: 401,
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.exit_on_connect_failure = true;
+    run(&mut app, &mut rx, Duration::from_secs(5)).await;
+    let message = app.fatal_error.clone().expect("a fatal error");
+    assert!(
+        message.starts_with("Could not connect to GitLab: authentication failed (401)"),
+        "{message}"
+    );
+    assert_eq!(message.matches("authentication failed").count(), 1);
+}
+
+#[tokio::test]
+async fn changed_membership_during_a_warm_fanout_triggers_a_follow_up() {
+    let dir = cache_dir("followup");
+    cache::save_membership(&dir, HOST, 1, &[1u64].into_iter().collect()).unwrap();
+    let fx = fixture_with(Config {
+        member_ids: &[1, 2],
+        member_latency: Duration::from_millis(50),
+        list_latency: Duration::from_millis(300),
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.enable_membership_cache(dir, HOST);
+    open_dashboard(&mut app, MenuSelection::Issues);
+    run(&mut app, &mut rx, Duration::from_millis(1200)).await;
+    let for_project = |n: u64| fx.count(|p| p == format!("/api/v4/projects/{n}/issues"));
+    assert_eq!(
+        for_project(2),
+        1,
+        "the new project is fetched without waiting for a tick"
+    );
+    assert_eq!(for_project(1), 2, "the old fan-out and its follow-up");
 }

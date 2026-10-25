@@ -145,15 +145,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(client, tx, settings.project.clone());
     app.skip_tls_verify = transport == config::Transport::HttpsSkipVerify;
     app.preselect_spec = settings.project.clone();
+    app.exit_on_connect_failure = {
+        use std::io::IsTerminal;
+        cli.headless || !io::stdout().is_terminal()
+    };
     if let Some(dir) = cache::default_cache_dir() {
         app.enable_membership_cache(dir, &settings.url);
     }
 
-    if cli.headless {
+    let result = if cli.headless {
         run_headless(&mut app, &mut rx, cli.headless_options()).await
     } else {
         run_with_terminal(&mut app, &mut rx).await
+    };
+    if let Some(message) = app.fatal_error.take() {
+        fail(1, &message);
     }
+    result
 }
 
 #[cfg(not(tarpaulin_include))]

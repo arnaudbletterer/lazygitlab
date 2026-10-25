@@ -795,6 +795,12 @@ pub enum DataUpdate {
     MemberSyncFailed,
     MergeGlobalPipelines(Vec<Pipeline>),
     RefreshFailed,
+    /// `/user` failed at startup; `auth` is true for a 401 or 403 answer.
+    UserFetchFailed {
+        error: String,
+        auth: bool,
+    },
+    Preselected(Result<Project, String>),
     ScopedMr(MergeRequestFilter, Box<DataUpdate>),
     ScopedIssue(IssueFilter, Box<DataUpdate>),
     AppendGlobalMRs {
@@ -1279,6 +1285,10 @@ pub struct App {
     pub cached_user_id: Option<u64>,
     pub user_fetch_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub fanouts_started: std::collections::HashMap<String, std::time::Instant>,
+    pub fanout_rerun: std::collections::HashSet<String>,
+    pub auth_failed: bool,
+    pub exit_on_connect_failure: bool,
+    pub fatal_error: Option<String>,
     pub home_prefetch_due: Option<std::time::Instant>,
     pub membership_sync_attempted: bool,
     pub last_input: std::time::Instant,
