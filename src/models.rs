@@ -1286,6 +1286,7 @@ pub struct App {
     pub user_fetch_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub fanouts_started: std::collections::HashMap<String, std::time::Instant>,
     pub fanout_rerun: std::collections::HashSet<String>,
+    pub fanout_data_seen: std::collections::HashSet<String>,
     pub auth_failed: bool,
     pub exit_on_connect_failure: bool,
     pub fatal_error: Option<String>,

@@ -742,12 +742,6 @@ impl App {
 
         self.last_input = std::time::Instant::now();
 
-        if self.auth_failed && key.code == KeyCode::Char('r') && key.modifiers == KeyModifiers::NONE
-        {
-            self.retry_after_auth_failure().await;
-            return;
-        }
-
         // --- 0. PRE-PROCESSING ---
         let mut processed_key = key;
         if matches!(processed_key.code, KeyCode::Char(_))
@@ -767,6 +761,17 @@ impl App {
         // delegate to App::handle_popup_key which returns true if the
         // key was handled by a popup branch.
         if self.handle_popup_key(processed_key).await {
+            return;
+        }
+
+        if self.auth_failed
+            && !self.input_mode
+            && !self.show_search
+            && !self.pending_g_prefix
+            && processed_key.code == KeyCode::Char('r')
+            && processed_key.modifiers == KeyModifiers::NONE
+        {
+            self.retry_after_auth_failure().await;
             return;
         }
 

@@ -17,6 +17,7 @@ use chrono::Local;
 use gitlab::api::AsyncQuery;
 use ratatui::widgets::ListState;
 use regex::Regex;
+use startup::ScopedKind;
 
 static TODO_TARGET_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"/(?:issues|merge_requests)/(\d+)").unwrap());
@@ -270,6 +271,7 @@ impl App {
             user_fetch_in_flight: Default::default(),
             fanouts_started: std::collections::HashMap::new(),
             fanout_rerun: std::collections::HashSet::new(),
+            fanout_data_seen: std::collections::HashSet::new(),
             auth_failed: false,
             exit_on_connect_failure: false,
             fatal_error: None,
@@ -293,6 +295,7 @@ impl App {
             }
             DataUpdate::MemberSyncFailed => {
                 self.is_syncing_membership = false;
+                self.clear_loading_projects_status();
                 if !self.member_project_ids.is_empty() {
                     self.membership_sync_attempted = true;
                 }
@@ -301,6 +304,7 @@ impl App {
             DataUpdate::MemberProjectIds(ids) => {
                 let changed = ids != self.member_project_ids;
                 self.cached_user_id = None;
+                self.clear_loading_projects_status();
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
                 self.membership_sync_attempted = true;
@@ -458,12 +462,15 @@ impl App {
             }
             DataUpdate::ScopedMr(scope, inner) => {
                 let key = format!("mr:{scope:?}");
-                let ends_fanout = matches!(
-                    *inner,
-                    DataUpdate::GlobalMRs { .. }
-                        | DataUpdate::GlobalMRsPartial { .. }
-                        | DataUpdate::RefreshFailed
-                );
+                let kind = match *inner {
+                    DataUpdate::GlobalMRs { .. } | DataUpdate::GlobalMRsPartial { .. } => {
+                        ScopedKind::Result
+                    }
+                    DataUpdate::AppendGlobalMRs { .. } => ScopedKind::NextPage,
+                    DataUpdate::RefreshFailed => ScopedKind::Failed,
+                    _ => ScopedKind::Other,
+                };
+                let ends_fanout = self.scoped_ends_fanout(&key, kind);
                 if scope == self.mr_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
@@ -473,12 +480,15 @@ impl App {
             }
             DataUpdate::ScopedIssue(scope, inner) => {
                 let key = format!("issues:{scope:?}");
-                let ends_fanout = matches!(
-                    *inner,
-                    DataUpdate::GlobalIssues { .. }
-                        | DataUpdate::GlobalIssuesPartial { .. }
-                        | DataUpdate::RefreshFailed
-                );
+                let kind = match *inner {
+                    DataUpdate::GlobalIssues { .. } | DataUpdate::GlobalIssuesPartial { .. } => {
+                        ScopedKind::Result
+                    }
+                    DataUpdate::AppendGlobalIssues { .. } => ScopedKind::NextPage,
+                    DataUpdate::RefreshFailed => ScopedKind::Failed,
+                    _ => ScopedKind::Other,
+                };
+                let ends_fanout = self.scoped_ends_fanout(&key, kind);
                 if scope == self.issue_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
@@ -974,13 +984,20 @@ impl App {
             }
             DataUpdate::Preselected(result) => match result {
                 Ok(project) => {
-                    self.apply_preselected(project);
-                    self.refresh().await;
+                    let still_at_start = self.active_context == Context::Dashboard
+                        && self.active_selection == MenuSelection::Home
+                        && self.view_mode == ViewMode::List;
+                    if still_at_start {
+                        self.apply_preselected(project);
+                        self.refresh().await;
+                    }
                 }
-                Err(e) => {
+                Err(e) if !self.auth_failed => {
+                    let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));
                     self.last_error = Some(e);
                     self.last_error_since = Some(std::time::Instant::now());
                 }
+                Err(_) => {}
             },
             DataUpdate::Error(e) => {
                 let e = crate::errors::friendly_error(&crate::redaction::redact_secrets(&e));

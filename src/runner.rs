@@ -142,6 +142,7 @@ where
             update = rx.recv() => {
                 if let Some(update) = update {
                     apply_update(app, update).await;
+                    app.update_preview().await;
                     needs_draw = true;
                 }
                 None

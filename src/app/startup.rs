@@ -1,5 +1,4 @@
 use crate::models::*;
-use gitlab::api::AsyncQuery;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -8,6 +7,14 @@ const FANOUT_STALE: Duration = Duration::from_secs(65);
 /// How long Home waits before prefetching merge requests, so a screen opened
 /// right away gets the network first.
 pub const HOME_PREFETCH_DELAY: Duration = Duration::from_millis(400);
+
+#[derive(Clone, Copy)]
+pub(crate) enum ScopedKind {
+    Result,
+    NextPage,
+    Failed,
+    Other,
+}
 
 struct ClearOnDrop(std::sync::Arc<AtomicBool>);
 
@@ -75,17 +82,11 @@ impl App {
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let _guard = guard;
-            let res: Result<Author, _> = crate::api::CurrentUser.query_async(&c).await;
-            match res {
+            match fetch_current_user(&c).await {
                 Ok(user) => {
                     let _ = tx.send(DataUpdate::CurrentUser(user));
                 }
-                Err(e) => {
-                    let error = e.to_string();
-                    let lower = error.to_ascii_lowercase();
-                    let auth = ["401", "403", "unauthorized", "forbidden"]
-                        .iter()
-                        .any(|m| lower.contains(m));
+                Err((error, auth)) => {
                     let _ = tx.send(DataUpdate::UserFetchFailed { error, auth });
                 }
             }
@@ -96,7 +97,8 @@ impl App {
     }
 
     pub(crate) fn on_user_fetch_failed(&mut self, error: &str, auth: bool) {
-        let friendly = crate::errors::friendly_error(error);
+        let friendly =
+            crate::redaction::redact_secrets(&crate::errors::friendly_error(error)).into_owned();
         if self.exit_on_connect_failure {
             self.fatal_error = Some(format!("Could not connect to GitLab: {friendly}"));
             self.should_quit = true;
@@ -125,10 +127,35 @@ impl App {
             .is_some_and(|t| t.elapsed() < FANOUT_STALE)
     }
 
+    pub(crate) fn clear_loading_projects_status(&mut self) {
+        if self.status_message.as_deref() == Some("Loading projects...") {
+            self.status_message = None;
+        }
+    }
+
     /// Marks a fan-out as finished. Returns true when a follow-up was requested meanwhile.
     pub(crate) fn fanout_done(&mut self, key: &str) -> bool {
         self.fanouts_started.remove(key);
         self.fanout_rerun.remove(key)
+    }
+
+    /// Classifies a scoped fan-out message. A fan-out ends with its data message
+    /// (full or partial); the `RefreshFailed` that follows a data message belongs
+    /// to the same fan-out and is ignored, so every fan-out ends exactly once. A
+    /// `RefreshFailed` with no data before it is a fan-out where every project failed.
+    pub(crate) fn scoped_ends_fanout(&mut self, key: &str, kind: ScopedKind) -> bool {
+        match kind {
+            ScopedKind::Result => {
+                self.fanout_data_seen.insert(key.to_string());
+                true
+            }
+            ScopedKind::NextPage => {
+                self.fanout_data_seen.insert(key.to_string());
+                false
+            }
+            ScopedKind::Failed => !self.fanout_data_seen.remove(key),
+            ScopedKind::Other => false,
+        }
     }
 
     fn begin_fanout(&mut self, key: String, rerun_if_busy: bool) -> bool {
@@ -144,6 +171,7 @@ impl App {
             }
             return false;
         }
+        self.fanout_data_seen.remove(&key);
         self.fanouts_started.insert(key, Instant::now());
         true
     }
@@ -219,4 +247,24 @@ impl App {
             self.fetch_global_mrs_guarded(false).await;
         }
     }
+}
+
+/// `/user` with its HTTP status in hand: only a 401 or 403 answer is an authentication failure.
+async fn fetch_current_user(client: &crate::trace::TracedClient) -> Result<Author, (String, bool)> {
+    use gitlab::api::{AsyncClient, RestClient};
+    let url = client
+        .rest_endpoint("user")
+        .map_err(|e| (e.to_string(), false))?;
+    let req = http::Request::builder().method("GET").uri(url.as_str());
+    let resp = tokio::time::timeout(Duration::from_secs(30), client.rest_async(req, Vec::new()))
+        .await
+        .map_err(|_| ("request timed out".to_string(), false))?
+        .map_err(|e| (e.to_string(), false))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let auth = matches!(status.as_u16(), 401 | 403);
+        return Err((format!("request failed ({status})"), auth));
+    }
+    serde_json::from_slice(resp.body())
+        .map_err(|e| (format!("could not parse JSON response: {e}"), false))
 }

@@ -49,6 +49,10 @@ impl Default for Config {
     }
 }
 
+fn mr(project: u64) -> serde_json::Value {
+    serde_json::json!({"iid": 1, "project_id": project, "title": "Idle MR", "author": {"id": 1, "username": "u"}, "web_url": "u", "state": "opened", "source_branch": "a", "target_branch": "b", "draft": false, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"})
+}
+
 async fn fixture(member_ids: &'static [u64], list_latency: Duration) -> Fixture {
     fixture_with(Config {
         member_ids,
@@ -75,6 +79,11 @@ async fn fixture_with(cfg: Config) -> Fixture {
             } else if path == "/api/v4/projects" {
                 let ids: Vec<_> = cfg.member_ids.iter().map(|id| serde_json::json!({"id": id, "name": "p", "path_with_namespace": "g/p"})).collect();
                 (serde_json::Value::Array(ids), cfg.member_latency)
+            } else if path == "/api/v4/todos" {
+                (serde_json::json!([{"id": 1, "action_name": "mentioned", "target_type": "Issue", "target_url": "http://x/g/p/-/issues/1", "body": "b", "state": "pending", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "project": {"id": 1, "name": "p", "path_with_namespace": "g/p"}, "author": {"id": 2, "username": "a"}}]), cfg.list_latency)
+            } else if path.ends_with("/merge_requests") {
+                let id = path.split('/').nth(4).and_then(|s| s.parse().ok()).unwrap_or(0);
+                (serde_json::json!([mr(id)]), cfg.list_latency)
             } else if path.ends_with("/issues") {
                 let id = path.split('/').nth(4).and_then(|s| s.parse().ok()).unwrap_or(0);
                 (serde_json::json!([issue(id)]), cfg.list_latency)
@@ -323,7 +332,7 @@ fn cache_dir(name: &str) -> std::path::PathBuf {
 #[tokio::test]
 async fn membership_answering_before_user_keeps_the_fresh_ids() {
     let dir = cache_dir("fresh");
-    cache::save_membership(&dir, HOST, 1, &[9u64].into_iter().collect()).unwrap();
+    cache::save_membership(&dir, HOST, 5, &[9u64].into_iter().collect()).unwrap();
     let fx = fixture_with(Config {
         user_latency: Duration::from_millis(300),
         member_latency: Duration::from_millis(20),
@@ -487,4 +496,80 @@ async fn changed_membership_during_a_warm_fanout_triggers_a_follow_up() {
         "the new project is fetched without waiting for a tick"
     );
     assert_eq!(for_project(1), 2, "the old fan-out and its follow-up");
+}
+
+#[tokio::test]
+async fn preview_of_the_selected_row_loads_without_a_key_press() {
+    let fx = fixture(&[1], LATENCY).await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    open_dashboard(&mut app, MenuSelection::MergeRequests);
+    app.member_project_ids = [1].into_iter().collect();
+    app.merge_requests = vec![serde_json::from_value(mr(1)).unwrap()];
+    app.filter_lists();
+    app.mrs_state.select(Some(1));
+    run(&mut app, &mut rx, Duration::from_millis(900)).await;
+    assert!(
+        fx.first(|p| p.ends_with("/merge_requests/1/discussions"))
+            .is_some(),
+        "the preview request is sent while idle, without a key press"
+    );
+}
+
+#[tokio::test]
+async fn a_port_containing_401_is_not_an_auth_failure() {
+    let fx = fixture(&[1], LATENCY).await;
+    let client = build_deferred("127.0.0.1:4010".to_string(), "t", Transport::PlainHttp)
+        .await
+        .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = App::new(client, tx, None);
+    app.initial_setup().await.unwrap();
+    let start = Instant::now();
+    while app.last_error.is_none() && start.elapsed() < Duration::from_secs(5) {
+        app.process_updates(&mut rx).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        !app.auth_failed,
+        "a network error is not an authentication failure"
+    );
+    assert!(app.last_error.is_some());
+    drop(fx);
+}
+
+#[tokio::test]
+async fn r_is_not_a_retry_while_searching_or_after_g() {
+    let fx = fixture_with(Config {
+        status: 401,
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    app.initial_setup().await.unwrap();
+    settle_auth_failure(&mut app, &mut rx).await;
+    let users = fx.count(is_user);
+    app.pending_g_prefix = true;
+    app.handle_key(KeyEvent::from(KeyCode::Char('r'))).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(fx.count(is_user), users, "g r is navigation, not a retry");
+}
+
+#[tokio::test]
+async fn loading_projects_status_ends_when_the_membership_sync_fails() {
+    let fx = fixture_with(Config {
+        status: 500,
+        ..Config::default()
+    })
+    .await;
+    let (mut app, mut rx) = new_app(&fx).await;
+    open_dashboard(&mut app, MenuSelection::Issues);
+    app.initial_setup().await.unwrap();
+    app.refresh().await;
+    assert_eq!(app.status_message.as_deref(), Some("Loading projects..."));
+    let start = Instant::now();
+    while app.is_syncing_membership && start.elapsed() < Duration::from_secs(5) {
+        app.process_updates(&mut rx).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_ne!(app.status_message.as_deref(), Some("Loading projects..."));
 }
