@@ -8,6 +8,7 @@ pub mod mrs;
 pub mod pipelines;
 pub mod popups;
 pub mod search;
+pub mod startup;
 
 use crate::api::*;
 use crate::models::*;
@@ -263,6 +264,12 @@ impl App {
             search_id: 0,
             member_project_ids: std::collections::HashSet::new(),
             is_syncing_membership: false,
+            preselect_spec: None,
+            membership_cache: None,
+            cached_user_id: None,
+            user_fetch_in_flight: Default::default(),
+            fanouts_started: std::collections::HashMap::new(),
+            home_prefetch_due: None,
             membership_sync_attempted: false,
             last_input: std::time::Instant::now(),
             syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
@@ -288,24 +295,14 @@ impl App {
                 self.filter_lists();
             }
             DataUpdate::MemberProjectIds(ids) => {
+                let changed = ids != self.member_project_ids;
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
                 self.membership_sync_attempted = true;
                 self.filter_lists();
-                if self.active_context == Context::Dashboard {
-                    let should_fetch =
-                        self.view_mode == ViewMode::List && self.active_panel != Panel::MainDetail;
-                    if should_fetch {
-                        match self.active_selection {
-                            MenuSelection::Issues => {
-                                let _ = self.fetch_global_issues().await;
-                            }
-                            MenuSelection::MergeRequests => {
-                                let _ = self.fetch_global_merge_requests().await;
-                            }
-                            _ => {}
-                        }
-                    }
+                self.save_membership_cache();
+                if changed {
+                    self.fetch_active_global_list().await;
                 }
             }
             DataUpdate::SearchResults { data, search_id } => {
@@ -455,11 +452,13 @@ impl App {
                 }
             }
             DataUpdate::ScopedMr(scope, inner) => {
+                self.fanout_done(&format!("mr:{scope:?}"));
                 if scope == self.mr_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
             }
             DataUpdate::ScopedIssue(scope, inner) => {
+                self.fanout_done(&format!("issues:{scope:?}"));
                 if scope == self.issue_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
@@ -981,7 +980,9 @@ impl App {
                 let _ = self.check_pagination().await;
             }
             DataUpdate::CurrentUser(user) => {
+                let id = user.id;
                 self.current_user = Some(user);
+                self.on_current_user(id);
             }
             DataUpdate::RepositoryTree { project_id, data } => {
                 if self
@@ -1453,49 +1454,15 @@ impl App {
 
     pub async fn initial_setup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.is_loading = true;
-        self.loading_tasks = 4;
+        self.loading_tasks = 3;
         let c = self.gitlab.clone();
         let tx = self.tx.clone();
 
-        let t0 = tx.clone();
-        let c0 = c.clone();
-        tokio::spawn(async move {
-            let ep = CurrentUser;
-            let res: Result<Author, _> = ep.query_async(&c0).await;
-            if let Ok(user) = res {
-                let _ = t0.send(DataUpdate::CurrentUser(user));
-            }
-            let _ = t0.send(DataUpdate::Loading(false));
-        });
+        self.start_user_fetch(true);
+        if !self.is_syncing_membership {
+            let _ = self.fetch_membership_project_ids().await;
+        }
 
-        let t1 = tx.clone();
-        let c1 = c.clone();
-        tokio::spawn(async move {
-            let ep = Todos {
-                page: Some(1),
-                per_page: Some(50),
-                state: Some("pending".to_string()),
-            };
-            let res: Result<Result<Vec<Todo>, _>, _> =
-                tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c1)).await;
-            match res {
-                Ok(Ok(data)) => {
-                    let has_more = data.len() == 50;
-                    let _ = t1.send(DataUpdate::Todos {
-                        data,
-                        page: 1,
-                        has_more,
-                    });
-                }
-                Ok(Err(e)) => {
-                    let _ = t1.send(DataUpdate::Error(format!("Todos fetch failed: {}", e)));
-                }
-                Err(_) => {
-                    let _ = t1.send(DataUpdate::Error("Todos fetch timed out".into()));
-                }
-            }
-            let _ = t1.send(DataUpdate::Loading(false));
-        });
         let t2 = tx.clone();
         let c2 = c.clone();
         tokio::spawn(async move {
@@ -1776,17 +1743,7 @@ impl App {
             self.membership_sync_attempted = false;
         }
 
-        if self.current_user.is_none() {
-            let c = self.gitlab.clone();
-            let tx = self.tx.clone();
-            tokio::spawn(async move {
-                let ep = CurrentUser;
-                let res: Result<Author, _> = ep.query_async(&c).await;
-                if let Ok(user) = res {
-                    let _ = tx.send(DataUpdate::CurrentUser(user));
-                }
-            });
-        }
+        self.start_user_fetch(false);
 
         if self.member_project_ids.is_empty()
             && !self.is_syncing_membership
@@ -1798,12 +1755,21 @@ impl App {
         let should_fetch_lists =
             self.view_mode == ViewMode::List && self.active_panel != Panel::MainDetail;
 
+        if self.active_selection != MenuSelection::Home || self.active_context == Context::Project {
+            self.home_prefetch_due = None;
+        }
+
         match self.active_context {
             Context::Dashboard | Context::Explore => match self.active_selection {
                 MenuSelection::Home => {
-                    // Pre-fetch todos & MRs in background so badges populate on Home
-                    let _ = self.fetch_todos().await;
-                    let _ = self.fetch_global_merge_requests().await;
+                    if self.todos_etag.is_some() || !self.todos.is_empty() {
+                        self.spawn_todos_poll();
+                    } else {
+                        let _ = self.fetch_todos().await;
+                    }
+                    if force_detail {
+                        self.schedule_home_prefetch();
+                    }
                 }
                 MenuSelection::Todos => {
                     if should_fetch_lists {
@@ -1816,12 +1782,12 @@ impl App {
                 }
                 MenuSelection::MergeRequests => {
                     if should_fetch_lists {
-                        let _ = self.fetch_global_merge_requests().await;
+                        self.fetch_global_mrs_guarded().await;
                     }
                 }
                 MenuSelection::Issues => {
                     if should_fetch_lists {
-                        let _ = self.fetch_global_issues().await;
+                        self.fetch_global_issues_guarded().await;
                     }
                 }
                 MenuSelection::Pipelines => {

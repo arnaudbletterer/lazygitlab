@@ -131,25 +131,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if transport == config::Transport::HttpsSkipVerify {
         eprintln!("{}", config::SKIP_VERIFY_WARNING);
     }
-    let builder = client::builder(settings.url.clone(), token, transport);
-    let client = match builder.build_async().await {
+    let client = match client::build_deferred(settings.url.clone(), &token, transport).await {
         Ok(client) => client,
         Err(e) => fail(
             1,
             &format!(
                 "Could not connect to GitLab: {}",
-                errors::friendly_error(&e.to_string())
+                errors::friendly_error(&e)
             ),
         ),
     };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(client, tx, settings.project.clone());
     app.skip_tls_verify = transport == config::Transport::HttpsSkipVerify;
-    if let Some(spec) = &settings.project
-        && let Err(e) = app.preselect_project(spec).await
-    {
-        app.last_error = Some(e);
-        app.last_error_since = Some(std::time::Instant::now());
+    app.preselect_spec = settings.project.clone();
+    if let Some(dir) = cache::default_cache_dir() {
+        app.enable_membership_cache(dir, &settings.url);
     }
 
     if cli.headless {
@@ -202,11 +199,15 @@ pub struct RealEventSource;
 #[cfg(not(tarpaulin_include))]
 impl EventSource for RealEventSource {
     async fn next_event(&self, timeout: Duration) -> io::Result<Option<Event>> {
-        if event::poll(timeout)? {
-            Ok(Some(event::read()?))
-        } else {
-            Ok(None)
-        }
+        tokio::task::spawn_blocking(move || {
+            if event::poll(timeout)? {
+                Ok(Some(event::read()?))
+            } else {
+                Ok(None)
+            }
+        })
+        .await
+        .map_err(io::Error::other)?
     }
 }
 

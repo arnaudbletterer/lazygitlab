@@ -1274,6 +1274,12 @@ pub struct App {
     pub search_id: u64,
     pub member_project_ids: std::collections::HashSet<u64>,
     pub is_syncing_membership: bool,
+    pub preselect_spec: Option<String>,
+    pub membership_cache: Option<(std::path::PathBuf, String)>,
+    pub cached_user_id: Option<u64>,
+    pub user_fetch_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub fanouts_started: std::collections::HashMap<String, std::time::Instant>,
+    pub home_prefetch_due: Option<std::time::Instant>,
     pub membership_sync_attempted: bool,
     pub last_input: std::time::Instant,
 

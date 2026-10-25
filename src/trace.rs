@@ -178,6 +178,7 @@ pub fn format_record(rec: &Record<'_>, t_ms: u64) -> String {
 pub struct TracedClient {
     inner: AsyncGitlab,
     trace: bool,
+    bearer: Option<http::HeaderValue>,
 }
 
 impl From<AsyncGitlab> for TracedClient {
@@ -185,6 +186,7 @@ impl From<AsyncGitlab> for TracedClient {
         Self {
             inner,
             trace: enabled(),
+            bearer: None,
         }
     }
 }
@@ -193,6 +195,17 @@ impl TracedClient {
     pub fn with_trace(mut self, trace: bool) -> Self {
         self.trace = trace;
         self
+    }
+
+    /// Sends `Authorization: Bearer <token>` on every request. Used with an
+    /// unauthenticated inner client, which skips the connection check the
+    /// gitlab crate would otherwise run (a blocking `/user` request) at build time.
+    pub fn with_bearer(mut self, token: &str) -> Result<Self, String> {
+        let mut value = http::HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|_| "token contains invalid characters".to_string())?;
+        value.set_sensitive(true);
+        self.bearer = Some(value);
+        Ok(self)
     }
 }
 
@@ -215,6 +228,10 @@ impl AsyncClient for TracedClient {
         request: http::request::Builder,
         body: Vec<u8>,
     ) -> Result<http::Response<Bytes>, ApiError<<Self as RestClient>::Error>> {
+        let request = match &self.bearer {
+            Some(value) => request.header(http::header::AUTHORIZATION, value.clone()),
+            None => request,
+        };
         let meta = if self.trace {
             request.uri_ref().map(|u| {
                 (
