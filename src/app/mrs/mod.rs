@@ -525,7 +525,7 @@ mod tests {
             color: "c".into(),
             text_color: Some("t".into()),
         }];
-        app.selected_label_ids.push(1);
+        app.selected_label_names.push("l".into());
         app.update_mr_labels().await.unwrap();
         app.selected_assignee_ids.push(1);
         app.update_mr_assignees().await.unwrap();

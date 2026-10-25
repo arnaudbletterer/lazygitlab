@@ -115,6 +115,40 @@ pub struct LabelChange {
     pub resulting: Vec<Label>,
 }
 
+fn label_scope(name: &str) -> Option<&str> {
+    name.rsplit_once("::").map(|(scope, _)| scope)
+}
+
+/// State kept while edits of one item are in flight: the pre-edit row and detail
+/// copies (the oldest, taken by the first edit), how many edits are running and
+/// how many were started since the snapshot.
+#[derive(Debug, Clone)]
+pub struct EditState<T> {
+    pub row: Option<T>,
+    pub detail: Option<T>,
+    pub inflight: usize,
+    pub total: usize,
+    pub distrust: bool,
+}
+
+/// Dropped when an edit task ends (success, failure, early return or panic).
+pub struct EditGuard {
+    tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>,
+    issue: bool,
+    project_id: u64,
+    iid: u64,
+}
+
+impl Drop for EditGuard {
+    fn drop(&mut self) {
+        let _ = self.tx.send(DataUpdate::EditSettled {
+            issue: self.issue,
+            project_id: self.project_id,
+            iid: self.iid,
+        });
+    }
+}
+
 impl App {
     fn popup_project_id(&self) -> u64 {
         self.selected_mr
@@ -143,12 +177,8 @@ impl App {
             Vec::new()
         };
         self.show_label_popup = true;
-        self.selected_label_ids = current
-            .iter()
-            .map(|l| l.id())
-            .filter(|id| *id != 0)
-            .collect();
         self.selected_label_names = current.iter().map(|l| l.name().to_string()).collect();
+        self.label_popup_baseline = self.selected_label_names.clone();
         self.label_state.select(Some(0));
     }
 
@@ -161,13 +191,6 @@ impl App {
         else {
             return;
         };
-        if label.id != 0 {
-            if self.selected_label_ids.contains(&label.id) {
-                self.selected_label_ids.retain(|&x| x != label.id);
-            } else {
-                self.selected_label_ids.push(label.id);
-            }
-        }
         if self.selected_label_names.iter().any(|n| n == &label.name) {
             self.selected_label_names.retain(|n| n != &label.name);
         } else {
@@ -175,21 +198,33 @@ impl App {
         }
     }
 
-    /// Labels are changed by name, and only those the popup can show are touched:
-    /// labels on the item that are missing from the popup list are preserved.
+    /// The change is the difference between the popup selection and the labels
+    /// the item had when the popup was opened, so labels changed meanwhile by
+    /// someone else and labels missing from the popup list are never touched.
+    /// The optimistic result applies that delta to the item's current labels.
     pub fn label_change(&self, current: &[Label]) -> LabelChange {
+        let baseline = &self.label_popup_baseline;
         let mut add = Vec::new();
         let mut remove = Vec::new();
-        let mut resulting: Vec<Label> = current.to_vec();
+        let mut added_labels = Vec::new();
         for l in self.popup_labels() {
             let checked = self.label_checked(l);
-            let present = current.iter().any(|c| c.name == l.name);
-            if checked && !present {
+            let was = baseline.iter().any(|n| n == &l.name);
+            if checked && !was {
                 add.push(l.name.clone());
-                resulting.push(l.clone());
-            } else if !checked && present {
+                added_labels.push(l.clone());
+            } else if !checked && was {
                 remove.push(l.name.clone());
-                resulting.retain(|c| c.name != l.name);
+            }
+        }
+        let mut resulting: Vec<Label> = current.to_vec();
+        resulting.retain(|c| !remove.contains(&c.name));
+        for l in added_labels {
+            if let Some(scope) = label_scope(&l.name) {
+                resulting.retain(|c| label_scope(&c.name) != Some(scope));
+            }
+            if !resulting.iter().any(|c| c.name == l.name) {
+                resulting.push(l);
             }
         }
         LabelChange {
@@ -205,73 +240,185 @@ impl App {
             .is_some_and(|t| t.elapsed() < METADATA_TTL)
     }
 
-    pub fn snapshot_mr_edit(&mut self, project_id: u64, iid: u64) {
+    pub fn begin_mr_edit(&mut self, project_id: u64, iid: u64) -> EditGuard {
         let row = self
             .merge_requests
             .iter()
             .find(|m| m.project_id == project_id && m.iid == iid)
             .cloned();
-        let snap = row.or_else(|| {
-            self.selected_mr
-                .clone()
-                .filter(|m| m.project_id == project_id && m.iid == iid)
-        });
-        if let Some(snap) = snap {
-            self.mr_edit_snapshots.insert((project_id, iid), snap);
+        let detail = self
+            .selected_mr
+            .clone()
+            .filter(|m| m.project_id == project_id && m.iid == iid);
+        let state = self
+            .mr_edit_snapshots
+            .entry((project_id, iid))
+            .or_insert(EditState {
+                row,
+                detail,
+                inflight: 0,
+                total: 0,
+                distrust: false,
+            });
+        state.inflight += 1;
+        state.total += 1;
+        EditGuard {
+            tx: self.tx.clone(),
+            issue: false,
+            project_id,
+            iid,
         }
     }
 
-    pub fn snapshot_issue_edit(&mut self, project_id: u64, iid: u64) {
+    pub fn begin_issue_edit(&mut self, project_id: u64, iid: u64) -> EditGuard {
         let row = self
             .issues
             .iter()
             .find(|i| i.project_id == project_id && i.iid == iid)
             .cloned();
-        let snap = row.or_else(|| {
-            self.selected_issue
-                .clone()
-                .filter(|i| i.project_id == project_id && i.iid == iid)
-        });
-        if let Some(snap) = snap {
-            self.issue_edit_snapshots.insert((project_id, iid), snap);
+        let detail = self
+            .selected_issue
+            .clone()
+            .filter(|i| i.project_id == project_id && i.iid == iid);
+        let state = self
+            .issue_edit_snapshots
+            .entry((project_id, iid))
+            .or_insert(EditState {
+                row,
+                detail,
+                inflight: 0,
+                total: 0,
+                distrust: false,
+            });
+        state.inflight += 1;
+        state.total += 1;
+        EditGuard {
+            tx: self.tx.clone(),
+            issue: true,
+            project_id,
+            iid,
         }
     }
 
+    pub fn begin_selected_mr_edit(&mut self) -> Option<EditGuard> {
+        let (p, i) = self.selected_mr.as_ref().map(|m| (m.project_id, m.iid))?;
+        Some(self.begin_mr_edit(p, i))
+    }
+
+    pub fn begin_selected_issue_edit(&mut self) -> Option<EditGuard> {
+        let (p, i) = self
+            .selected_issue
+            .as_ref()
+            .map(|m| (m.project_id, m.iid))?;
+        Some(self.begin_issue_edit(p, i))
+    }
+
+    pub fn settle_edit(&mut self, issue: bool, project_id: u64, iid: u64) {
+        let key = (project_id, iid);
+        if issue {
+            if let Some(s) = self.issue_edit_snapshots.get_mut(&key) {
+                s.inflight = s.inflight.saturating_sub(1);
+                if s.inflight == 0 {
+                    self.issue_edit_snapshots.remove(&key);
+                }
+            }
+        } else if let Some(s) = self.mr_edit_snapshots.get_mut(&key) {
+            s.inflight = s.inflight.saturating_sub(1);
+            if s.inflight == 0 {
+                self.mr_edit_snapshots.remove(&key);
+            }
+        }
+    }
+
+    pub fn mr_edit_pending(&self, project_id: u64, iid: u64) -> bool {
+        self.mr_edit_snapshots
+            .get(&(project_id, iid))
+            .is_some_and(|s| !s.distrust)
+    }
+
+    pub fn issue_edit_pending(&self, project_id: u64, iid: u64) -> bool {
+        self.issue_edit_snapshots
+            .get(&(project_id, iid))
+            .is_some_and(|s| !s.distrust)
+    }
+
+    /// A failed edit restores the pre-edit copies only when it was the sole edit
+    /// of the item and certainly not applied; otherwise the server copy is
+    /// refetched.
+    pub async fn edit_failed(&mut self, issue: bool, project_id: u64, iid: u64, error: String) {
+        let key = (project_id, iid);
+        let uncertain = error.contains("timed out");
+        let sole = if issue {
+            self.issue_edit_snapshots.get(&key).map(|s| s.total == 1)
+        } else {
+            self.mr_edit_snapshots.get(&key).map(|s| s.total == 1)
+        }
+        .unwrap_or(false);
+        let message = if uncertain {
+            format!("{error}; result uncertain, refreshing")
+        } else {
+            error
+        };
+        if sole && !uncertain {
+            if issue {
+                self.rollback_issue_edit(project_id, iid);
+            } else {
+                self.rollback_mr_edit(project_id, iid);
+            }
+        } else {
+            if issue {
+                if let Some(s) = self.issue_edit_snapshots.get_mut(&key) {
+                    s.distrust = true;
+                }
+                let _ = self.fetch_issue_detail(project_id, iid).await;
+            } else {
+                if let Some(s) = self.mr_edit_snapshots.get_mut(&key) {
+                    s.distrust = true;
+                }
+                let _ = self.fetch_discussions(project_id, iid).await;
+            }
+            let _ = self.tx.send(DataUpdate::TriggerRefresh);
+        }
+        Box::pin(self.process_update_single(DataUpdate::Error(message))).await;
+    }
+
     pub fn rollback_mr_edit(&mut self, project_id: u64, iid: u64) {
-        let Some(prev) = self.mr_edit_snapshots.remove(&(project_id, iid)) else {
+        let Some(state) = self.mr_edit_snapshots.get(&(project_id, iid)).cloned() else {
             return;
         };
-        if let Some(sel) = &mut self.selected_mr
+        if let (Some(sel), Some(prev)) = (&mut self.selected_mr, state.detail)
             && sel.project_id == project_id
             && sel.iid == iid
         {
-            *sel = prev.clone();
+            *sel = prev;
         }
-        if let Some(row) = self
-            .merge_requests
-            .iter_mut()
-            .find(|m| m.project_id == project_id && m.iid == iid)
-        {
+        if let (Some(row), Some(prev)) = (
+            self.merge_requests
+                .iter_mut()
+                .find(|m| m.project_id == project_id && m.iid == iid),
+            state.row,
+        ) {
             *row = prev;
         }
         self.filter_lists();
     }
 
     pub fn rollback_issue_edit(&mut self, project_id: u64, iid: u64) {
-        let Some(prev) = self.issue_edit_snapshots.remove(&(project_id, iid)) else {
+        let Some(state) = self.issue_edit_snapshots.get(&(project_id, iid)).cloned() else {
             return;
         };
-        if let Some(sel) = &mut self.selected_issue
+        if let (Some(sel), Some(prev)) = (&mut self.selected_issue, state.detail)
             && sel.project_id == project_id
             && sel.iid == iid
         {
-            *sel = prev.clone();
+            *sel = prev;
         }
-        if let Some(row) = self
-            .issues
-            .iter_mut()
-            .find(|i| i.project_id == project_id && i.iid == iid)
-        {
+        if let (Some(row), Some(prev)) = (
+            self.issues
+                .iter_mut()
+                .find(|i| i.project_id == project_id && i.iid == iid),
+            state.row,
+        ) {
             *row = prev;
         }
         self.filter_lists();
@@ -306,29 +453,13 @@ impl App {
         self.issue_edit_snapshots.clear();
         self.repository_ref = None;
         self.repository_tree.clear();
+        self.repository_tree_state = Default::default();
         self.project_branches.clear();
+        self.filtered_branches.clear();
+        self.branches_state.select(None);
+        self.pending_delete_branch = None;
         self.selected_file_content = None;
         self.file_scroll = 0;
         self.file_highlight_cache = None;
     }
-}
-
-impl App {
-    pub fn snapshot_selected_mr(&mut self) {
-        if let Some((p, i)) = self.selected_mr.as_ref().map(|m| (m.project_id, m.iid)) {
-            self.snapshot_mr_edit(p, i);
-        }
-    }
-
-    pub fn snapshot_selected_issue(&mut self) {
-        if let Some((p, i)) = self.selected_issue.as_ref().map(|m| (m.project_id, m.iid)) {
-            self.snapshot_issue_edit(p, i);
-        }
-    }
-}
-
-/// A response confirms a pending edit when it is newer than the pre-edit copy
-/// (or when timestamps are unknown and there is nothing to compare).
-pub fn confirms_edit(before: &Option<String>, response: &Option<String>) -> bool {
-    unknown_ts(before, response) || newer(response, before)
 }

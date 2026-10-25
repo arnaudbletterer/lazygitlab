@@ -4,7 +4,7 @@ use gitlab::api::AsyncQuery;
 
 impl App {
     pub async fn update_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         let (pid, iid) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid)
         } else {
@@ -68,6 +68,7 @@ impl App {
         self.textarea = ratatui_textarea::TextArea::default();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
                 std::time::Duration::from_secs(30),
                 edit.query_async(&client),
@@ -110,7 +111,7 @@ impl App {
         if change.add.is_empty() && change.remove.is_empty() {
             return Ok(());
         }
-        self.snapshot_mr_edit(pid, iid);
+        let edit_guard = Some(self.begin_mr_edit(pid, iid));
         if let Some(mr) = &mut self.selected_mr {
             mr.labels = change.resulting.clone();
         }
@@ -127,6 +128,7 @@ impl App {
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let edit = EditMergeRequest {
                 project: pid,
                 merge_request: iid,
@@ -178,7 +180,7 @@ impl App {
     }
 
     pub async fn update_mr_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -207,6 +209,7 @@ impl App {
             self.show_assignee_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let edit = EditMergeRequest {
                     project: pid,
                     merge_request: iid,
@@ -259,7 +262,7 @@ impl App {
     }
 
     pub async fn update_mr_reviewers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -288,6 +291,7 @@ impl App {
             self.show_reviewer_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let edit = EditMergeRequest {
                     project: pid,
                     merge_request: iid,
@@ -340,7 +344,7 @@ impl App {
     }
 
     pub async fn update_mr_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -374,6 +378,7 @@ impl App {
             self.show_milestone_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let edit = EditMergeRequest {
                     project: pid,
                     merge_request: iid,
@@ -426,7 +431,7 @@ impl App {
     }
 
     pub async fn update_mr_target_branch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -457,6 +462,7 @@ impl App {
                 let tx = self.tx.clone();
                 let _ = tx.send(DataUpdate::Loading(true));
                 tokio::spawn(async move {
+                    let _edit_guard = edit_guard;
                     let edit = EditMergeRequest {
                         project: pid,
                         merge_request: iid,

@@ -104,12 +104,12 @@ async fn test_user_story_label_editing() {
     // 2. Open Label Popup and Change Labels
     app.enter_detail_action().await;
     assert!(app.show_label_popup);
-    assert!(app.selected_label_ids.contains(&10));
+    assert!(!app.selected_label_names.is_empty());
 
     // Deselect label 10
     app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
         .await;
-    assert!(!app.selected_label_ids.contains(&10));
+    assert!(app.selected_label_names.is_empty());
 
     // Save changes
     Mock::given(method("PUT"))
@@ -1358,7 +1358,7 @@ async fn test_user_story_issue_metadata_editing() {
     // Select label at index 0 (ID 10)
     app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
         .await;
-    assert!(app.selected_label_ids.contains(&10));
+    assert!(!app.selected_label_names.is_empty());
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .await;

@@ -365,7 +365,7 @@ impl App {
     }
 
     pub async fn toggle_mr_draft(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         let (pid, iid, current_draft, current_title) = if let Some(mr) = &self.selected_mr {
             (
                 mr.project_id,
@@ -397,6 +397,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let edit = EditMergeRequest {
                 project: pid,
                 merge_request: iid,
@@ -550,7 +551,7 @@ impl App {
     }
 
     pub async fn toggle_mr_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         let (pid, iid, current_state) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid, mr.state.clone())
         } else {
@@ -581,6 +582,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let edit = EditMergeRequest {
                 project: pid,
                 merge_request: iid,
@@ -633,7 +635,7 @@ impl App {
 
 impl App {
     pub async fn toggle_mr_squash(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_mr();
+        let edit_guard = self.begin_selected_mr_edit();
         let (pid, iid, current_squash) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid, mr.squash.unwrap_or(false))
         } else {
@@ -660,6 +662,7 @@ impl App {
         }
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let edit = EditMergeRequest {
                 project: pid,
                 merge_request: iid,

@@ -350,7 +350,7 @@ impl App {
         if change.add.is_empty() && change.remove.is_empty() {
             return Ok(());
         }
-        self.snapshot_issue_edit(pid, iid);
+        let edit_guard = Some(self.begin_issue_edit(pid, iid));
         if let Some(issue) = &mut self.selected_issue {
             issue.labels = change.resulting.clone();
         }
@@ -367,6 +367,7 @@ impl App {
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _edit_guard = edit_guard;
             let ep = EditIssue {
                 project: pid,
                 issue: iid,
@@ -402,7 +403,7 @@ impl App {
     }
 
     pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -431,6 +432,7 @@ impl App {
             self.show_assignee_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,
@@ -467,7 +469,7 @@ impl App {
     }
 
     pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -493,6 +495,7 @@ impl App {
             self.show_milestone_popup = false;
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,
@@ -532,7 +535,7 @@ impl App {
         &mut self,
         date: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -550,6 +553,7 @@ impl App {
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,
@@ -589,7 +593,7 @@ impl App {
         &mut self,
         date: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -607,6 +611,7 @@ impl App {
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,
@@ -643,7 +648,7 @@ impl App {
     }
 
     pub async fn toggle_issue_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -656,6 +661,7 @@ impl App {
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,
@@ -692,7 +698,7 @@ impl App {
     }
 
     pub async fn toggle_issue_confidential(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.snapshot_selected_issue();
+        let edit_guard = self.begin_selected_issue_edit();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -712,6 +718,7 @@ impl App {
             let tx = self.tx.clone();
             let _ = tx.send(DataUpdate::Loading(true));
             tokio::spawn(async move {
+                let _edit_guard = edit_guard;
                 let ep = EditIssue {
                     project: pid,
                     issue: iid,

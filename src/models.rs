@@ -1058,6 +1058,11 @@ pub enum DataUpdate {
         project_id: u64,
         iid: u64,
     },
+    EditSettled {
+        issue: bool,
+        project_id: u64,
+        iid: u64,
+    },
     EditFailedMR {
         project_id: u64,
         iid: u64,
@@ -1189,10 +1194,12 @@ pub struct App {
     // Popups
     pub show_label_popup: bool,
     pub label_state: ListState,
-    pub selected_label_ids: Vec<u64>,
+    pub label_popup_baseline: Vec<String>,
     pub selected_label_names: Vec<String>,
-    pub mr_edit_snapshots: std::collections::HashMap<(u64, u64), MergeRequest>,
-    pub issue_edit_snapshots: std::collections::HashMap<(u64, u64), Issue>,
+    pub mr_edit_snapshots:
+        std::collections::HashMap<(u64, u64), crate::app::edits::EditState<MergeRequest>>,
+    pub issue_edit_snapshots:
+        std::collections::HashMap<(u64, u64), crate::app::edits::EditState<Issue>>,
     pub metadata_fetched_at: std::collections::HashMap<u64, std::time::Instant>,
 
     pub show_assignee_popup: bool,

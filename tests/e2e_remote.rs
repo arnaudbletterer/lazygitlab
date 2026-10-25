@@ -351,12 +351,12 @@ async fn live_smoke_collaboration_on_test_ground() {
         app.enter_detail_action().await;
         assert!(app.show_label_popup, "Label popup did not open");
         assert!(
-            !app.selected_label_ids.is_empty(),
+            !app.selected_label_names.is_empty(),
             "Existing label IDs not populated in popup state"
         );
 
-        let test_label_id = app.selected_label_ids[0];
-        app.selected_label_ids.retain(|&id| id != test_label_id);
+        let test_label = app.selected_label_names[0].clone();
+        app.selected_label_names.retain(|n| n != &test_label);
         app.show_label_popup = false;
     }
 

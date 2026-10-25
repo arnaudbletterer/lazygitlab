@@ -318,7 +318,16 @@ async fn pending_and_unconfirmed_rows_never_reach_the_cache_file() {
     let pending = dummy_mr(1_000_006, "fake");
     app.merge_requests = vec![pending, real];
     let snapshot = dummy_mr(5, "confirmed title");
-    app.mr_edit_snapshots.insert((1, 5), snapshot);
+    app.mr_edit_snapshots.insert(
+        (1, 5),
+        lazygitlab::app::edits::EditState {
+            row: Some(snapshot),
+            detail: None,
+            inflight: 1,
+            total: 1,
+            distrust: false,
+        },
+    );
     app.write_mr_cache("k", None);
     cache.flush().unwrap();
     let file = cache.path().unwrap();
@@ -506,4 +515,203 @@ async fn user_change_drops_the_previous_users_rows() {
     assert!(app.merge_requests.is_empty());
     assert!(app.issues.is_empty());
     assert!(app.selected_mr.is_none());
+}
+
+fn server_mr_json(title: &str) -> serde_json::Value {
+    serde_json::json!({
+        "iid": 1, "project_id": 1, "title": title,
+        "author": {"id": 1, "username": "u"}, "state": "opened",
+        "updated_at": "2030-01-01T00:00:00Z"
+    })
+}
+
+async fn mount_mr_get(server: &MockServer, title: &str) {
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/1/merge_requests/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(server_mr_json(title)))
+        .mount(server)
+        .await;
+}
+
+async fn get_count(server: &MockServer) -> usize {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| {
+            r.method.as_str() == "GET" && r.url.path() == "/api/v4/projects/1/merge_requests/1"
+        })
+        .count()
+}
+
+fn names_of(app: &App) -> Vec<String> {
+    app.selected_mr
+        .as_ref()
+        .unwrap()
+        .labels
+        .iter()
+        .map(|l| l.name.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn label_diff_uses_the_labels_from_when_the_popup_opened() {
+    let (server, mut app, _rx) = setup_app().await;
+    mount_put_ok(&server, "/api/v4/projects/1/merge_requests/1").await;
+    mr_with_labels(&mut app, &[(7, "bug")], &[(7, "bug"), (8, "feature")]);
+    app.selected_mr.as_mut().unwrap().labels = vec![label(7, "bug"), label(9, "added-by-someone")];
+    app.label_state.select(Some(1));
+    app.toggle_popup_label();
+    app.update_mr_labels().await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let body = last_put_body(&server).await;
+    assert_eq!(form(&body, "add_labels").as_deref(), Some("feature"));
+    assert!(form(&body, "remove_labels").is_none());
+    let names = names_of(&app);
+    assert!(names.contains(&"added-by-someone".to_string()));
+    assert!(names.contains(&"feature".to_string()));
+}
+
+#[tokio::test]
+async fn scoped_label_replaces_the_other_label_of_its_scope_in_the_view() {
+    let (server, mut app, _rx) = setup_app().await;
+    mount_put_ok(&server, "/api/v4/projects/1/merge_requests/1").await;
+    mr_with_labels(
+        &mut app,
+        &[(7, "team::y")],
+        &[(7, "team::y"), (8, "team::x")],
+    );
+    app.label_state.select(Some(1));
+    app.toggle_popup_label();
+    app.update_mr_labels().await.unwrap();
+    assert_eq!(names_of(&app), vec!["team::x".to_string()]);
+}
+
+async fn two_edit_app(
+    server: &MockServer,
+    a_status: u16,
+    a_delay: u64,
+    b_status: u16,
+    b_delay: u64,
+) -> (App, Rx) {
+    Mock::given(path("/api/v4/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":1,"username":"u"})),
+        )
+        .mount(server)
+        .await;
+    let client = GitlabBuilder::new(server.uri().replace("http://", ""), "t")
+        .insecure()
+        .build_async()
+        .await
+        .unwrap();
+    let (tx, rx) = mpsc::unbounded_channel();
+    let mut app = App::new(client, tx, None);
+    Mock::given(method("PUT"))
+        .and(wiremock::matchers::body_string_contains("title="))
+        .respond_with(
+            ResponseTemplate::new(a_status)
+                .set_delay(std::time::Duration::from_millis(a_delay))
+                .set_body_json(serde_json::json!({})),
+        )
+        .mount(server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(wiremock::matchers::body_string_contains("description="))
+        .respond_with(
+            ResponseTemplate::new(b_status)
+                .set_delay(std::time::Duration::from_millis(b_delay))
+                .set_body_json(serde_json::json!({})),
+        )
+        .mount(server)
+        .await;
+    let mr = dummy_mr(1, "old title");
+    app.merge_requests = vec![mr.clone()];
+    app.selected_mr = Some(mr);
+    app.input_target = lazygitlab::models::InputTarget::EditTitle;
+    app.textarea = ratatui_textarea::TextArea::from(vec!["A title"]);
+    app.update_mr().await.unwrap();
+    app.input_target = lazygitlab::models::InputTarget::EditDescription;
+    app.textarea = ratatui_textarea::TextArea::from(vec!["B description"]);
+    app.update_mr().await.unwrap();
+    (app, rx)
+}
+
+#[tokio::test]
+async fn first_edit_failing_does_not_wipe_a_second_edit_in_flight() {
+    let server = MockServer::start().await;
+    mount_mr_get(&server, "server title").await;
+    let (mut app, mut rx) = two_edit_app(&server, 500, 0, 200, 1500).await;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    drain(&mut app, &mut rx).await;
+    assert!(app.last_error.is_some());
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(get_count(&server).await >= 1, "detail must be refetched");
+    let sel = app.selected_mr.as_ref().unwrap();
+    assert_eq!(
+        sel.description.as_deref(),
+        Some("B description"),
+        "edit B must survive the failure of edit A"
+    );
+}
+
+#[tokio::test]
+async fn second_edit_failing_after_the_first_succeeded_refetches() {
+    let server = MockServer::start().await;
+    mount_mr_get(&server, "server title").await;
+    let (mut app, mut rx) = two_edit_app(&server, 200, 0, 500, 500).await;
+    pump(&mut app, &mut rx).await;
+    pump(&mut app, &mut rx).await;
+    assert!(app.last_error.is_some());
+    assert!(get_count(&server).await >= 1, "detail must be refetched");
+    assert_eq!(app.selected_mr.as_ref().unwrap().title, "server title");
+}
+
+#[tokio::test]
+async fn timed_out_edit_is_uncertain_and_refetches_instead_of_rolling_back() {
+    let (server, mut app, mut rx) = setup_app().await;
+    mount_mr_get(&server, "server title").await;
+    let mut mr = dummy_mr(1, "old");
+    mr.updated_at = Some("2025-01-01T00:00:00Z".into());
+    app.merge_requests = vec![mr.clone()];
+    app.selected_mr = Some(mr);
+    let guard = app.begin_mr_edit(1, 1);
+    app.selected_mr.as_mut().unwrap().title = "optimistic".into();
+    let _ = app.tx.send(DataUpdate::EditFailedMR {
+        project_id: 1,
+        iid: 1,
+        error: "Update MR timed out".into(),
+    });
+    drain(&mut app, &mut rx).await;
+    assert_ne!(app.selected_mr.as_ref().unwrap().title, "old");
+    assert!(app.last_error.as_deref().unwrap().contains("uncertain"));
+    drop(guard);
+    pump(&mut app, &mut rx).await;
+    assert!(get_count(&server).await >= 1);
+    assert_eq!(app.selected_mr.as_ref().unwrap().title, "server title");
+}
+
+#[tokio::test]
+async fn rollback_keeps_detail_only_fields() {
+    let (server, mut app, mut rx) = setup_app().await;
+    Mock::given(method("PUT"))
+        .and(path("/api/v4/projects/1/merge_requests/1"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let row = dummy_mr(1, "old title");
+    let mut detail = row.clone();
+    detail.description = Some("long description".into());
+    detail.participants = vec![Author::new(9, "alice".into())];
+    app.merge_requests = vec![row];
+    app.selected_mr = Some(detail);
+    app.input_target = lazygitlab::models::InputTarget::EditTitle;
+    app.textarea = ratatui_textarea::TextArea::from(vec!["new title"]);
+    app.update_mr().await.unwrap();
+    pump(&mut app, &mut rx).await;
+    let sel = app.selected_mr.as_ref().unwrap();
+    assert_eq!(sel.title, "old title");
+    assert_eq!(sel.description.as_deref(), Some("long description"));
+    assert_eq!(sel.participants.len(), 1);
 }

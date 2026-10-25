@@ -438,6 +438,7 @@ impl App {
                 let row = self
                     .mr_edit_snapshots
                     .get(&(m.project_id, m.iid))
+                    .and_then(|s| s.row.as_ref())
                     .unwrap_or(m);
                 CachedItem::Mr(row.into())
             })

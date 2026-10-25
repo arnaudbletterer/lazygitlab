@@ -138,7 +138,7 @@ impl App {
             collapsed_groups: std::collections::HashSet::new(),
             show_label_popup: false,
             label_state: ListState::default(),
-            selected_label_ids: Vec::new(),
+            label_popup_baseline: Vec::new(),
             selected_label_names: Vec::new(),
             mr_edit_snapshots: std::collections::HashMap::new(),
             issue_edit_snapshots: std::collections::HashMap::new(),
@@ -730,6 +730,20 @@ impl App {
                 value,
             } => {
                 if self.selected_project.as_ref().map(|p| p.id) != Some(project_id) {
+                    if let Some(cached) = self.project_variable_cache.get_mut(&project_id) {
+                        if let Some(v) = cached.iter_mut().find(|v| v.key == key) {
+                            v.value = value;
+                        } else {
+                            cached.push(ProjectVariable {
+                                key,
+                                value,
+                                variable_type: "env_var".into(),
+                                protected: false,
+                                masked: false,
+                                environment_scope: "*".into(),
+                            });
+                        }
+                    }
                     return;
                 }
                 if let Some(v) = self.project_variables.iter_mut().find(|v| v.key == key) {
@@ -986,14 +1000,7 @@ impl App {
                     },
                 );
                 let key = (mr.project_id, mr.iid);
-                if self
-                    .mr_edit_snapshots
-                    .get(&key)
-                    .is_some_and(|snap| edits::confirms_edit(&snap.updated_at, &mr.updated_at))
-                {
-                    self.mr_edit_snapshots.remove(&key);
-                }
-                let pending = self.mr_edit_snapshots.contains_key(&key);
+                let pending = self.mr_edit_pending(key.0, key.1);
                 if let Some(selected) = &mut self.selected_mr {
                     if selected.iid == mr.iid && selected.project_id == mr.project_id {
                         for label in &mut mr.labels {
@@ -1026,14 +1033,7 @@ impl App {
             DataUpdate::IssueDetail(mut issue) => {
                 self.fix_issue_labels(&mut issue);
                 let key = (issue.project_id, issue.iid);
-                if self
-                    .issue_edit_snapshots
-                    .get(&key)
-                    .is_some_and(|snap| edits::confirms_edit(&snap.updated_at, &issue.updated_at))
-                {
-                    self.issue_edit_snapshots.remove(&key);
-                }
-                let pending = self.issue_edit_snapshots.contains_key(&key);
+                let pending = self.issue_edit_pending(key.0, key.1);
                 if let Some(selected) = &mut self.selected_issue {
                     if selected.iid == issue.iid && selected.project_id == issue.project_id {
                         for label in &mut issue.labels {
@@ -1141,21 +1141,26 @@ impl App {
                     .retain(|m| !(m.iid == iid && m.project_id == project_id));
                 self.filter_lists();
             }
+            DataUpdate::EditSettled {
+                issue,
+                project_id,
+                iid,
+            } => {
+                self.settle_edit(issue, project_id, iid);
+            }
             DataUpdate::EditFailedMR {
                 project_id,
                 iid,
                 error,
             } => {
-                self.rollback_mr_edit(project_id, iid);
-                Box::pin(self.process_update_single(DataUpdate::Error(error))).await;
+                self.edit_failed(false, project_id, iid, error).await;
             }
             DataUpdate::EditFailedIssue {
                 project_id,
                 iid,
                 error,
             } => {
-                self.rollback_issue_edit(project_id, iid);
-                Box::pin(self.process_update_single(DataUpdate::Error(error))).await;
+                self.edit_failed(true, project_id, iid, error).await;
             }
             DataUpdate::CheckPagination => {
                 let _ = self.check_pagination().await;
