@@ -47,11 +47,8 @@ pub struct CachedMr {
     pub target_branch: String,
     pub pipeline_id: Option<u64>,
     pub pipeline_status: Option<String>,
-    pub approvals_left: Option<u64>,
-    pub unresolved_count: Option<u64>,
     pub web_path: String,
     pub created_at: Option<String>,
-    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,10 +63,8 @@ pub struct CachedIssue {
     pub labels: Vec<CachedLabel>,
     pub milestone: Option<CachedMilestone>,
     pub issue_type: Option<String>,
-    pub confidential: bool,
     pub web_path: String,
     pub created_at: Option<String>,
-    pub updated_at: Option<String>,
     pub due_date: Option<String>,
 }
 
@@ -99,7 +94,7 @@ pub struct CachedTodo {
     pub project: Option<CachedTodoProject>,
     pub action_name: String,
     pub target_type: String,
-    pub target_title: String,
+    pub body_preview: String,
     pub target_path: String,
     pub state: String,
     pub created_at: String,
@@ -119,7 +114,11 @@ fn url_path(url: &str) -> String {
 }
 
 fn join_url(host: &str, path: &str) -> String {
-    if path.is_empty() {
+    let safe = path.starts_with('/')
+        && !path.starts_with("//")
+        && !path.contains('\\')
+        && !path.chars().any(char::is_control);
+    if !safe {
         return String::new();
     }
     format!("{}{path}", host.trim_end_matches('/'))
@@ -208,11 +207,8 @@ impl From<&MergeRequest> for CachedMr {
             target_branch: m.target_branch.clone(),
             pipeline_id: m.head_pipeline.as_ref().map(|p| p.id),
             pipeline_status: m.head_pipeline.as_ref().map(|p| p.status.clone()),
-            approvals_left: None,
-            unresolved_count: None,
             web_path: url_path(&m.web_url),
             created_at: m.created_at.clone(),
-            updated_at: None,
         }
     }
 }
@@ -256,9 +252,17 @@ impl CachedMr {
     }
 }
 
-impl From<&Issue> for CachedIssue {
-    fn from(i: &Issue) -> Self {
-        Self {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfidentialIssue;
+
+impl TryFrom<&Issue> for CachedIssue {
+    type Error = ConfidentialIssue;
+
+    fn try_from(i: &Issue) -> Result<Self, ConfidentialIssue> {
+        if i.confidential {
+            return Err(ConfidentialIssue);
+        }
+        Ok(Self {
             iid: i.iid,
             project_id: i.project_id,
             project_path: project_path(&i.references),
@@ -269,12 +273,10 @@ impl From<&Issue> for CachedIssue {
             labels: i.labels.iter().map(Into::into).collect(),
             milestone: i.milestone.as_ref().map(Into::into),
             issue_type: i.issue_type.clone(),
-            confidential: i.confidential,
             web_path: url_path(&i.web_url),
             created_at: i.created_at.clone(),
-            updated_at: None,
             due_date: i.due_date.clone(),
-        }
+        })
     }
 }
 
@@ -297,7 +299,7 @@ impl CachedIssue {
             start_date: None,
             weight: None,
             task_completion_status: None,
-            confidential: self.confidential,
+            confidential: false,
             created_at: self.created_at.clone(),
             upvotes: None,
             downvotes: None,
@@ -350,7 +352,7 @@ impl From<&Todo> for CachedTodo {
             }),
             action_name: t.action_name.clone(),
             target_type: t.target_type.clone(),
-            target_title: t.body.clone(),
+            body_preview: t.body.chars().take(80).collect(),
             target_path: url_path(&t.target_url),
             state: t.state.clone(),
             created_at: t.created_at.clone(),
@@ -376,7 +378,7 @@ impl CachedTodo {
             action_name: self.action_name.clone(),
             target_type: self.target_type.clone(),
             target_url: join_url(host, &self.target_path),
-            body: self.target_title.clone(),
+            body: self.body_preview.clone(),
             state: self.state.clone(),
             created_at: self.created_at.clone(),
             group: None,

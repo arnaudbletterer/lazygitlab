@@ -10,8 +10,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const SCHEMA: u32 = 1;
-pub const MAX_TOTAL_BYTES: usize = 20 * 1024 * 1024;
+/// Bump SCHEMA whenever a cached row gains, loses or changes a field.
+pub const SCHEMA: u32 = 2;
+pub const MAX_TOTAL_BYTES: usize = 18 * 1024 * 1024;
 pub const MAX_FILE_BYTES: u64 = 20 * 1024 * 1024;
 pub const MAX_AGE_SECS: u64 = 7 * 24 * 3600;
 
@@ -86,6 +87,7 @@ pub fn host_hash(host: &str) -> String {
 pub fn default_cache_dir() -> Option<PathBuf> {
     let state = crate::logger::state_dir();
     if state.as_os_str().is_empty() || state.starts_with(std::env::temp_dir()) {
+        tracing::info!("list cache disabled: state dir is under temp");
         return None;
     }
     Some(state.join("cache").join("v1"))
@@ -268,19 +270,23 @@ impl ListCache {
 
     pub fn invalidate_user(&self, new_user_id: NonZeroU64) {
         let _flush = self.flush_guard.lock().unwrap_or_else(|e| e.into_inner());
-        let mut state = self.lock();
-        if state.user_id == Some(new_user_id) {
-            return;
-        }
-        if let Some(old_id) = state.user_id {
+        let old_id = {
+            let mut state = self.lock();
+            if state.user_id == Some(new_user_id) {
+                return;
+            }
+            let old_id = state.user_id;
+            state.user_id = Some(new_user_id);
+            state.entries.clear();
+            state.flushed_generation = state.generation;
+            old_id
+        };
+        if let Some(old_id) = old_id {
             let old = self.path_for(old_id);
             if !self.refused && !is_symlink(&old) {
                 let _ = std::fs::remove_file(&old);
             }
         }
-        state.user_id = Some(new_user_id);
-        state.entries.clear();
-        state.flushed_generation = state.generation;
     }
 
     pub fn flush(&self) -> io::Result<()> {
@@ -290,19 +296,23 @@ impl ListCache {
     #[doc(hidden)]
     pub fn flush_with_hook(&self, before_rename: &dyn Fn() -> io::Result<()>) -> io::Result<()> {
         let _flush = self.flush_guard.lock().unwrap_or_else(|e| e.into_inner());
-        let (path, body, generation) = {
+        let (id, dirty) = {
             let state = self.lock();
-            let Some(id) = state.user_id else {
-                return Ok(());
-            };
-            if state.generation == state.flushed_generation {
-                return Ok(());
-            }
-            let path = self.path_for(id);
-            if self.refused || is_symlink(&path) {
-                return Err(io::Error::other("cache path is refused"));
-            }
-            crate::logger::ensure_private_dir(&self.dir)?;
+            (state.user_id, state.generation != state.flushed_generation)
+        };
+        let Some(id) = id else {
+            return Ok(());
+        };
+        if !dirty {
+            return Ok(());
+        }
+        let path = self.path_for(id);
+        if self.refused || is_symlink(&path) {
+            return Err(io::Error::other("cache path is refused"));
+        }
+        crate::logger::ensure_private_dir(&self.dir)?;
+        let (body, generation) = {
+            let state = self.lock();
             let data = FileData {
                 schema: SCHEMA,
                 last_user_id: id.get(),
@@ -313,7 +323,7 @@ impl ListCache {
                     .collect(),
             };
             let body = serde_json::to_vec(&data).map_err(io::Error::other)?;
-            (path, body, state.generation)
+            (body, state.generation)
         };
         write_private(&path, &body, before_rename)?;
         let mut state = self.lock();

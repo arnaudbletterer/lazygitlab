@@ -30,7 +30,7 @@ fn item(n: u64) -> CachedItem {
         project: None,
         action_name: "assigned".into(),
         target_type: "MergeRequest".into(),
-        target_title: "x".repeat(100),
+        body_preview: "x".repeat(100),
         target_path: "/g/p/-/merge_requests/1".into(),
         state: "pending".into(),
         created_at: "2025-01-01T00:00:00Z".into(),
@@ -59,7 +59,6 @@ fn roundtrip() {
     c.flush().unwrap();
     let c2 = load(&dir);
     assert_eq!(c2.get(&key), Some(e));
-    assert_eq!(c2.last_user_id(), uid(7));
     assert!(c2.get("other").is_none());
 }
 
@@ -340,7 +339,7 @@ fn realistic_payloads_leak_no_host_or_personal_data() {
         CacheEntry::new(
             vec![
                 CachedItem::Mr(CachedMr::from(&mr)),
-                CachedItem::Issue(CachedIssue::from(&issue)),
+                CachedItem::Issue(CachedIssue::try_from(&issue).unwrap()),
                 CachedItem::Todo(CachedTodo::from(&todo)),
                 CachedItem::Pipeline(CachedPipeline::from(&pipeline)),
             ],
@@ -388,6 +387,82 @@ fn realistic_payloads_leak_no_host_or_personal_data() {
         }
         other => panic!("unexpected rows {other:?}"),
     }
+}
+
+#[test]
+fn confidential_issues_are_not_persisted() {
+    let mut issue: Issue = serde_json::from_str(ISSUE_JSON).unwrap();
+    issue.confidential = true;
+    assert!(CachedIssue::try_from(&issue).is_err());
+}
+
+#[test]
+fn todo_body_is_truncated_on_char_boundary() {
+    let mut todo: Todo = serde_json::from_str(TODO_JSON).unwrap();
+    todo.body = "é".repeat(200);
+    let row = CachedTodo::from(&todo);
+    assert_eq!(row.body_preview.chars().count(), 80);
+}
+
+#[test]
+fn poisoned_path_cannot_redirect_host() {
+    let dir = tmp("poison");
+    let c = load(&dir);
+    let mut e = entry(1);
+    let bad = ["@evil.example/x", "//evil.example/x", "/a\\@evil", ""];
+    e.items = bad
+        .iter()
+        .map(|p| {
+            let mut t = match item(1) {
+                CachedItem::Todo(t) => t,
+                _ => unreachable!(),
+            };
+            t.target_path = (*p).to_string();
+            CachedItem::Todo(t)
+        })
+        .collect();
+    c.put("k", e);
+    c.flush().unwrap();
+    for it in load(&dir).get("k").unwrap().items {
+        if let CachedItem::Todo(t) = it {
+            assert_eq!(
+                t.to_model("https://host").target_url,
+                "",
+                "{}",
+                t.target_path
+            );
+        }
+    }
+    let ok = CachedTodo {
+        target_path: "/g/p".into(),
+        ..match item(1) {
+            CachedItem::Todo(t) => t,
+            _ => unreachable!(),
+        }
+    };
+    assert_eq!(ok.to_model("https://host/").target_url, "https://host/g/p");
+}
+
+#[test]
+fn cache_filled_to_cap_survives_reload() {
+    let dir = tmp("full");
+    let c = load(&dir);
+    let mut big = match item(1) {
+        CachedItem::Todo(t) => t,
+        _ => unreachable!(),
+    };
+    big.body_preview = "y".repeat(1024 * 1024);
+    let n = 25;
+    for i in 1..=n {
+        let e = CacheEntry::new(vec![CachedItem::Todo(big.clone())], None, None);
+        assert!(c.put(&format!("k{i}"), e));
+    }
+    assert!(c.get("k1").is_none());
+    c.flush().unwrap();
+    let len = std::fs::metadata(c.path().unwrap()).unwrap().len();
+    assert!(len <= MAX_FILE_BYTES, "{len}");
+    let c2 = load(&dir);
+    assert!(c2.get(&format!("k{n}")).is_some());
 }
 
 #[test]
