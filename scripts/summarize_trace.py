@@ -19,6 +19,10 @@ import sys
 MARKER = '{"trace":1'
 
 
+def numeric(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def records(lines):
     for line in lines:
         i = line.find(MARKER)
@@ -28,7 +32,8 @@ def records(lines):
             rec = json.loads(line[i:])
         except ValueError:
             continue
-        if isinstance(rec, dict) and rec.get("trace") == 1:
+        if (isinstance(rec, dict) and rec.get("trace") == 1
+                and numeric(rec.get("ms")) and numeric(rec.get("bytes"))):
             yield rec
 
 

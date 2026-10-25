@@ -9,8 +9,28 @@ use gitlab::{AsyncGitlab, RestError};
 
 pub const ENV_VAR: &str = "LAZYGITLAB_TRACE";
 
+/// Upper bound on trace lines per run (about 8 MB of log), so a long session cannot fill the disk.
+pub const MAX_TRACE_LINES: u64 = 50_000;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Emit {
+    Yes,
+    Notice,
+    No,
+}
+
+/// `written` is the number of trace lines already emitted: the line after the last allowed one is a single notice.
+pub fn emit_allowed(written: u64, max: u64) -> Emit {
+    match written {
+        n if n < max => Emit::Yes,
+        n if n == max => Emit::Notice,
+        _ => Emit::No,
+    }
+}
+
 static REQUESTS: AtomicU64 = AtomicU64::new(0);
 static BYTES: AtomicU64 = AtomicU64::new(0);
+static LINES: AtomicU64 = AtomicU64::new(0);
 static START: OnceLock<Instant> = OnceLock::new();
 static ENABLED: OnceLock<bool> = OnceLock::new();
 
@@ -195,15 +215,19 @@ impl AsyncClient for TracedClient {
         request: http::request::Builder,
         body: Vec<u8>,
     ) -> Result<http::Response<Bytes>, ApiError<<Self as RestClient>::Error>> {
-        let meta = request.uri_ref().map(|u| {
-            (
-                request
-                    .method_ref()
-                    .map_or_else(|| "GET".to_string(), |m| m.to_string()),
-                template(u.path()),
-                page_from_query(u.query()),
-            )
-        });
+        let meta = if self.trace {
+            request.uri_ref().map(|u| {
+                (
+                    request
+                        .method_ref()
+                        .map_or_else(|| "GET".to_string(), |m| m.to_string()),
+                    template(u.path()),
+                    page_from_query(u.query()),
+                )
+            })
+        } else {
+            None
+        };
         let start = Instant::now();
         let result = self.inner.rest_async(request, body).await;
         let elapsed = start.elapsed();
@@ -224,6 +248,17 @@ impl AsyncClient for TracedClient {
             && let Some((method, endpoint, request_page)) = meta
         {
             let t_ms = START.get_or_init(Instant::now).elapsed().as_millis() as u64;
+            let allowed = emit_allowed(LINES.fetch_add(1, Ordering::Relaxed), MAX_TRACE_LINES);
+            if allowed == Emit::No {
+                return result;
+            }
+            if allowed == Emit::Notice {
+                tracing::info!(
+                    "{}",
+                    serde_json::json!({"trace": 2, "t_ms": t_ms, "notice": "trace stopped", "max_lines": MAX_TRACE_LINES})
+                );
+                return result;
+            }
             let record = Record {
                 method: &method,
                 endpoint: &endpoint,

@@ -167,7 +167,23 @@ fn templates_replace_ids_and_unknown_segments() {
     );
     assert_eq!(template("/api/v4/user"), "/user");
     assert_eq!(
+        template("/api/v4/projects/acme%2Fw/repository/files/src%2Fmain.rs/raw"),
+        "/projects/:path/repository/files/:x/raw"
+    );
+    assert_eq!(template("/api/v4/users/alice"), "/users/:path");
+    assert_eq!(template("/api/v4/users/alice/projects"), "/users/:path/projects");
+    assert_eq!(
         template("/api/v4/groups/team/projects"),
         "/groups/:path/projects"
+    );
+}
+
+#[test]
+fn trace_line_cap_emits_one_notice_then_stops() {
+    use lazygitlab::trace::{Emit, emit_allowed};
+    let seen: Vec<Emit> = (0..5).map(|n| emit_allowed(n, 3)).collect();
+    assert_eq!(
+        seen,
+        vec![Emit::Yes, Emit::Yes, Emit::Yes, Emit::Notice, Emit::No]
     );
 }
