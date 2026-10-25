@@ -110,3 +110,45 @@ scripts/summarize_trace.py --extract ~/.local/state/lazygitlab/lazygitlab.log > 
 ```
 
 The trace has one JSON line per API request: method, endpoint template (numeric ids replaced by `:id`, project and group paths by `:path`), status, duration in ms, response bytes, page and whether the answer was a 304. The host, token, project names and query values are never written, so `trace.jsonl` is safe to send. The rest of the log can contain project paths, so send only the extracted file.
+
+## After wiring merge requests
+
+Same method as above (headless app against `tools/demo/mock_gitlab.py --big`, release build, one run per cell, `make bench` scenarios and the cold variant with `--settle-ms 0 --timeout-ms 5000`), run on the branch that wires the merge request lists. Raw results: `docs/performance-data-after-warm.json` and `docs/performance-data-after-cold.json`; every figure below comes from those files or from the baseline tables above. Load average was 1.7 at the start and 0.6 at the end, with no compile running, so differences under about 100 ms are noise.
+
+What changed for merge requests: the dashboard list asks GraphQL first and falls back to REST (the mock has no GraphQL, so this run exercises the REST fallback only: `per_page=100`, pages in parallel, at most 6 requests in flight, rows shown every 100 ms as projects answer), cached rows are painted first when a cache exists (the bench runs with a throw-away home, so the cache is off and these are cold-cache numbers), background refreshes ask only for rows changed since the last fetch, and detail requests wait for the cursor to rest 250 ms.
+
+Warm (navigation after startup has settled), merge requests only:
+
+| latency ms | | first rows after nav | reqs to first rows | rows reached | full list | total reqs | total KB |
+|---|---|---|---|---|---|---|---|
+| 0 | before | 103 | 40 | 117/500 | n/a | 5364 | 5722 |
+| 0 | after | 104 | 43 | 500/500 | 104 | 49 | 905 |
+| 100 | before | 316 | 40 | 50/500 | n/a | 5734 | 5799 |
+| 100 | after | 204 | 8 | 500/500 | 747 | 49 | 905 |
+| 300 | before | 406 | 40 | 50/500 | n/a | 5593 | 5520 |
+| 300 | after | 407 | 8 | 500/500 | 2221 | 49 | 905 |
+
+Cold (navigation key at startup):
+
+| latency ms | | first rows after nav | reqs to first rows | rows reached | full list | total reqs | total KB |
+|---|---|---|---|---|---|---|---|
+| 0 | before | 205 | 47 | 117/500 | n/a | 1609 | 2299 |
+| 0 | after | 205 | 49 | 500/500 | 205 | 49 | 905 |
+| 100 | before | 407 | 48 | 50/500 | n/a | 1491 | 2162 |
+| 100 | after | 406 | 16 | 500/500 | 951 | 50 | 906 |
+| 300 | before | 711 | 48 | 50/500 | n/a | 1389 | 2135 |
+| 300 | after | 712 | 16 | 500/500 | 2430 | 50 | 906 |
+
+Reading the tables:
+
+- The full 500 rows are now reached in every cell, where no cell of the baseline got past 117. The list is complete several round trips after the first rows at 100 and 300 ms latency, which is 41 list requests (40 projects, one with a second page) through a budget of 6 in flight.
+- First rows keep the cost of one round trip plus a 100 ms tick, but need 8 to 16 requests instead of 40 at the moment they appear, because the budget of 6 releases rows as the first waves answer.
+- Total requests over the scripted run fall from 5364-5734 to 49, and bytes from 5.5-5.8 MB to 0.9 MB. Most of the drop is the detail debounce: the script presses `j` 15 times per burst and the baseline sent 4 detail requests per row passed, now none are sent while the cursor moves. The other part is the baseline's repeated re-fetch of page N for all projects while paginating, which no longer exists.
+- Time to the last row grows with latency (747 ms at 100, 2221 ms at 300) because the REST fallback is bounded to 6 requests in flight. With GraphQL, 45 projects take 3 requests in one wave (`tests/mr_list_perf.rs`: 500 rows over 50 projects load in under 2 s at 100 ms latency for both transports, and a refresh with nothing changed sends one request per batch and changes nothing).
+
+Caveats:
+
+- The "before" figures are from commit `1c73c76`; master has since gained the list stability and merge-rule fixes, which are included in "after" but not in "before". The difference between the two tables is therefore the whole of the work between them, not only this change.
+- The mock has no GraphQL endpoint, so the GraphQL gain (3 requests for 45 projects) is shown by the wiremock tests, not by this bench. The cached first paint is likewise covered by a test (`cached_rows_are_drawn_before_any_network_response`), not by the bench.
+- One run per cell, headless frame times, loopback and a single-process Python mock, as in the baseline.
+- The REST path reads at most 5 pages (500 rows) per project and the GraphQL path at most 80 per project, so a project with more merge requests in the chosen state shows its most recently updated ones only. The project merge request list uses the REST path only.
