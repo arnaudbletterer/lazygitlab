@@ -365,6 +365,7 @@ impl App {
     }
 
     pub async fn toggle_mr_draft(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         let (pid, iid, current_draft, current_title) = if let Some(mr) = &self.selected_mr {
             (
                 mr.project_id,
@@ -403,6 +404,8 @@ impl App {
                 description: None,
                 state_event: None,
                 labels: None,
+                add_labels: None,
+                remove_labels: None,
                 assignee_ids: None,
                 reviewer_ids: None,
                 milestone_id: None,
@@ -433,6 +436,8 @@ impl App {
                             description: None,
                             state_event: None,
                             labels: None,
+                            add_labels: None,
+                            remove_labels: None,
                             assignee_ids: None,
                             reviewer_ids: None,
                             milestone_id: None,
@@ -467,6 +472,8 @@ impl App {
                                         description: None,
                                         state_event: None,
                                         labels: None,
+                                        add_labels: None,
+                                        remove_labels: None,
                                         assignee_ids: None,
                                         reviewer_ids: None,
                                         milestone_id: None,
@@ -491,34 +498,50 @@ impl App {
                                             }
                                         }
                                         Ok(Err(e3)) => {
-                                            let _ = tx.send(DataUpdate::Error(format!(
-                                                "MR update failed: {}",
-                                                e3
-                                            )));
+                                            let _ = tx.send(DataUpdate::EditFailedMR {
+                                                project_id: pid,
+                                                iid,
+                                                error: format!("MR update failed: {}", e3),
+                                            });
                                         }
                                         Err(_) => {
-                                            let _ = tx.send(DataUpdate::Error(
-                                                "MR update timed out".into(),
-                                            ));
+                                            let _ = tx.send(DataUpdate::EditFailedMR {
+                                                project_id: pid,
+                                                iid,
+                                                error: "MR update timed out".into(),
+                                            });
                                         }
                                     }
                                 } else {
-                                    let _ = tx.send(DataUpdate::Error(format!(
-                                        "MR update failed: {}",
-                                        e2
-                                    )));
+                                    let _ = tx.send(DataUpdate::EditFailedMR {
+                                        project_id: pid,
+                                        iid,
+                                        error: format!("MR update failed: {}", e2),
+                                    });
                                 }
                             }
                             Err(_) => {
-                                let _ = tx.send(DataUpdate::Error("MR update timed out".into()));
+                                let _ = tx.send(DataUpdate::EditFailedMR {
+                                    project_id: pid,
+                                    iid,
+                                    error: "MR update timed out".into(),
+                                });
                             }
                         }
                     } else {
-                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: format!("MR update failed: {}", e),
+                        });
                     }
                 }
                 Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("MR update timed out".into()));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: "MR update timed out".into(),
+                    });
                 }
             }
             let _ = tx.send(DataUpdate::Loading(false));
@@ -527,6 +550,7 @@ impl App {
     }
 
     pub async fn toggle_mr_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         let (pid, iid, current_state) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid, mr.state.clone())
         } else {
@@ -564,6 +588,8 @@ impl App {
                 description: None,
                 state_event: Some(event.to_string()),
                 labels: None,
+                add_labels: None,
+                remove_labels: None,
                 assignee_ids: None,
                 reviewer_ids: None,
                 milestone_id: None,
@@ -585,10 +611,18 @@ impl App {
                     }
                 }
                 Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: format!("MR update failed: {}", e),
+                    });
                 }
                 Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("Toggle MR state timed out".into()));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: "Toggle MR state timed out".into(),
+                    });
                 }
             }
             let _ = tx.send(DataUpdate::Loading(false));
@@ -599,6 +633,7 @@ impl App {
 
 impl App {
     pub async fn toggle_mr_squash(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         let (pid, iid, current_squash) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid, mr.squash.unwrap_or(false))
         } else {
@@ -632,6 +667,8 @@ impl App {
                 description: None,
                 state_event: None,
                 labels: None,
+                add_labels: None,
+                remove_labels: None,
                 assignee_ids: None,
                 reviewer_ids: None,
                 milestone_id: None,
@@ -653,10 +690,18 @@ impl App {
                     }
                 }
                 Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: format!("MR update failed: {}", e),
+                    });
                 }
                 Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("MR update timed out".into()));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: "MR update timed out".into(),
+                    });
                 }
             }
             let _ = tx.send(DataUpdate::Loading(false));
@@ -854,15 +899,25 @@ impl App {
                 .await;
                 match res {
                     Ok(Ok(_)) => {
+                        let _ = tx.send(DataUpdate::RemovePendingMR {
+                            project_id: pid,
+                            iid: pending_iid,
+                        });
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
                         let _ = tx.send(DataUpdate::Error(format!("MR creation failed: {}", e)));
-                        let _ = tx.send(DataUpdate::RemovePendingMR { iid: pending_iid });
+                        let _ = tx.send(DataUpdate::RemovePendingMR {
+                            project_id: pid,
+                            iid: pending_iid,
+                        });
                     }
                     Err(_) => {
                         let _ = tx.send(DataUpdate::Error("MR creation timed out".into()));
-                        let _ = tx.send(DataUpdate::RemovePendingMR { iid: pending_iid });
+                        let _ = tx.send(DataUpdate::RemovePendingMR {
+                            project_id: pid,
+                            iid: pending_iid,
+                        });
                     }
                 }
             });

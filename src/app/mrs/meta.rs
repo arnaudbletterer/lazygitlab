@@ -4,6 +4,7 @@ use gitlab::api::AsyncQuery;
 
 impl App {
     pub async fn update_mr(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         let (pid, iid) = if let Some(mr) = &self.selected_mr {
             (mr.project_id, mr.iid)
         } else {
@@ -18,6 +19,8 @@ impl App {
             description: None,
             state_event: None,
             labels: None,
+            add_labels: None,
+            remove_labels: None,
             assignee_ids: None,
             reviewer_ids: None,
             milestone_id: None,
@@ -77,10 +80,18 @@ impl App {
                     }
                 }
                 Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: format!("MR update failed: {}", e),
+                    });
                 }
                 Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("Update MR timed out".into()));
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: "Update MR timed out".into(),
+                    });
                 }
             }
             let _ = tx.send(DataUpdate::Loading(false));
@@ -89,83 +100,85 @@ impl App {
     }
 
     pub async fn update_mr_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(mr) = &mut self.selected_mr {
-            let pid = mr.project_id;
-            let iid = mr.iid;
-            let updated_labels: Vec<Label> = {
-                let labels_list = self
-                    .project_label_cache
-                    .get(&pid)
-                    .unwrap_or(&self.project_labels);
-                labels_list
-                    .iter()
-                    .filter(|l| self.selected_label_ids.contains(&l.id()))
-                    .cloned()
-                    .collect()
-            };
-            let labels = updated_labels
-                .iter()
-                .map(|l| l.name().to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-
-            mr.labels = updated_labels.clone();
-            if let Some(idx) = self
-                .merge_requests
-                .iter_mut()
-                .position(|m| m.iid == iid && m.project_id == pid)
-            {
-                self.merge_requests[idx].labels = updated_labels;
-            }
-            self.filter_lists();
-
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            self.show_label_popup = false;
-            let _ = tx.send(DataUpdate::Loading(true));
-            tokio::spawn(async move {
-                let edit = EditMergeRequest {
-                    project: pid,
-                    merge_request: iid,
-                    title: None,
-                    description: None,
-                    state_event: None,
-                    labels: Some(labels),
-                    assignee_ids: None,
-                    reviewer_ids: None,
-                    milestone_id: None,
-                    remove_source_branch: None,
-                    squash: None,
-                    target_branch: None,
-                    draft: None,
-                    wip: None,
-                };
-                let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    edit.query_async(&client),
-                )
-                .await;
-                match res {
-                    Ok(Ok(val)) => {
-                        if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
-                            let _ = tx.send(DataUpdate::MRDetail(updated_mr));
-                        }
-                        let _ = tx.send(DataUpdate::TriggerRefresh);
-                    }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
-                    }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Update MR labels timed out".into()));
-                    }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+        let Some(mr) = &self.selected_mr else {
+            return Ok(());
+        };
+        let pid = mr.project_id;
+        let iid = mr.iid;
+        let change = self.label_change(&mr.labels);
+        self.show_label_popup = false;
+        if change.add.is_empty() && change.remove.is_empty() {
+            return Ok(());
         }
+        self.snapshot_mr_edit(pid, iid);
+        if let Some(mr) = &mut self.selected_mr {
+            mr.labels = change.resulting.clone();
+        }
+        if let Some(idx) = self
+            .merge_requests
+            .iter_mut()
+            .position(|m| m.iid == iid && m.project_id == pid)
+        {
+            self.merge_requests[idx].labels = change.resulting;
+        }
+        self.filter_lists();
+
+        let client = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let edit = EditMergeRequest {
+                project: pid,
+                merge_request: iid,
+                title: None,
+                description: None,
+                state_event: None,
+                labels: None,
+                add_labels: (!change.add.is_empty()).then(|| change.add.join(",")),
+                remove_labels: (!change.remove.is_empty()).then(|| change.remove.join(",")),
+                assignee_ids: None,
+                reviewer_ids: None,
+                milestone_id: None,
+                remove_source_branch: None,
+                squash: None,
+                target_branch: None,
+                draft: None,
+                wip: None,
+            };
+            let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                edit.query_async(&client),
+            )
+            .await;
+            match res {
+                Ok(Ok(val)) => {
+                    if let Ok(updated_mr) = serde_json::from_value::<MergeRequest>(val) {
+                        let _ = tx.send(DataUpdate::MRDetail(updated_mr));
+                    }
+                    let _ = tx.send(DataUpdate::TriggerRefresh);
+                }
+                Ok(Err(e)) => {
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: format!("MR update failed: {}", e),
+                    });
+                }
+                Err(_) => {
+                    let _ = tx.send(DataUpdate::EditFailedMR {
+                        project_id: pid,
+                        iid,
+                        error: "Update MR labels timed out".into(),
+                    });
+                }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn update_mr_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -201,6 +214,8 @@ impl App {
                     description: None,
                     state_event: None,
                     labels: None,
+                    add_labels: None,
+                    remove_labels: None,
                     assignee_ids: Some(assignee_ids),
                     reviewer_ids: None,
                     milestone_id: None,
@@ -223,10 +238,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: format!("MR update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Update MR assignees timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: "Update MR assignees timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -236,6 +259,7 @@ impl App {
     }
 
     pub async fn update_mr_reviewers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -271,6 +295,8 @@ impl App {
                     description: None,
                     state_event: None,
                     labels: None,
+                    add_labels: None,
+                    remove_labels: None,
                     assignee_ids: None,
                     reviewer_ids: Some(reviewer_ids),
                     milestone_id: None,
@@ -293,10 +319,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: format!("MR update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Update MR reviewers timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: "Update MR reviewers timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -306,6 +340,7 @@ impl App {
     }
 
     pub async fn update_mr_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -346,6 +381,8 @@ impl App {
                     description: None,
                     state_event: None,
                     labels: None,
+                    add_labels: None,
+                    remove_labels: None,
                     assignee_ids: None,
                     reviewer_ids: None,
                     milestone_id: Some(mid),
@@ -368,10 +405,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: format!("MR update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Update MR milestone timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedMR {
+                            project_id: pid,
+                            iid,
+                            error: "Update MR milestone timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -381,6 +426,7 @@ impl App {
     }
 
     pub async fn update_mr_target_branch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_mr();
         if let Some(mr) = &mut self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
@@ -418,6 +464,8 @@ impl App {
                         description: None,
                         state_event: None,
                         labels: None,
+                        add_labels: None,
+                        remove_labels: None,
                         assignee_ids: None,
                         reviewer_ids: None,
                         milestone_id: None,
@@ -440,12 +488,18 @@ impl App {
                             let _ = tx.send(DataUpdate::TriggerRefresh);
                         }
                         Ok(Err(e)) => {
-                            let _ = tx.send(DataUpdate::Error(format!("MR update failed: {}", e)));
+                            let _ = tx.send(DataUpdate::EditFailedMR {
+                                project_id: pid,
+                                iid,
+                                error: format!("MR update failed: {}", e),
+                            });
                         }
                         Err(_) => {
-                            let _ = tx.send(DataUpdate::Error(
-                                "Update MR target branch timed out".into(),
-                            ));
+                            let _ = tx.send(DataUpdate::EditFailedMR {
+                                project_id: pid,
+                                iid,
+                                error: "Update MR target branch timed out".into(),
+                            });
                         }
                     }
                     let _ = tx.send(DataUpdate::Loading(false));

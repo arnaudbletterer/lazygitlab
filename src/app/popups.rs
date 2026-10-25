@@ -537,25 +537,7 @@ impl App {
                 }
                 KeyCode::Char(' ') => {
                     if self.show_label_popup {
-                        let pid = self
-                            .selected_mr
-                            .as_ref()
-                            .map(|m| m.project_id)
-                            .or_else(|| self.selected_issue.as_ref().map(|i| i.project_id))
-                            .unwrap_or(0);
-                        let labels = self
-                            .project_label_cache
-                            .get(&pid)
-                            .unwrap_or(&self.project_labels);
-                        if let Some(label) = self.label_state.selected().and_then(|i| labels.get(i))
-                        {
-                            let id = label.id();
-                            if self.selected_label_ids.contains(&id) {
-                                self.selected_label_ids.retain(|&x| x != id);
-                            } else {
-                                self.selected_label_ids.push(id);
-                            }
-                        }
+                        self.toggle_popup_label();
                     } else if self.show_assignee_popup {
                         let pid = self
                             .selected_mr

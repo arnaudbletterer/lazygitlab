@@ -340,69 +340,69 @@ impl App {
     }
 
     pub async fn update_issue_labels(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(issue) = &mut self.selected_issue {
-            let pid = issue.project_id;
-            let iid = issue.iid;
-            let updated_labels: Vec<Label> = {
-                let labels_list = self
-                    .project_label_cache
-                    .get(&pid)
-                    .unwrap_or(&self.project_labels);
-                labels_list
-                    .iter()
-                    .filter(|l| self.selected_label_ids.contains(&l.id()))
-                    .cloned()
-                    .collect()
-            };
-            let labels = updated_labels
-                .iter()
-                .map(|l| l.name().to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-
-            issue.labels = updated_labels.clone();
-            if let Some(idx) = self
-                .issues
-                .iter_mut()
-                .position(|i| i.iid == iid && i.project_id == pid)
-            {
-                self.issues[idx].labels = updated_labels;
-            }
-            self.filter_lists();
-
-            let c = self.gitlab.clone();
-            let tx = self.tx.clone();
-            self.show_label_popup = false;
-            let _ = tx.send(DataUpdate::Loading(true));
-            tokio::spawn(async move {
-                let ep = EditIssue {
-                    project: pid,
-                    issue: iid,
-                    labels: Some(labels),
-                    ..Default::default()
-                };
-                let res: Result<Result<Issue, _>, _> =
-                    tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c))
-                        .await;
-                match res {
-                    Ok(Ok(data)) => {
-                        let _ = tx.send(DataUpdate::IssueDetail(data));
-                        let _ = tx.send(DataUpdate::TriggerRefresh);
-                    }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
-                    }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Update Issue labels timed out".into()));
-                    }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
+        let Some(issue) = &self.selected_issue else {
+            return Ok(());
+        };
+        let pid = issue.project_id;
+        let iid = issue.iid;
+        let change = self.label_change(&issue.labels);
+        self.show_label_popup = false;
+        if change.add.is_empty() && change.remove.is_empty() {
+            return Ok(());
         }
+        self.snapshot_issue_edit(pid, iid);
+        if let Some(issue) = &mut self.selected_issue {
+            issue.labels = change.resulting.clone();
+        }
+        if let Some(idx) = self
+            .issues
+            .iter_mut()
+            .position(|i| i.iid == iid && i.project_id == pid)
+        {
+            self.issues[idx].labels = change.resulting;
+        }
+        self.filter_lists();
+
+        let c = self.gitlab.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let ep = EditIssue {
+                project: pid,
+                issue: iid,
+                add_labels: (!change.add.is_empty()).then(|| change.add.join(",")),
+                remove_labels: (!change.remove.is_empty()).then(|| change.remove.join(",")),
+                ..Default::default()
+            };
+            let res: Result<Result<Issue, _>, _> =
+                tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c)).await;
+            match res {
+                Ok(Ok(data)) => {
+                    let _ = tx.send(DataUpdate::IssueDetail(data));
+                    let _ = tx.send(DataUpdate::TriggerRefresh);
+                }
+                Ok(Err(e)) => {
+                    let _ = tx.send(DataUpdate::EditFailedIssue {
+                        project_id: pid,
+                        iid,
+                        error: format!("Issue update failed: {}", e),
+                    });
+                }
+                Err(_) => {
+                    let _ = tx.send(DataUpdate::EditFailedIssue {
+                        project_id: pid,
+                        iid,
+                        error: "Update Issue labels timed out".into(),
+                    });
+                }
+            }
+            let _ = tx.send(DataUpdate::Loading(false));
+        });
         Ok(())
     }
 
     pub async fn update_issue_assignees(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -446,11 +446,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ =
-                            tx.send(DataUpdate::Error("Update Issue assignees timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Update Issue assignees timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -460,6 +467,7 @@ impl App {
     }
 
     pub async fn update_issue_milestone(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -500,11 +508,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ =
-                            tx.send(DataUpdate::Error("Update Issue milestone timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Update Issue milestone timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -517,6 +532,7 @@ impl App {
         &mut self,
         date: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -549,12 +565,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error(
-                            "Update Issue start date timed out".into(),
-                        ));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Update Issue start date timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -567,6 +589,7 @@ impl App {
         &mut self,
         date: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -599,11 +622,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ =
-                            tx.send(DataUpdate::Error("Update Issue due date timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Update Issue due date timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -613,6 +643,7 @@ impl App {
     }
 
     pub async fn toggle_issue_state(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -640,10 +671,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Toggle Issue state timed out".into()));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Toggle Issue state timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -653,6 +692,7 @@ impl App {
     }
 
     pub async fn toggle_issue_confidential(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot_selected_issue();
         if let Some(issue) = &mut self.selected_issue {
             let pid = issue.project_id;
             let iid = issue.iid;
@@ -687,12 +727,18 @@ impl App {
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
                     Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Issue update failed: {}", e)));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: format!("Issue update failed: {}", e),
+                        });
                     }
                     Err(_) => {
-                        let _ = tx.send(DataUpdate::Error(
-                            "Toggle Issue confidentiality timed out".into(),
-                        ));
+                        let _ = tx.send(DataUpdate::EditFailedIssue {
+                            project_id: pid,
+                            iid,
+                            error: "Toggle Issue confidentiality timed out".into(),
+                        });
                     }
                 }
                 let _ = tx.send(DataUpdate::Loading(false));
@@ -757,14 +803,25 @@ impl App {
                     assignee_ids: vec![],
                     label_names: vec![],
                 };
-                let res: Result<Issue, _> = ep.query_async(&c).await;
+                let res: Result<Result<Issue, _>, _> =
+                    tokio::time::timeout(std::time::Duration::from_secs(30), ep.query_async(&c))
+                        .await;
+                let pending = DataUpdate::RemovePendingIssue {
+                    project_id: pid,
+                    iid: pending_iid,
+                };
                 match res {
-                    Ok(_) => {
+                    Ok(Ok(_)) => {
+                        let _ = tx.send(pending);
                         let _ = tx.send(DataUpdate::TriggerRefresh);
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         let _ = tx.send(DataUpdate::Error(format!("Issue creation failed: {}", e)));
-                        let _ = tx.send(DataUpdate::RemovePendingIssue { iid: pending_iid });
+                        let _ = tx.send(pending);
+                    }
+                    Err(_) => {
+                        let _ = tx.send(DataUpdate::Error("Issue creation timed out".into()));
+                        let _ = tx.send(pending);
                     }
                 }
             });

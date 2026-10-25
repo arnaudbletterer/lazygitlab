@@ -133,9 +133,10 @@ async fn live_full_remove_pending_issue_data_update() {
     let before = app.issues.len();
     assert_eq!(app.issues.iter().filter(|i| i.iid == fake_iid).count(), 1);
 
-    let _ = app
-        .tx
-        .send(DataUpdate::RemovePendingIssue { iid: fake_iid });
+    let _ = app.tx.send(DataUpdate::RemovePendingIssue {
+        project_id: 1,
+        iid: fake_iid,
+    });
     wait_for_loading_finish(&mut app, &mut rx).await;
     assert_eq!(
         app.issues.len(),

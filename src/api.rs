@@ -419,6 +419,8 @@ pub struct EditMergeRequest {
     pub description: Option<String>,
     pub state_event: Option<String>,
     pub labels: Option<String>,
+    pub add_labels: Option<String>,
+    pub remove_labels: Option<String>,
     pub assignee_ids: Option<Vec<u64>>,
     pub reviewer_ids: Option<Vec<u64>>,
     pub milestone_id: Option<Option<u64>>,
@@ -457,6 +459,12 @@ impl Endpoint for EditMergeRequest {
         }
         if let Some(l) = &self.labels {
             params.push("labels", l);
+        }
+        if let Some(l) = &self.add_labels {
+            params.push("add_labels", l);
+        }
+        if let Some(l) = &self.remove_labels {
+            params.push("remove_labels", l);
         }
         if let Some(a) = &self.assignee_ids {
             if a.is_empty() {
@@ -2092,6 +2100,8 @@ mod tests {
             description: Some("d".into()),
             state_event: Some("close".into()),
             labels: Some("l".into()),
+            add_labels: None,
+            remove_labels: None,
             assignee_ids: Some(vec![1]),
             reviewer_ids: Some(vec![2]),
             milestone_id: Some(Some(1)),
@@ -2111,6 +2121,8 @@ mod tests {
             description: None,
             state_event: None,
             labels: None,
+            add_labels: None,
+            remove_labels: None,
             assignee_ids: Some(vec![]),
             reviewer_ids: Some(vec![]),
             milestone_id: Some(None),

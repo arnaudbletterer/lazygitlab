@@ -419,14 +419,21 @@ impl App {
         self.filter_lists();
     }
 
-    fn write_mr_cache(&self, key: &str, cursor: Option<String>) {
+    pub fn write_mr_cache(&self, key: &str, cursor: Option<String>) {
         let Some(cache) = &self.list_cache else {
             return;
         };
         let items = self
             .merge_requests
             .iter()
-            .map(|m| CachedItem::Mr(m.into()))
+            .filter(|m| !super::super::edits::is_pending_iid(m.iid))
+            .map(|m| {
+                let row = self
+                    .mr_edit_snapshots
+                    .get(&(m.project_id, m.iid))
+                    .unwrap_or(m);
+                CachedItem::Mr(row.into())
+            })
             .collect();
         cache.put(key, CacheEntry::new(items, None, cursor));
     }

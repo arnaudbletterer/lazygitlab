@@ -23,11 +23,7 @@ pub fn render_label_popup(f: &mut Frame, app: &mut App) {
     let labels: Vec<ListItem> = labels_source
         .iter()
         .map(|l| {
-            let prefix = if app.selected_label_ids.contains(&l.id()) {
-                "[x] "
-            } else {
-                "[ ] "
-            };
+            let prefix = if app.label_checked(l) { "[x] " } else { "[ ] " };
             let color = hex_to_color(l.color());
             let text_color = hex_to_color(l.text_color());
 

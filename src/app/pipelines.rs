@@ -268,7 +268,10 @@ impl App {
             let res: Result<Vec<u8>, _> = gitlab::api::raw(ep).query_async(&client).await;
             match res {
                 Ok(_) => {
-                    let _ = tx.send(DataUpdate::VariableDeleted { key });
+                    let _ = tx.send(DataUpdate::VariableDeleted {
+                        project_id: pid,
+                        key,
+                    });
                 }
                 Err(e) => {
                     let _ = tx.send(DataUpdate::Error(format!("Variable delete failed: {}", e)));
@@ -314,7 +317,11 @@ impl App {
             };
             match res {
                 Ok(_) => {
-                    let _ = tx.send(DataUpdate::VariableSaved { key, value });
+                    let _ = tx.send(DataUpdate::VariableSaved {
+                        project_id: pid,
+                        key,
+                        value,
+                    });
                 }
                 Err(e) => {
                     let _ = tx.send(DataUpdate::Error(format!("Variable save failed: {}", e)));

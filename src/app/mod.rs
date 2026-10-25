@@ -1,4 +1,5 @@
 pub mod boards;
+pub mod edits;
 pub mod global;
 pub mod issues;
 pub mod keymap;
@@ -138,6 +139,10 @@ impl App {
             show_label_popup: false,
             label_state: ListState::default(),
             selected_label_ids: Vec::new(),
+            selected_label_names: Vec::new(),
+            mr_edit_snapshots: std::collections::HashMap::new(),
+            issue_edit_snapshots: std::collections::HashMap::new(),
+            metadata_fetched_at: std::collections::HashMap::new(),
             show_assignee_popup: false,
             assignee_state: ListState::default(),
             selected_assignee_ids: Vec::new(),
@@ -709,15 +714,24 @@ impl App {
                     self.approvals = Some(info);
                 }
             }
-            DataUpdate::VariableDeleted { key } => {
-                self.project_variables.retain(|v| v.key != key);
-                if let Some(pid) = self.selected_project.as_ref().map(|p| p.id) {
-                    self.project_variable_cache
-                        .insert(pid, self.project_variables.clone());
+            DataUpdate::VariableDeleted { project_id, key } => {
+                if let Some(cached) = self.project_variable_cache.get_mut(&project_id) {
+                    cached.retain(|v| v.key != key);
                 }
+                if self.selected_project.as_ref().map(|p| p.id) != Some(project_id) {
+                    return;
+                }
+                self.project_variables.retain(|v| v.key != key);
                 self.status_message = Some(format!("Variable '{}' deleted", key));
             }
-            DataUpdate::VariableSaved { key, value } => {
+            DataUpdate::VariableSaved {
+                project_id,
+                key,
+                value,
+            } => {
+                if self.selected_project.as_ref().map(|p| p.id) != Some(project_id) {
+                    return;
+                }
                 if let Some(v) = self.project_variables.iter_mut().find(|v| v.key == key) {
                     v.value = value;
                 } else {
@@ -919,6 +933,8 @@ impl App {
                 milestones,
                 members,
             } => {
+                self.metadata_fetched_at
+                    .insert(project_id, std::time::Instant::now());
                 self.project_label_cache.insert(project_id, labels.clone());
                 self.project_milestone_cache
                     .insert(project_id, milestones.clone());
@@ -969,6 +985,15 @@ impl App {
                         milestone_id: mr.milestone.as_ref().map(|m| m.id),
                     },
                 );
+                let key = (mr.project_id, mr.iid);
+                if self
+                    .mr_edit_snapshots
+                    .get(&key)
+                    .is_some_and(|snap| edits::confirms_edit(&snap.updated_at, &mr.updated_at))
+                {
+                    self.mr_edit_snapshots.remove(&key);
+                }
+                let pending = self.mr_edit_snapshots.contains_key(&key);
                 if let Some(selected) = &mut self.selected_mr {
                     if selected.iid == mr.iid && selected.project_id == mr.project_id {
                         for label in &mut mr.labels {
@@ -983,7 +1008,7 @@ impl App {
                             }
                         }
                         if !self.input_mode {
-                            *selected = mr.clone();
+                            *selected = edits::merge_mr_detail(selected, mr.clone(), pending);
                         }
                     }
                 } else {
@@ -994,12 +1019,21 @@ impl App {
                     .iter_mut()
                     .find(|x| x.iid == mr.iid && x.project_id == mr.project_id)
                 {
-                    *existing = mr;
+                    *existing = edits::merge_mr_detail(existing, mr, pending);
                     self.filter_lists();
                 }
             }
             DataUpdate::IssueDetail(mut issue) => {
                 self.fix_issue_labels(&mut issue);
+                let key = (issue.project_id, issue.iid);
+                if self
+                    .issue_edit_snapshots
+                    .get(&key)
+                    .is_some_and(|snap| edits::confirms_edit(&snap.updated_at, &issue.updated_at))
+                {
+                    self.issue_edit_snapshots.remove(&key);
+                }
+                let pending = self.issue_edit_snapshots.contains_key(&key);
                 if let Some(selected) = &mut self.selected_issue {
                     if selected.iid == issue.iid && selected.project_id == issue.project_id {
                         for label in &mut issue.labels {
@@ -1014,11 +1048,19 @@ impl App {
                             }
                         }
                         if !self.input_mode {
-                            *selected = issue;
+                            *selected = edits::merge_issue_detail(selected, issue.clone(), pending);
                         }
                     }
                 } else {
-                    self.selected_issue = Some(issue);
+                    self.selected_issue = Some(issue.clone());
+                }
+                if let Some(existing) = self
+                    .issues
+                    .iter_mut()
+                    .find(|x| x.iid == issue.iid && x.project_id == issue.project_id)
+                {
+                    *existing = edits::merge_issue_detail(existing, issue, pending);
+                    self.filter_lists();
                 }
             }
             DataUpdate::Loading(b) => {
@@ -1089,13 +1131,31 @@ impl App {
             DataUpdate::TriggerRefresh => {
                 self.refresh().await;
             }
-            DataUpdate::RemovePendingIssue { iid } => {
-                self.issues.retain(|i| i.iid != iid);
+            DataUpdate::RemovePendingIssue { project_id, iid } => {
+                self.issues
+                    .retain(|i| !(i.iid == iid && i.project_id == project_id));
                 self.filter_lists();
             }
-            DataUpdate::RemovePendingMR { iid } => {
-                self.merge_requests.retain(|m| m.iid != iid);
+            DataUpdate::RemovePendingMR { project_id, iid } => {
+                self.merge_requests
+                    .retain(|m| !(m.iid == iid && m.project_id == project_id));
                 self.filter_lists();
+            }
+            DataUpdate::EditFailedMR {
+                project_id,
+                iid,
+                error,
+            } => {
+                self.rollback_mr_edit(project_id, iid);
+                Box::pin(self.process_update_single(DataUpdate::Error(error))).await;
+            }
+            DataUpdate::EditFailedIssue {
+                project_id,
+                iid,
+                error,
+            } => {
+                self.rollback_issue_edit(project_id, iid);
+                Box::pin(self.process_update_single(DataUpdate::Error(error))).await;
             }
             DataUpdate::CheckPagination => {
                 let _ = self.check_pagination().await;
@@ -1723,7 +1783,10 @@ impl App {
     }
 
     fn trigger_project_metadata_fetch_impl(&self, project_id: u64, force: bool) {
-        if !force && self.project_label_cache.contains_key(&project_id) {
+        if !force
+            && self.project_label_cache.contains_key(&project_id)
+            && self.metadata_fresh(project_id)
+        {
             let labels = self
                 .project_label_cache
                 .get(&project_id)
@@ -2102,7 +2165,7 @@ impl App {
             {
                 let _ = self.fetch_related_items().await;
             }
-            let has_metadata = self.project_label_cache.contains_key(&mr.project_id);
+            let has_metadata = self.metadata_fresh(mr.project_id);
             if self.active_panel == Panel::MainDetail && !has_metadata {
                 self.trigger_project_metadata_fetch(mr.project_id);
             }
@@ -2118,7 +2181,7 @@ impl App {
             {
                 let _ = self.fetch_related_items().await;
             }
-            let has_metadata = self.project_label_cache.contains_key(&issue.project_id);
+            let has_metadata = self.metadata_fresh(issue.project_id);
             if self.active_panel == Panel::MainDetail && !has_metadata {
                 self.trigger_project_metadata_fetch(issue.project_id);
             }
@@ -2139,7 +2202,7 @@ impl App {
                     let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
                 }
             }
-            let has_metadata = self.project_label_cache.contains_key(&pipeline.project_id);
+            let has_metadata = self.metadata_fresh(pipeline.project_id);
             if self.active_panel == Panel::MainDetail && !has_metadata {
                 self.trigger_project_metadata_fetch(pipeline.project_id);
             }
@@ -2536,11 +2599,7 @@ impl App {
                                 self.trigger_project_metadata_fetch(pid);
                             }
                         } else if let Some(selected) = &mut self.selected_mr {
-                            selected.title = mr.title.clone();
-                            selected.state = mr.state.clone();
-                            selected.labels = mr.labels.clone();
-                            selected.milestone = mr.milestone.clone();
-                            selected.assignees = mr.assignees.clone();
+                            edits::apply_mr_row(selected, mr);
                         }
                     }
                 }
@@ -2567,13 +2626,7 @@ impl App {
                                 self.trigger_project_metadata_fetch(pid);
                             }
                         } else if let Some(selected) = &mut self.selected_issue {
-                            selected.title = issue.title.clone();
-                            selected.state = issue.state.clone();
-                            selected.labels = issue.labels.clone();
-                            selected.milestone = issue.milestone.clone();
-                            selected.assignees = issue.assignees.clone();
-                            selected.weight = issue.weight;
-                            selected.due_date = issue.due_date.clone();
+                            edits::apply_issue_row(selected, issue);
                         }
                     }
                 }
@@ -2695,15 +2748,7 @@ impl App {
                         self.textarea.move_cursor(ratatui_textarea::CursorMove::End);
                     }
                     MetadataField::Labels => {
-                        self.show_label_popup = true;
-                        self.selected_label_ids = if let Some(i) = &self.selected_issue {
-                            i.labels.iter().map(|l| l.id()).collect()
-                        } else if let Some(m) = &self.selected_mr {
-                            m.labels.iter().map(|l| l.id()).collect()
-                        } else {
-                            Vec::new()
-                        };
-                        self.label_state.select(Some(0));
+                        self.open_label_popup();
                     }
                     MetadataField::Assignees => {
                         let pid = self
@@ -4354,12 +4399,7 @@ impl App {
             self.issues.clear();
             self.reset_list_paging();
             self.pipelines.clear();
-            self.repository_ref = None;
-            self.repository_tree.clear();
-            self.project_branches.clear();
-            self.selected_file_content = None;
-            self.file_scroll = 0;
-            self.file_highlight_cache = None;
+            self.reset_project_scope();
             self.filter_lists();
             let _ = self.refresh().await;
         }

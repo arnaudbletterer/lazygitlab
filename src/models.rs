@@ -922,9 +922,11 @@ pub enum DataUpdate {
         info: ApprovalInfo,
     },
     VariableDeleted {
+        project_id: u64,
         key: String,
     },
     VariableSaved {
+        project_id: u64,
         key: String,
         value: String,
     },
@@ -1049,10 +1051,22 @@ pub enum DataUpdate {
     Error(String),
     TriggerRefresh,
     RemovePendingIssue {
+        project_id: u64,
         iid: u64,
     },
     RemovePendingMR {
+        project_id: u64,
         iid: u64,
+    },
+    EditFailedMR {
+        project_id: u64,
+        iid: u64,
+        error: String,
+    },
+    EditFailedIssue {
+        project_id: u64,
+        iid: u64,
+        error: String,
     },
     CheckPagination,
 }
@@ -1176,6 +1190,10 @@ pub struct App {
     pub show_label_popup: bool,
     pub label_state: ListState,
     pub selected_label_ids: Vec<u64>,
+    pub selected_label_names: Vec<String>,
+    pub mr_edit_snapshots: std::collections::HashMap<(u64, u64), MergeRequest>,
+    pub issue_edit_snapshots: std::collections::HashMap<(u64, u64), Issue>,
+    pub metadata_fetched_at: std::collections::HashMap<u64, std::time::Instant>,
 
     pub show_assignee_popup: bool,
     pub assignee_state: ListState,
