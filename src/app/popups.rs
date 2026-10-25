@@ -271,13 +271,8 @@ impl App {
                     {
                         match res {
                             SearchResult::Project(p) => {
-                                self.selected_project = Some(p);
-                                self.active_context = Context::Project;
-                                self.active_panel = Panel::Project;
-                                self.project_menu_state.select(Some(0));
-                                self.active_selection = MenuSelection::MergeRequests;
                                 self.show_search = false;
-                                let _ = self.refresh().await;
+                                self.open_project(p).await;
                             }
                             SearchResult::Issue(i) => {
                                 self.selected_issue = Some(i);

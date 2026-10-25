@@ -1332,6 +1332,11 @@ pub struct App {
     pub pipeline_filter: PipelineFilter,
 
     pub last_error: Option<String>,
+    pub list_error: Option<String>,
+    pub nav_wait: Option<std::time::Instant>,
+    pub mrs_scope: Option<u64>,
+    pub issues_scope: Option<u64>,
+    pub pipelines_scope: Option<u64>,
     pub last_list_refresh_ok: Option<chrono::DateTime<chrono::Local>>,
     pub status_message: Option<String>,
     pub last_status_text: Option<String>,

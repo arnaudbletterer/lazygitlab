@@ -226,17 +226,6 @@ impl App {
     }
 
     /// Called whenever a list is cleared for a filter, tab or project switch.
-    pub(crate) fn reset_list_paging(&mut self) {
-        self.mrs_page = 1;
-        self.mrs_has_more = true;
-        self.issues_page = 1;
-        self.issues_has_more = true;
-        self.pipelines_page = 1;
-        self.pipelines_has_more = true;
-        self.todos_page = 1;
-        self.todos_has_more = true;
-    }
-
     pub(super) fn append_mrs(
         &mut self,
         data: Vec<MergeRequest>,

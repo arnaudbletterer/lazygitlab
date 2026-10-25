@@ -7,6 +7,7 @@ pub(crate) mod loading;
 pub mod menus;
 pub mod merge;
 pub mod mrs;
+pub mod nav;
 pub mod pipelines;
 pub mod popups;
 pub mod search;
@@ -230,6 +231,11 @@ impl App {
             mr_filter: MergeRequestFilter::Opened,
             pipeline_filter: PipelineFilter::All,
             last_error: None,
+            list_error: None,
+            nav_wait: None,
+            mrs_scope: None,
+            issues_scope: None,
+            pipelines_scope: None,
             last_list_refresh_ok: None,
             status_message: None,
             last_status_text: None,
@@ -1026,8 +1032,6 @@ impl App {
                             *selected = edits::merge_mr_detail(selected, mr.clone(), pending);
                         }
                     }
-                } else {
-                    self.selected_mr = Some(mr.clone());
                 }
                 if let Some(existing) = self
                     .merge_requests
@@ -1059,8 +1063,6 @@ impl App {
                             *selected = edits::merge_issue_detail(selected, issue.clone(), pending);
                         }
                     }
-                } else {
-                    self.selected_issue = Some(issue.clone());
                 }
                 if let Some(existing) = self
                     .issues
@@ -2472,24 +2474,7 @@ impl App {
         }
 
         if prev_selection != self.active_selection || prev_context != self.active_context {
-            self.selected_mr = None;
-            self.selected_issue = None;
-            self.selected_pipeline = None;
-            self.discussions.clear();
-            self.jobs.clear();
-            self.merge_requests.clear();
-            self.mrs_cached_at = None;
-            self.mrs_stale = false;
-            self.mrs_sync = MrSync::default();
-            self.mr_meta.clear();
-            self.abort_mr_detail();
-            self.issues.clear();
-            self.reset_list_paging();
-            self.pipelines.clear();
-            self.repository_ref = None;
-            self.clear_related_items();
-            self.filter_lists();
-            self.refresh().await;
+            self.enter_screen().await;
         }
 
         if self.active_panel == Panel::Main || self.active_panel == Panel::MainDetail {
@@ -2518,6 +2503,7 @@ impl App {
                                     .is_none_or(|m| m.iid != iid || m.project_id != project_id)
                             {
                                 self.selected_issue = None;
+                                self.abort_mr_detail();
                                 self.discussions.clear();
                                 self.mr_diffs.clear();
                                 self.is_fetching_diffs = false;
@@ -2562,6 +2548,7 @@ impl App {
                                 })
                             {
                                 self.selected_mr = None;
+                                self.abort_mr_detail();
                                 self.discussions.clear();
                                 self.selected_issue = Some(Issue {
                                     updated_at: None,
@@ -2644,6 +2631,7 @@ impl App {
                             let iid = issue.iid;
                             self.selected_issue = Some(issue_clone);
                             self.selected_mr = None;
+                            self.abort_mr_detail();
                             self.discussions.clear();
                             self.clear_related_items();
                             if self.should_fetch_detail(pid, iid) {
@@ -2661,7 +2649,7 @@ impl App {
                     if let Some(p) = self
                         .pipelines_state
                         .selected()
-                        .and_then(|i| self.pipelines.get(i))
+                        .and_then(|i| self.filtered_pipelines.get(i))
                         .filter(|p| {
                             self.selected_pipeline
                                 .as_ref()
@@ -2705,6 +2693,12 @@ impl App {
             self.selected_pipeline = None;
             self.discussions.clear();
             self.jobs.clear();
+        }
+
+        match self.active_selection {
+            MenuSelection::MergeRequests => self.selected_issue = None,
+            MenuSelection::Issues => self.selected_mr = None,
+            _ => {}
         }
 
         // Stability check: If we are in MainDetail but no item is actually selected (e.g. list empty), move back to Main
@@ -3237,8 +3231,8 @@ impl App {
             && let Some(i) = self.mrs_state.selected()
             && !self.filtered_mrs.is_empty()
         {
-            self.mrs_state
-                .select(Some(i.min(self.filtered_mrs.len() - 1)));
+            let next = Self::nearest_item(&self.filtered_mrs, i);
+            self.mrs_state.select(Some(next));
         }
         if let Some(key) = selected_issue
             && let Some(idx) = self
@@ -3251,8 +3245,8 @@ impl App {
             && let Some(i) = self.issues_state.selected()
             && !self.filtered_issues.is_empty()
         {
-            self.issues_state
-                .select(Some(i.min(self.filtered_issues.len() - 1)));
+            let next = Self::nearest_item(&self.filtered_issues, i);
+            self.issues_state.select(Some(next));
         }
 
         if let Some(id) = selected_todo
@@ -3266,8 +3260,8 @@ impl App {
             && let Some(i) = self.todos_state.selected()
             && !self.filtered_todos.is_empty()
         {
-            self.todos_state
-                .select(Some(i.min(self.filtered_todos.len() - 1)));
+            let next = Self::nearest_item(&self.filtered_todos, i);
+            self.todos_state.select(Some(next));
         }
         if let Some(key) = selected_pipeline
             && let Some(idx) = self
@@ -3302,6 +3296,17 @@ impl App {
         self.previous_filter_input = self.filter_input.clone();
 
         self.clamp_selections();
+    }
+
+    /// Row to move to when the selected item vanished: the next item, else the previous
+    /// one, never a group header.
+    fn nearest_item<T>(items: &[GroupedItem<T>], at: usize) -> usize {
+        let at = at.min(items.len().saturating_sub(1));
+        let is_item = |i: usize| matches!(items.get(i), Some(GroupedItem::Item(_)));
+        (at..items.len())
+            .find(|&i| is_item(i))
+            .or_else(|| (0..at).rev().find(|&i| is_item(i)))
+            .unwrap_or(at)
     }
 
     pub fn clamp_selections(&mut self) {
@@ -3632,40 +3637,30 @@ impl App {
                 if let Some(r) = self.get_rect("nav_dashboard").filter(|r| {
                     x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1
                 }) {
-                    self.active_panel = Panel::Dashboard;
-                    self.active_context = Context::Dashboard;
-                    let inner_y = y.saturating_sub(r.y).saturating_sub(1); // subtract border
-                    if inner_y < 3 {
-                        self.dashboard_menu_state.select(Some(inner_y as usize));
-                        let _ = self.update_preview().await;
-                        let _ = self.refresh().await;
+                    let inner_y = y.saturating_sub(r.y).saturating_sub(1) as usize;
+                    if let Some(sel) = nav::selection_for(Context::Dashboard, inner_y) {
+                        self.navigate_to(Context::Dashboard, sel, Panel::Dashboard)
+                            .await;
                     }
                     return;
                 }
                 if let Some(r) = self.get_rect("nav_explore").filter(|r| {
                     x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1
                 }) {
-                    self.active_panel = Panel::Explore;
-                    self.active_context = Context::Explore;
-                    let inner_y = y.saturating_sub(r.y).saturating_sub(1);
-                    if inner_y < 2 {
-                        self.explore_menu_state.select(Some(inner_y as usize));
-                        let _ = self.update_preview().await;
-                        let _ = self.refresh().await;
+                    let inner_y = y.saturating_sub(r.y).saturating_sub(1) as usize;
+                    if let Some(sel) = nav::selection_for(Context::Explore, inner_y) {
+                        self.navigate_to(Context::Explore, sel, Panel::Explore).await;
                     }
                     return;
                 }
                 if let Some(r) = self.get_rect("nav_project").filter(|r| {
                     x > r.x && x < r.x + r.width - 1 && y > r.y && y < r.y + r.height - 1
                 }) {
-                    self.active_panel = Panel::Project;
-                    self.active_context = Context::Project;
-                    let inner_y = y.saturating_sub(r.y).saturating_sub(1);
-                    // Project menu can have up to 8 items
-                    if inner_y < 8 {
-                        self.project_menu_state.select(Some(inner_y as usize));
-                        let _ = self.update_preview().await;
-                        let _ = self.refresh().await;
+                    let inner_y = y.saturating_sub(r.y).saturating_sub(1) as usize;
+                    if inner_y < self.project_nav_rows()
+                        && let Some(sel) = nav::selection_for(Context::Project, inner_y)
+                    {
+                        self.navigate_to(Context::Project, sel, Panel::Project).await;
                     }
                     return;
                 }
@@ -3690,8 +3685,9 @@ impl App {
 
                         let mut current_x = 0;
                         for (idx, title) in titles.iter().enumerate() {
-                            let next_x = current_x + title.len() + 3; // padding(2) + divider(1)
-                            if (rel_x as usize) >= current_x && (rel_x as usize) < next_x {
+                            let tab_end = current_x + title.len() + 2;
+                            let next_x = tab_end + 3;
+                            if (rel_x as usize) >= current_x && (rel_x as usize) < tab_end {
                                 match self.active_selection {
                                     MenuSelection::MergeRequests => {
                                         self.mr_filter = match idx {
@@ -3718,12 +3714,7 @@ impl App {
                                     }
                                     _ => {}
                                 }
-                                self.merge_requests.clear();
-                                self.issues.clear();
-                                self.todos.clear();
-                                self.reset_list_paging();
-                                self.filter_lists();
-                                let _ = self.refresh().await;
+                                self.apply_filter_change().await;
                                 break;
                             }
                             current_x = next_x;
@@ -3753,7 +3744,7 @@ impl App {
                             }
                             MenuSelection::Pipelines => {
                                 let idx = self.pipelines_state.offset() + inner_y;
-                                if idx < self.pipelines.len() {
+                                if idx < self.filtered_pipelines.len() {
                                     self.pipelines_state.select(Some(idx));
                                 }
                             }
@@ -4229,7 +4220,8 @@ impl App {
                 if self
                     .pipelines_state
                     .selected()
-                    .is_some_and(|i| i + 10 >= self.pipelines.len())
+                    .is_some_and(|i| i + 10 >= self.filtered_pipelines.len())
+                    && self.active_context == Context::Project
                 {
                     self.fetch_next_pipelines().await?;
                 }
@@ -4379,7 +4371,7 @@ impl App {
         let _ = self.fetch_projects().await;
     }
     pub(crate) fn apply_preselected(&mut self, project: Project) {
-        self.selected_project = Some(project);
+        self.set_project(project);
         self.active_panel = Panel::Project;
         self.active_context = Context::Project;
         self.project_menu_state.select(Some(0));
@@ -4410,25 +4402,7 @@ impl App {
             .and_then(|i| self.projects.get(i))
             .cloned()
         {
-            self.selected_project = Some(project);
-            self.page_in_flight.clear();
-            self.show_project_popup = false;
-            self.active_panel = Panel::Project;
-            self.active_context = Context::Project;
-            self.project_menu_state.select(Some(0));
-            self.active_selection = MenuSelection::MergeRequests;
-            self.selected_mr = None;
-            self.selected_issue = None;
-            self.selected_pipeline = None;
-            self.discussions.clear();
-            self.jobs.clear();
-            self.merge_requests.clear();
-            self.issues.clear();
-            self.reset_list_paging();
-            self.pipelines.clear();
-            self.reset_project_scope();
-            self.filter_lists();
-            let _ = self.refresh().await;
+            self.open_project(project).await;
         }
     }
 }

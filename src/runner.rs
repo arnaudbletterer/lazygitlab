@@ -120,7 +120,7 @@ where
 
         let is_live_view = (app.view_mode == crate::models::ViewMode::List
             && app.active_selection == crate::models::MenuSelection::Pipelines
-            && app.pipelines.iter().any(|p| !p.is_finished()))
+            && app.filtered_pipelines.iter().any(|p| !p.is_finished()))
             || (app.view_mode == crate::models::ViewMode::JobLog
                 && app.selected_job.as_ref().is_some_and(|j| !j.is_finished()))
             || (app.view_mode == crate::models::ViewMode::Detail

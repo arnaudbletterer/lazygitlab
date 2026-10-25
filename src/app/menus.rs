@@ -87,16 +87,16 @@ impl App {
                         }
                     }
                     MenuSelection::Pipelines => {
-                        if !self.pipelines.is_empty() {
+                        if !self.filtered_pipelines.is_empty() {
                             let i = (self.pipelines_state.selected().unwrap_or(0) + 1)
-                                % self.pipelines.len();
+                                % self.filtered_pipelines.len();
                             self.pipelines_state.select(Some(i));
                         }
                     }
                     MenuSelection::Projects => {
-                        if !self.projects.is_empty() {
+                        if !self.filtered_projects.is_empty() {
                             let i = (self.projects_state.selected().unwrap_or(0) + 1)
-                                % self.projects.len();
+                                % self.filtered_projects.len();
                             self.projects_state.select(Some(i));
                         }
                     }
@@ -296,9 +296,9 @@ impl App {
                     }
                 }
                 MenuSelection::Pipelines => {
-                    if !self.pipelines.is_empty() {
+                    if !self.filtered_pipelines.is_empty() {
                         let i = if self.pipelines_state.selected().unwrap_or(0) == 0 {
-                            self.pipelines.len() - 1
+                            self.filtered_pipelines.len() - 1
                         } else {
                             self.pipelines_state.selected().unwrap() - 1
                         };
@@ -306,9 +306,9 @@ impl App {
                     }
                 }
                 MenuSelection::Projects => {
-                    if !self.projects.is_empty() {
+                    if !self.filtered_projects.is_empty() {
                         let i = if self.projects_state.selected().unwrap_or(0) == 0 {
-                            self.projects.len() - 1
+                            self.filtered_projects.len() - 1
                         } else {
                             self.projects_state.selected().unwrap() - 1
                         };
@@ -561,13 +561,13 @@ impl App {
                         }
                     }
                     MenuSelection::Projects => {
-                        if let Some(i) = self.projects_state.selected() {
-                            self.selected_project = Some(self.filtered_projects[i].clone());
-                            self.active_panel = Panel::Project;
-                            self.active_context = Context::Project;
-                            self.project_menu_state.select(Some(0));
-                            self.active_selection = MenuSelection::MergeRequests;
-                            let _ = self.update_preview().await;
+                        if let Some(project) = self
+                            .projects_state
+                            .selected()
+                            .and_then(|i| self.filtered_projects.get(i))
+                            .cloned()
+                        {
+                            self.open_project(project).await;
                         }
                     }
                     MenuSelection::Repository => {

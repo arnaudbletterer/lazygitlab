@@ -626,80 +626,13 @@ impl App {
             }
             HelpAction::OpenBrowser => self.open_in_browser(),
             HelpAction::CopyUrl => self.copy_url(),
-            HelpAction::GotoHome => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::Home;
-                self.dashboard_menu_state.select(Some(0));
-                self.active_panel = Panel::Main;
-                self.view_mode = ViewMode::List;
-            }
-            HelpAction::GotoTodos => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::Todos;
-                self.dashboard_menu_state.select(Some(1));
-                self.active_panel = Panel::Main;
-                let _ = self.refresh().await;
-            }
-            HelpAction::GotoMRs => {
-                if self.selected_project.is_some() {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::MergeRequests;
-                    self.project_menu_state.select(Some(0));
-                } else {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::MergeRequests;
-                    self.dashboard_menu_state.select(Some(2));
-                }
-                self.active_panel = Panel::Main;
-                let _ = self.refresh().await;
-            }
-            HelpAction::GotoIssues => {
-                if self.selected_project.is_some() {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Issues;
-                    self.project_menu_state.select(Some(1));
-                } else {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Issues;
-                    self.dashboard_menu_state.select(Some(3));
-                }
-                self.active_panel = Panel::Main;
-                let _ = self.refresh().await;
-            }
-            HelpAction::GotoPipelines => {
-                if self.selected_project.is_some() {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Pipelines;
-                    self.project_menu_state.select(Some(2));
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                } else {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Pipelines;
-                    self.dashboard_menu_state.select(Some(4));
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-            }
-
-            HelpAction::GotoRepository => {
-                if self.selected_project.is_some() {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Repository;
-                    self.project_menu_state.select(Some(3));
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-            }
-            HelpAction::GotoBranches => {
-                if self.selected_project.is_some() {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Branches;
-                    self.project_menu_state.select(Some(4));
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-            }
+            HelpAction::GotoHome => self.navigate(Context::Dashboard, MenuSelection::Home).await,
+            HelpAction::GotoTodos => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
+            HelpAction::GotoMRs => self.jump(MenuSelection::MergeRequests).await,
+            HelpAction::GotoIssues => self.jump(MenuSelection::Issues).await,
+            HelpAction::GotoPipelines => self.jump(MenuSelection::Pipelines).await,
+            HelpAction::GotoRepository => self.jump(MenuSelection::Repository).await,
+            HelpAction::GotoBranches => self.jump(MenuSelection::Branches).await,
             HelpAction::SwitchProject => {
                 let _ = self.switch_project().await;
             }
@@ -797,75 +730,13 @@ impl App {
         if self.pending_g_prefix {
             self.pending_g_prefix = false;
             match processed_key.code {
-                KeyCode::Char('h') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Home;
-                    self.active_panel = Panel::Main;
-                    self.dashboard_menu_state.select(Some(0));
-                    self.view_mode = ViewMode::List;
-                }
-                KeyCode::Char('t') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Todos;
-                    self.active_panel = Panel::Main;
-                    self.dashboard_menu_state.select(Some(1));
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('m') => {
-                    if self.active_context == Context::Project {
-                        self.active_selection = MenuSelection::MergeRequests;
-                        self.project_menu_state.select(Some(0));
-                    } else {
-                        self.active_context = Context::Dashboard;
-                        self.active_selection = MenuSelection::MergeRequests;
-                        self.dashboard_menu_state.select(Some(2));
-                    }
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('i') => {
-                    if self.active_context == Context::Project {
-                        self.active_selection = MenuSelection::Issues;
-                        self.project_menu_state.select(Some(1));
-                    } else {
-                        self.active_context = Context::Dashboard;
-                        self.active_selection = MenuSelection::Issues;
-                        self.dashboard_menu_state.select(Some(3));
-                    }
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
-                KeyCode::Char('p') => {
-                    if self.selected_project.is_some() {
-                        self.active_context = Context::Project;
-                        self.active_selection = MenuSelection::Pipelines;
-                        self.project_menu_state.select(Some(2));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    } else {
-                        self.active_context = Context::Dashboard;
-                        self.active_selection = MenuSelection::Pipelines;
-                        self.dashboard_menu_state.select(Some(4));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    }
-                }
-                KeyCode::Char('r') => {
-                    if self.selected_project.is_some() {
-                        self.active_context = Context::Project;
-                        self.active_selection = MenuSelection::Repository;
-                        self.project_menu_state.select(Some(3));
-                        self.active_panel = Panel::Main;
-                        let _ = self.refresh().await;
-                    }
-                }
-                KeyCode::Char('b') if self.selected_project.is_some() => {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Branches;
-                    self.project_menu_state.select(Some(4));
-                    self.active_panel = Panel::Main;
-                    let _ = self.refresh().await;
-                }
+                KeyCode::Char('h') => self.navigate(Context::Dashboard, MenuSelection::Home).await,
+                KeyCode::Char('t') => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
+                KeyCode::Char('m') => self.jump(MenuSelection::MergeRequests).await,
+                KeyCode::Char('i') => self.jump(MenuSelection::Issues).await,
+                KeyCode::Char('p') => self.jump(MenuSelection::Pipelines).await,
+                KeyCode::Char('r') => self.jump(MenuSelection::Repository).await,
+                KeyCode::Char('b') => self.jump(MenuSelection::Branches).await,
                 _ => {}
             }
             return;
@@ -1923,43 +1794,27 @@ impl App {
                     return;
                 }
                 KeyCode::Char('m') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::MergeRequests;
-                    self.dashboard_menu_state.select(Some(2));
-                    let _ = self.refresh().await;
+                    self.home_card_action(0).await;
                     return;
                 }
                 KeyCode::Char('t') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Todos;
-                    self.dashboard_menu_state.select(Some(1));
-                    let _ = self.refresh().await;
+                    self.home_card_action(1).await;
                     return;
                 }
                 KeyCode::Char('i') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Issues;
-                    self.dashboard_menu_state.select(Some(3));
-                    let _ = self.refresh().await;
+                    self.home_card_action(2).await;
                     return;
                 }
                 KeyCode::Char('b') => {
-                    self.active_selection = MenuSelection::Boards;
-                    self.view_mode = ViewMode::Board;
-                    let _ = self.refresh().await;
+                    self.home_card_action(3).await;
                     return;
                 }
                 KeyCode::Char('p') => {
-                    self.active_context = Context::Dashboard;
-                    self.active_selection = MenuSelection::Pipelines;
-                    self.dashboard_menu_state.select(Some(4));
-                    let _ = self.refresh().await;
+                    self.home_card_action(4).await;
                     return;
                 }
                 KeyCode::Char('r') => {
-                    self.active_context = Context::Project;
-                    self.active_selection = MenuSelection::Repository;
-                    let _ = self.refresh().await;
+                    self.home_card_action(5).await;
                     return;
                 }
                 KeyCode::Char('P') => {
@@ -2265,13 +2120,7 @@ impl App {
                         }
                         _ => {}
                     }
-                    if self.active_selection != MenuSelection::Pipelines {
-                        self.merge_requests.clear();
-                        self.issues.clear();
-                        self.reset_list_paging();
-                        self.todos.clear();
-                        let _ = self.refresh().await;
-                    }
+                    self.apply_filter_change().await;
                 }
             }
             KeyCode::Char(']') => {
@@ -2314,13 +2163,7 @@ impl App {
                         }
                         _ => {}
                     }
-                    if self.active_selection != MenuSelection::Pipelines {
-                        self.merge_requests.clear();
-                        self.issues.clear();
-                        self.reset_list_paging();
-                        self.todos.clear();
-                        let _ = self.refresh().await;
-                    }
+                    self.apply_filter_change().await;
                 }
             }
             KeyCode::Char('c') => {
@@ -2586,41 +2429,17 @@ impl App {
     }
 
     pub async fn execute_home_card_action(&mut self) {
-        match self.home_card_index {
-            0 => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::MergeRequests;
-                self.dashboard_menu_state.select(Some(2));
-                let _ = self.refresh().await;
-            }
-            1 => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::Todos;
-                self.dashboard_menu_state.select(Some(1));
-                let _ = self.refresh().await;
-            }
-            2 => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::Issues;
-                self.dashboard_menu_state.select(Some(3));
-                let _ = self.refresh().await;
-            }
-            3 => {
-                self.active_selection = MenuSelection::Boards;
-                self.view_mode = ViewMode::Board;
-                let _ = self.refresh().await;
-            }
-            4 => {
-                self.active_context = Context::Dashboard;
-                self.active_selection = MenuSelection::Pipelines;
-                self.dashboard_menu_state.select(Some(4));
-                let _ = self.refresh().await;
-            }
-            5 => {
-                self.active_context = Context::Project;
-                self.active_selection = MenuSelection::Repository;
-                let _ = self.refresh().await;
-            }
+        self.home_card_action(self.home_card_index).await;
+    }
+
+    async fn home_card_action(&mut self, card: usize) {
+        match card {
+            0 => self.navigate(Context::Dashboard, MenuSelection::MergeRequests).await,
+            1 => self.navigate(Context::Dashboard, MenuSelection::Todos).await,
+            2 => self.navigate(Context::Dashboard, MenuSelection::Issues).await,
+            3 => self.jump(MenuSelection::Boards).await,
+            4 => self.navigate(Context::Dashboard, MenuSelection::Pipelines).await,
+            5 => self.jump(MenuSelection::Repository).await,
             6 => {
                 self.show_project_popup = true;
             }
