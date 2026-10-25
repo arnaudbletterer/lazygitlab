@@ -27,6 +27,12 @@ pub enum Condition {
 
 impl Condition {
     fn parse(spec: &str) -> Result<Self, String> {
+        if let Some(text) = spec.strip_prefix("text:") {
+            if text.is_empty() {
+                return Err("until:text: needs a text".into());
+            }
+            return Ok(Condition::Text(text.to_string()));
+        }
         let Some(rest) = spec.strip_prefix('@') else {
             if spec.is_empty() {
                 return Err("until: needs a text".into());
@@ -254,12 +260,16 @@ pub fn parse_script_items(text: &str) -> Result<Vec<ScriptItem>, String> {
                 .split_once(':')
                 .ok_or_else(|| at("expected until_key:KEY:CONDITION".into()))?;
             let (key, count) = match key.split_once('*') {
-                Some((k, n)) => (
-                    k,
-                    n.trim()
+                Some((k, n)) => {
+                    let n: u32 = n
+                        .trim()
                         .parse()
-                        .map_err(|_| at("invalid key repeat".into()))?,
-                ),
+                        .map_err(|_| at("invalid key repeat".into()))?;
+                    if n < 1 {
+                        return Err(at("key repeat must be at least 1".into()));
+                    }
+                    (k, n)
+                }
                 None => (key, 1),
             };
             items.push(ScriptItem::Until {
@@ -322,7 +332,8 @@ pub fn observing() -> bool {
 pub fn start_observing(bench_path: Option<&Path>) -> std::io::Result<()> {
     crate::trace::mark_start();
     if let Some(path) = bench_path {
-        let file = fs::File::create(path)?;
+        let file = crate::logger::open_log_file(path)?;
+        file.set_len(0)?;
         *bench_out().lock().unwrap() = Some(BenchOut {
             file: std::io::BufWriter::new(file),
             last_key: None,

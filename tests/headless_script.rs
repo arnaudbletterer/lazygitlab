@@ -198,3 +198,25 @@ async fn test_wait_delays_following_events() {
     }
     assert!(start.elapsed() >= Duration::from_millis(100));
 }
+
+#[test]
+fn test_until_key_repeat_must_be_positive() {
+    use lazygitlab::headless::parse_script_items;
+    let err = parse_script_items("until_key:j*0:@mrs>=5").unwrap_err();
+    assert!(err.contains("at least 1"), "{err}");
+    assert!(parse_script_items("until_key:j*-1:@mrs>=5").is_err());
+    assert!(parse_script_items("until_key:j*1:@mrs>=5").is_ok());
+}
+
+#[test]
+fn test_until_text_prefix_matches_literal_at_sign() {
+    use lazygitlab::headless::{Condition, ScriptItem, parse_script_items};
+    let items = parse_script_items("until:text:@ada").unwrap();
+    match &items[0] {
+        ScriptItem::Until { condition, .. } => {
+            assert_eq!(*condition, Condition::Text("@ada".into()));
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert!(parse_script_items("until:text:").is_err());
+}
