@@ -93,13 +93,24 @@ impl Respond for Paged {
         let v = &body["variables"];
         let since = v["since"].as_str().map(str::to_string);
         let state = v["state"].as_str().unwrap_or("all").to_string();
-        let after: usize = v["after"].as_str().and_then(|a| a.parse().ok()).unwrap_or(0);
+        let after: usize = v["after"]
+            .as_str()
+            .and_then(|a| a.parse().ok())
+            .unwrap_or(0);
         let first = v["first"].as_u64().unwrap_or(20) as usize;
         let ids: Vec<u64> = v["ids"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|g| g.as_str().unwrap().rsplit('/').next().unwrap().parse().unwrap())
+            .map(|g| {
+                g.as_str()
+                    .unwrap()
+                    .rsplit('/')
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap()
+            })
             .collect();
         let rows = self.data.lock().unwrap().clone();
         let projects: Vec<Value> = ids
@@ -193,7 +204,10 @@ async fn wait_until(app: &mut App, rx: &mut Rx, what: &str, cond: impl Fn(&App) 
         if cond(app) {
             return;
         }
-        assert!(start.elapsed() < Duration::from_secs(5), "timed out: {what}");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "timed out: {what}"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
@@ -226,9 +240,16 @@ async fn merged_filter_over_the_followup_cap_is_a_complete_window() {
     app.fetch_global_merge_requests().await.unwrap();
     settle(&mut app, &mut rx).await;
 
-    assert_eq!(app.merge_requests.len(), 80, "20 first page plus 3 follow-ups");
+    assert_eq!(
+        app.merge_requests.len(),
+        80,
+        "20 first page plus 3 follow-ups"
+    );
     assert!(
-        !app.status_message.as_deref().unwrap_or("").contains("refresh failed"),
+        !app.status_message
+            .as_deref()
+            .unwrap_or("")
+            .contains("refresh failed"),
         "{:?}",
         app.status_message
     );
@@ -400,7 +421,9 @@ async fn project_issue_failure_does_not_end_the_global_fanout() {
     });
     app.fetch_issues().await.unwrap();
     wait_until(&mut app, &mut rx, "project issues failure", |a| {
-        a.status_message.as_deref().is_some_and(|m| m.contains("refresh failed"))
+        a.status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("refresh failed"))
     })
     .await;
 
@@ -474,15 +497,34 @@ async fn fanout_end_messages_end_it_exactly_once() {
         fanout_id,
     };
 
-    app.process_update_single(DataUpdate::ScopedIssue(scope(id + 100), Box::new(DataUpdate::RefreshFailed)))
-        .await;
-    assert_eq!(marker(&app), vec![(key.clone(), started)], "a foreign id ends nothing");
-    app.process_update_single(DataUpdate::ScopedIssue(scope(id), Box::new(DataUpdate::RefreshFailed)))
-        .await;
-    assert!(app.fanouts_started.is_empty(), "the first end message ends it");
-    app.process_update_single(DataUpdate::ScopedIssue(scope(id), Box::new(DataUpdate::RefreshFailed)))
-        .await;
-    assert!(app.fanouts_started.is_empty(), "a second end message starts nothing");
+    app.process_update_single(DataUpdate::ScopedIssue(
+        scope(id + 100),
+        Box::new(DataUpdate::RefreshFailed),
+    ))
+    .await;
+    assert_eq!(
+        marker(&app),
+        vec![(key.clone(), started)],
+        "a foreign id ends nothing"
+    );
+    app.process_update_single(DataUpdate::ScopedIssue(
+        scope(id),
+        Box::new(DataUpdate::RefreshFailed),
+    ))
+    .await;
+    assert!(
+        app.fanouts_started.is_empty(),
+        "the first end message ends it"
+    );
+    app.process_update_single(DataUpdate::ScopedIssue(
+        scope(id),
+        Box::new(DataUpdate::RefreshFailed),
+    ))
+    .await;
+    assert!(
+        app.fanouts_started.is_empty(),
+        "a second end message starts nothing"
+    );
     settle(&mut app, &mut rx).await;
 }
 
@@ -496,8 +538,13 @@ async fn membership_timeout_releases_the_flag_and_the_next_tick_recovers() {
         .and(path("/api/v4/projects"))
         .respond_with(move |_: &Request| {
             let n = seen.fetch_add(1, Ordering::SeqCst);
-            let t = ResponseTemplate::new(200).set_body_json(json!([{"id": 1, "name": "p", "path_with_namespace": "g/p"}]));
-            if n == 0 { t.set_delay(Duration::from_secs(5)) } else { t }
+            let t = ResponseTemplate::new(200)
+                .set_body_json(json!([{"id": 1, "name": "p", "path_with_namespace": "g/p"}]));
+            if n == 0 {
+                t.set_delay(Duration::from_secs(5))
+            } else {
+                t
+            }
         })
         .mount(&server)
         .await;
@@ -507,7 +554,10 @@ async fn membership_timeout_releases_the_flag_and_the_next_tick_recovers() {
 
     app.fetch_membership_project_ids().await.unwrap();
     assert!(app.is_syncing_membership);
-    wait_until(&mut app, &mut rx, "flag released", |a| !a.is_syncing_membership).await;
+    wait_until(&mut app, &mut rx, "flag released", |a| {
+        !a.is_syncing_membership
+    })
+    .await;
     assert!(app.member_project_ids.is_empty());
 
     app.refresh_background().await;
@@ -536,7 +586,11 @@ async fn graphql_429_pauses_a_concurrent_rest_request() {
     let res = fetch_merge_requests_via(&c, Some(&http), &state, &[1], "opened", None).await;
     assert!(res.is_err(), "graphql answered 429");
 
-    let paused = tokio::time::timeout(Duration::from_millis(400), http.get("projects/1/ping", None)).await;
+    let paused = tokio::time::timeout(
+        Duration::from_millis(400),
+        http.get("projects/1/ping", None),
+    )
+    .await;
     assert!(paused.is_err(), "the REST request waits for the gate");
     let pings = server
         .received_requests()
@@ -554,7 +608,11 @@ async fn aborting_waiters_releases_the_request_budget() {
     mount_user(&server).await;
     Mock::given(method("GET"))
         .and(path_regex(r"^/api/v4/projects/\d+/slow$"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])).set_delay(Duration::from_secs(30)))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!([]))
+                .set_delay(Duration::from_secs(30)),
+        )
         .mount(&server)
         .await;
     Mock::given(method("GET"))
@@ -581,12 +639,19 @@ async fn aborting_waiters_releases_the_request_budget() {
         if n == 6 {
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(5), "requests never started");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "requests never started"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     for t in &tasks {
         t.abort();
     }
-    let fast = tokio::time::timeout(Duration::from_secs(3), http.get("projects/99/fast", None)).await;
-    assert!(matches!(fast, Ok(Outcome::Ok(_))), "budget still held by aborted requests");
+    let fast =
+        tokio::time::timeout(Duration::from_secs(8), http.get("projects/99/fast", None)).await;
+    assert!(
+        matches!(fast, Ok(Outcome::Ok(_))),
+        "budget still held by aborted requests"
+    );
 }

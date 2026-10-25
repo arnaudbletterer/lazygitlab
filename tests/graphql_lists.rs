@@ -716,7 +716,9 @@ async fn followup_pages_are_capped_per_project() {
         .await
         .unwrap();
 
-    assert!(!res.complete);
+    assert!(res.complete, "a deliberate cap is a complete window");
+    assert_eq!(res.truncated_projects, vec![1]);
+    assert!(res.failed_projects.is_empty());
     assert_eq!(res.rows.len(), 4);
     assert_eq!(graphql_requests(&server).await.len(), 4);
 }
