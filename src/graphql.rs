@@ -1,23 +1,33 @@
 //! Batched GraphQL fetch of the dashboard merge request and issue lists.
 //!
-//! Minimum versions: the base query works on CE and EE 15.x. `approvalsLeft` exists only
-//! on EE, and `resolvableDiscussionsCount` / `resolvedDiscussionsCount` need GitLab 17.7.
-//! When the server rejects one of those optional fields, the query drops exactly that group
-//! and retries; the level is remembered per (host, kind) in [`GraphqlState`].
+//! Versions, from the official GitLab docs: `approvalsLeft` exists only on EE (the
+//! GraphQL reference lists it on `MergeRequest` without a CE marker), and the
+//! discussion counts need GitLab 17.7 per the maintainers. `detailedMergeStatus`
+//! replaces `merge_status` as of GitLab 15.6 in the REST docs; the GraphQL reference carries
+//! no introduction note for it, so 15.6 is the practical minimum and servers older than
+//! that are expected to answer with an unknown-field error, which maps to `Unsupported`.
+//! When the server rejects one of the optional fields (approvals, discussion counts), the
+//! query drops exactly that group and retries; the level is remembered per (host, kind) in
+//! [`GraphqlState`].
 
 use crate::models::{Author, Issue, Label, MergeRequest, Milestone, PipelineMin, References};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 const MAX_BATCH: usize = 20;
 const MAX_IN_FLIGHT: usize = 4;
-const MAX_PAGES_PER_PROJECT: usize = 5;
-const COMPLEXITY_THRESHOLD: u64 = 200;
+const MAX_FOLLOWUP_PAGES_PER_PROJECT: usize = 3;
+const MAX_FOLLOWUP_REQUESTS_PER_CALL: usize = 40;
+const DEFAULT_COMPLEXITY_LIMIT: u64 = 250;
+const COMPLEXITY_SHRINK_RATIO: f64 = 0.8;
+const GROW_AFTER_SUCCESSES: u32 = 5;
+const NOT_FOUND_BEFORE_UNSUPPORTED: u32 = 2;
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 const MR_FIELDS_HEAD: &str = "iid title state draft webUrl createdAt updatedAt detailedMergeStatus conflicts sourceBranch targetBranch author{id username name} assignees{nodes{id username}} reviewers{nodes{id username}} labels{nodes{id title color textColor}} milestone{id title} headPipeline{id status} approved";
@@ -120,11 +130,16 @@ impl std::error::Error for GraphqlError {}
 pub struct ListResult<T> {
     pub rows: Vec<T>,
     pub complete: bool,
+    pub rate_limited: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MrRow {
+    /// `milestone.id` and `head_pipeline.id` are 0 here when the server id could not be
+    /// parsed; use `milestone_id` and `pipeline_id` to tell.
     pub mr: MergeRequest,
+    pub pipeline_id: Option<u64>,
+    pub milestone_id: Option<u64>,
     pub path_with_namespace: String,
     pub updated_at: Option<String>,
     pub approved: Option<bool>,
@@ -144,7 +159,9 @@ impl MrRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssueRow {
+    /// `milestone.id` is 0 here when the server id could not be parsed; use `milestone_id`.
     pub issue: Issue,
+    pub milestone_id: Option<u64>,
     pub path_with_namespace: String,
     pub updated_at: Option<String>,
     pub user_notes_count: Option<u64>,
@@ -154,8 +171,11 @@ pub struct IssueRow {
 struct KindState {
     unsupported: bool,
     size: usize,
+    first: usize,
     level: Level,
     last: Option<Complexity>,
+    not_found: u32,
+    ok_streak: u32,
 }
 
 impl Default for KindState {
@@ -163,8 +183,11 @@ impl Default for KindState {
         Self {
             unsupported: false,
             size: MAX_BATCH,
+            first: MAX_BATCH,
             level: Level::FULL,
             last: None,
+            not_found: 0,
+            ok_streak: 0,
         }
     }
 }
@@ -177,6 +200,10 @@ pub struct GraphqlState {
 impl GraphqlState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn reset(&self) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     fn with<R>(&self, url: &str, kind: ListKind, f: impl FnOnce(&mut KindState) -> R) -> R {
@@ -207,6 +234,10 @@ impl GraphqlState {
 
     pub fn batch_size(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> usize {
         self.read(client, kind, |k| k.size, MAX_BATCH)
+    }
+
+    pub fn first_size(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> usize {
+        self.read(client, kind, |k| k.first, MAX_BATCH)
     }
 
     pub fn is_unsupported(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> bool {
@@ -370,8 +401,8 @@ fn gid_number(gid: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("bad global id {gid}"))
 }
 
-fn optional_id(id: &Option<String>) -> u64 {
-    id.as_deref().and_then(|g| gid_number(g).ok()).unwrap_or(0)
+fn parsed_id(id: &Option<String>) -> Option<u64> {
+    id.as_deref().and_then(|g| gid_number(g).ok())
 }
 
 fn author(u: &GqlUser) -> Result<Author, String> {
@@ -386,26 +417,26 @@ fn authors(n: &Option<Nodes<GqlUser>>) -> Result<Vec<Author>, String> {
         .unwrap_or_else(|| Ok(Vec::new()))
 }
 
-fn labels(n: &Option<Nodes<GqlLabel>>) -> Vec<Label> {
-    n.as_ref()
-        .map(|n| {
-            n.nodes
-                .iter()
-                .flatten()
-                .map(|l| Label {
-                    id: optional_id(&l.id),
-                    name: l.title.clone(),
-                    color: l.color.clone(),
-                    text_color: l.text_color.clone(),
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+fn labels(n: &Option<Nodes<GqlLabel>>) -> (Vec<Label>, bool) {
+    let mut ok = true;
+    let mut out = Vec::new();
+    for l in n.iter().flat_map(|n| n.nodes.iter().flatten()) {
+        match parsed_id(&l.id) {
+            Some(id) => out.push(Label {
+                id,
+                name: l.title.clone(),
+                color: l.color.clone(),
+                text_color: l.text_color.clone(),
+            }),
+            None => ok = false,
+        }
+    }
+    (out, ok)
 }
 
 fn milestone(m: &Option<GqlMilestone>) -> Option<Milestone> {
     m.as_ref().map(|m| Milestone {
-        id: optional_id(&m.id),
+        id: parsed_id(&m.id).unwrap_or(0),
         title: m.title.clone(),
     })
 }
@@ -417,8 +448,11 @@ fn author_or_ghost(u: &Option<GqlUser>) -> Result<Author, String> {
     }
 }
 
-fn map_mr(project_id: u64, path: &str, n: MrNode) -> Result<MrRow, String> {
+fn map_mr(project_id: u64, path: &str, n: MrNode) -> Result<(MrRow, bool), String> {
     let iid: u64 = n.iid.parse().map_err(|_| format!("bad iid {}", n.iid))?;
+    let (label_list, labels_ok) = labels(&n.labels);
+    let pipeline_id = n.head_pipeline.as_ref().and_then(|p| parsed_id(&p.id));
+    let milestone_id = n.milestone.as_ref().and_then(|m| parsed_id(&m.id));
     let mr = MergeRequest {
         iid,
         project_id,
@@ -433,7 +467,7 @@ fn map_mr(project_id: u64, path: &str, n: MrNode) -> Result<MrRow, String> {
         }),
         upvotes: None,
         downvotes: None,
-        labels: labels(&n.labels),
+        labels: label_list,
         milestone: milestone(&n.milestone),
         assignees: authors(&n.assignees)?,
         reviewers: authors(&n.reviewers)?,
@@ -445,33 +479,38 @@ fn map_mr(project_id: u64, path: &str, n: MrNode) -> Result<MrRow, String> {
         detailed_merge_status: n.detailed_merge_status.map(|s| s.to_lowercase()),
         has_conflicts: n.conflicts,
         head_pipeline: n.head_pipeline.map(|p| PipelineMin {
-            id: optional_id(&p.id),
+            id: pipeline_id.unwrap_or(0),
             status: p.status.to_lowercase(),
         }),
         source_branch: n.source_branch,
         target_branch: n.target_branch,
         participants: Vec::new(),
     };
-    Ok(MrRow {
+    let row = MrRow {
         mr,
+        pipeline_id,
+        milestone_id,
         path_with_namespace: path.to_string(),
         updated_at: n.updated_at,
         approved: n.approved,
         approvals_left: n.approvals_left,
         resolvable_discussions: n.resolvable_discussions_count,
         resolved_discussions: n.resolved_discussions_count,
-    })
+    };
+    Ok((row, labels_ok))
 }
 
-fn map_issue(project_id: u64, path: &str, n: IssueNode) -> Result<IssueRow, String> {
+fn map_issue(project_id: u64, path: &str, n: IssueNode) -> Result<(IssueRow, bool), String> {
     let iid: u64 = n.iid.parse().map_err(|_| format!("bad iid {}", n.iid))?;
+    let (label_list, labels_ok) = labels(&n.labels);
+    let milestone_id = n.milestone.as_ref().and_then(|m| parsed_id(&m.id));
     let issue = Issue {
         iid,
         project_id,
         title: n.title,
         description: None,
         author: author_or_ghost(&n.author)?,
-        labels: labels(&n.labels),
+        labels: label_list,
         assignees: authors(&n.assignees)?,
         state: n.state.to_lowercase(),
         web_url: n.web_url,
@@ -491,18 +530,21 @@ fn map_issue(project_id: u64, path: &str, n: IssueNode) -> Result<IssueRow, Stri
         reactions: Vec::new(),
         participants: Vec::new(),
     };
-    Ok(IssueRow {
+    let row = IssueRow {
         issue,
+        milestone_id,
         path_with_namespace: path.to_string(),
         updated_at: n.updated_at,
         user_notes_count: n.user_notes_count,
-    })
+    };
+    Ok((row, labels_ok))
 }
 
 enum Fail {
     Err(GraphqlError),
     UnknownFields(Vec<String>),
     ComplexityExceeded,
+    NotFound,
 }
 
 impl From<GraphqlError> for Fail {
@@ -536,11 +578,13 @@ fn classify_validation(errors: &[GqlMessage]) -> Option<Validation> {
     }
 }
 
+type MapFn<N, T> = fn(u64, &str, N) -> Result<(T, bool), String>;
+
 struct Kind<N, T> {
     list: ListKind,
     query: fn(Level) -> String,
     field: &'static str,
-    map: fn(u64, &str, N) -> Result<T, String>,
+    map: MapFn<N, T>,
 }
 
 impl<N, T> Clone for Kind<N, T> {
@@ -554,7 +598,9 @@ struct Request {
     url: String,
     state: String,
     since: Option<String>,
-    size: usize,
+    first: usize,
+    followups: AtomicUsize,
+    sem: Semaphore,
 }
 
 struct Page {
@@ -582,7 +628,7 @@ async fn post(
             "state": req.state,
             "since": req.since,
             "after": after,
-            "first": req.size,
+            "first": req.first,
         }
     });
     let http_req = http::Request::builder()
@@ -590,6 +636,7 @@ async fn post(
         .uri(req.url.as_str())
         .header(http::header::CONTENT_TYPE, "application/json")
         .header(http::header::ACCEPT, "application/json");
+    let _permit = req.sem.acquire().await;
     let resp = tokio::time::timeout(
         REQUEST_TIMEOUT,
         client.rest_async(http_req, body.to_string().into_bytes()),
@@ -601,8 +648,8 @@ async fn post(
     if status == http::StatusCode::TOO_MANY_REQUESTS {
         return Err(GraphqlError::RateLimited.into());
     }
-    if status == http::StatusCode::NOT_FOUND || status == http::StatusCode::BAD_REQUEST {
-        return Err(GraphqlError::Unsupported.into());
+    if status == http::StatusCode::NOT_FOUND {
+        return Err(Fail::NotFound);
     }
     if !status.is_success() {
         return Err(GraphqlError::Failed(format!("HTTP {status}")).into());
@@ -633,7 +680,10 @@ async fn post(
     let complexity = data.get("queryComplexity").and_then(|c| {
         Some(Complexity {
             score: c.get("score")?.as_u64()?,
-            limit: c.get("limit")?.as_u64()?,
+            limit: c
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(DEFAULT_COMPLEXITY_LIMIT),
         })
     });
     if let Some(c) = complexity {
@@ -652,6 +702,7 @@ struct BatchOut<T> {
     max_score: Option<Complexity>,
     level: Level,
     over_limit: bool,
+    rate_limited: bool,
 }
 
 fn project_nodes(data: &Value) -> Result<&Vec<Value>, GraphqlError> {
@@ -667,6 +718,10 @@ fn merge_complexity(acc: &mut Option<Complexity>, c: Option<Complexity>) {
     {
         *acc = Some(c);
     }
+}
+
+fn over_threshold(c: Complexity) -> bool {
+    c.score as f64 > COMPLEXITY_SHRINK_RATIO * c.limit as f64
 }
 
 type NextPage = Option<(u64, String)>;
@@ -694,7 +749,10 @@ where
             .map_err(|e| e.to_string())
             .and_then(|n| (kind.map)(pid, path, n));
         match row {
-            Ok(r) => out.rows.push(r),
+            Ok((r, ok)) => {
+                out.complete &= ok;
+                out.rows.push(r);
+            }
             Err(e) => {
                 tracing::warn!("skipping unparsable graphql node: {e}");
                 out.complete = false;
@@ -749,6 +807,7 @@ where
         max_score: page.complexity,
         level,
         over_limit: false,
+        rate_limited: false,
     };
     let mut followups: Vec<(u64, String)> = Vec::new();
     for node in project_nodes(&page.data)? {
@@ -757,9 +816,11 @@ where
         }
     }
     for (pid, mut cursor) in followups {
-        let mut pages = 1;
+        let mut pages = 0;
         loop {
-            if pages >= MAX_PAGES_PER_PROJECT {
+            if pages >= MAX_FOLLOWUP_PAGES_PER_PROJECT
+                || req.followups.fetch_add(1, Ordering::Relaxed) >= MAX_FOLLOWUP_REQUESTS_PER_CALL
+            {
                 out.complete = false;
                 break;
             }
@@ -771,7 +832,16 @@ where
                     out.over_limit = true;
                     break;
                 }
+                Err(Fail::NotFound) => {
+                    out.complete = false;
+                    break;
+                }
                 Err(Fail::UnknownFields(_)) => return Err(GraphqlError::Unsupported.into()),
+                Err(Fail::Err(GraphqlError::RateLimited)) => {
+                    out.complete = false;
+                    out.rate_limited = true;
+                    return Ok(out);
+                }
                 Err(Fail::Err(GraphqlError::Failed(m))) => {
                     tracing::warn!("graphql follow-up page failed: {m}");
                     out.complete = false;
@@ -804,6 +874,13 @@ fn shrink(size: usize) -> usize {
     }
 }
 
+fn grow(size: usize) -> usize {
+    match size {
+        s if s < 10 => 10,
+        _ => MAX_BATCH,
+    }
+}
+
 async fn fetch<N, T>(
     client: &gitlab::AsyncGitlab,
     state: &GraphqlState,
@@ -821,22 +898,19 @@ where
     if snapshot.unsupported {
         return Err(GraphqlError::Unsupported);
     }
-    let size = snapshot.size;
     let req = Arc::new(Request {
         url: url.clone(),
         state: list_state.to_string(),
         since: since.map(str::to_string),
-        size,
+        first: snapshot.first,
+        followups: AtomicUsize::new(0),
+        sem: Semaphore::new(MAX_IN_FLIGHT),
     });
-    let sem = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
     let mut set = JoinSet::new();
-    for (idx, chunk) in project_ids.chunks(size).enumerate() {
-        let (client, req, sem, chunk) = (client.clone(), req.clone(), sem.clone(), chunk.to_vec());
+    for (idx, chunk) in project_ids.chunks(snapshot.size).enumerate() {
+        let (client, req, chunk) = (client.clone(), req.clone(), chunk.to_vec());
         let level = snapshot.level;
-        set.spawn(async move {
-            let _permit = sem.acquire_owned().await;
-            (idx, run_batch(client, req, kind, level, chunk).await)
-        });
+        set.spawn(async move { (idx, run_batch(client, req, kind, level, chunk).await) });
     }
     let mut results: Vec<(usize, Result<BatchOut<T>, Fail>)> = Vec::new();
     while let Some(r) = set.join_next().await {
@@ -851,7 +925,10 @@ where
     results.sort_by_key(|(i, _)| *i);
 
     let mut worst: Option<Complexity> = None;
-    let mut fatal: Option<GraphqlError> = None;
+    let mut unsupported = false;
+    let mut rate_limited = false;
+    let mut not_found = false;
+    let mut any_ok = false;
     let mut rows = Vec::new();
     let mut complete = true;
     let mut over_limit = false;
@@ -859,19 +936,21 @@ where
     for (_, r) in results {
         match r {
             Ok(b) => {
+                any_ok = true;
                 merge_complexity(&mut worst, b.max_score);
                 complete &= b.complete;
                 over_limit |= b.over_limit;
+                rate_limited |= b.rate_limited;
                 level = level.and(b.level);
                 rows.extend(b.rows);
             }
             Err(Fail::Err(GraphqlError::Unsupported)) | Err(Fail::UnknownFields(_)) => {
-                fatal = Some(GraphqlError::Unsupported)
+                unsupported = true
             }
-            Err(Fail::Err(GraphqlError::RateLimited)) => {
-                if fatal != Some(GraphqlError::Unsupported) {
-                    fatal = Some(GraphqlError::RateLimited);
-                }
+            Err(Fail::Err(GraphqlError::RateLimited)) => rate_limited = true,
+            Err(Fail::NotFound) => {
+                not_found = true;
+                complete = false;
             }
             Err(Fail::ComplexityExceeded) => {
                 over_limit = true;
@@ -888,17 +967,41 @@ where
         if let Some(c) = worst {
             k.last = Some(c);
         }
-        if over_limit || worst.is_some_and(|c| c.score > COMPLEXITY_THRESHOLD) {
+        if over_limit || worst.is_some_and(over_threshold) {
             k.size = shrink(k.size);
+            k.first = shrink(k.first);
+            k.ok_streak = 0;
+        } else if worst.is_some() {
+            k.ok_streak += 1;
+            if k.ok_streak >= GROW_AFTER_SUCCESSES {
+                k.size = grow(k.size);
+                k.first = grow(k.first);
+                k.ok_streak = 0;
+            }
         }
-        if fatal == Some(GraphqlError::Unsupported) {
+        if any_ok {
+            k.not_found = 0;
+        } else if not_found {
+            k.not_found += 1;
+            if k.not_found >= NOT_FOUND_BEFORE_UNSUPPORTED {
+                unsupported = true;
+            }
+        }
+        if unsupported {
             k.unsupported = true;
         }
     });
-    if let Some(e) = fatal {
-        return Err(e);
+    if unsupported {
+        return Err(GraphqlError::Unsupported);
     }
-    Ok(ListResult { rows, complete })
+    if rate_limited && rows.is_empty() {
+        return Err(GraphqlError::RateLimited);
+    }
+    Ok(ListResult {
+        rows,
+        complete: complete && !rate_limited,
+        rate_limited,
+    })
 }
 
 pub async fn fetch_merge_requests(

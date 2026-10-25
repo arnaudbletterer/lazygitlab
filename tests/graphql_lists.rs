@@ -189,6 +189,8 @@ async fn forty_five_projects_use_three_requests_and_map_every_field() {
     assert_eq!(row.mr.milestone.as_ref().unwrap().id, 6);
     assert_eq!(row.mr.labels[0].id, 5);
     assert_eq!(row.mr.head_pipeline.as_ref().unwrap().id, 77);
+    assert_eq!(row.pipeline_id, Some(77));
+    assert_eq!(row.milestone_id, Some(6));
     assert_eq!(row.mr.head_pipeline.as_ref().unwrap().status, "success");
     assert_eq!(row.mr.references.as_ref().unwrap().full, "g/p30!7");
     assert_eq!(row.approved, Some(false));
@@ -509,13 +511,271 @@ async fn complexity_error_shrinks_batch_and_first() {
 }
 
 #[tokio::test]
-async fn http_404_is_unsupported() {
+async fn http_404_needs_two_consecutive_calls_to_mark_unsupported() {
     let server = MockServer::start().await;
     mount_graphql(&server, ResponseTemplate::new(404)).await;
     let c = client(&server).await;
     let st = GraphqlState::new();
-    let r = fetch_merge_requests(&c, &st, &[1], "opened", None).await;
-    assert_eq!(r.unwrap_err(), GraphqlError::Unsupported);
+
+    let first = fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert!(!first.complete);
+    assert!(!st.is_unsupported(&c, ListKind::MergeRequests));
+
+    let second = fetch_merge_requests(&c, &st, &[1], "opened", None).await;
+    assert_eq!(second.unwrap_err(), GraphqlError::Unsupported);
+    assert!(st.is_unsupported(&c, ListKind::MergeRequests));
+    let before = graphql_requests(&server).await.len();
+    let third = fetch_merge_requests(&c, &st, &[1], "opened", None).await;
+    assert_eq!(third.unwrap_err(), GraphqlError::Unsupported);
+    assert_eq!(graphql_requests(&server).await.len(), before);
+
+    st.reset();
+    assert!(!st.is_unsupported(&c, ListKind::MergeRequests));
+    let again = fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert!(!again.complete);
+}
+
+#[tokio::test]
+async fn success_resets_the_not_found_counter() {
+    let server = MockServer::start().await;
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = calls.clone();
+    Mock::given(method("POST"))
+        .and(path("/api/graphql"))
+        .respond_with(move |req: &Request| {
+            match seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                1 => envelope(vec![project(1, "mergeRequests", vec![mr_node(1)], None)], 1),
+                _ => {
+                    let _ = req;
+                    ResponseTemplate::new(404)
+                }
+            }
+        })
+        .mount(&server)
+        .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+
+    for _ in 0..3 {
+        let _ = fetch_merge_requests(&c, &st, &[1], "opened", None).await;
+    }
+    assert!(!st.is_unsupported(&c, ListKind::MergeRequests));
+}
+
+#[tokio::test]
+async fn http_400_is_transient_not_unsupported() {
+    let server = MockServer::start().await;
+    mount_graphql(&server, ResponseTemplate::new(400)).await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+    for _ in 0..3 {
+        let res = fetch_merge_requests(&c, &st, &[1], "opened", None)
+            .await
+            .unwrap();
+        assert!(!res.complete);
+    }
+    assert!(!st.is_unsupported(&c, ListKind::MergeRequests));
+}
+
+struct Scored {
+    calls: std::sync::atomic::AtomicUsize,
+    first_score: u64,
+    first_limit: u64,
+}
+
+impl Respond for Scored {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (score, limit) = if n == 0 {
+            (self.first_score, self.first_limit)
+        } else {
+            (10, 250)
+        };
+        let projects: Vec<Value> = ids_of(req)
+            .into_iter()
+            .map(|pid| project(pid, "mergeRequests", vec![mr_node(pid)], None))
+            .collect();
+        ResponseTemplate::new(200).set_body_json(json!({
+            "data": {
+                "projects": {"nodes": projects},
+                "queryComplexity": {"score": score, "limit": limit}
+            }
+        }))
+    }
+}
+
+#[tokio::test]
+async fn shrunk_sizes_grow_back_after_successes() {
+    let server = MockServer::start().await;
+    mount_graphql(
+        &server,
+        Scored {
+            calls: Default::default(),
+            first_score: 400,
+            first_limit: 250,
+        },
+    )
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+    let kind = ListKind::MergeRequests;
+
+    fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert_eq!((st.batch_size(&c, kind), st.first_size(&c, kind)), (10, 10));
+    for _ in 0..4 {
+        fetch_merge_requests(&c, &st, &[1], "opened", None)
+            .await
+            .unwrap();
+        assert_eq!(st.first_size(&c, kind), 10);
+    }
+    fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert_eq!((st.batch_size(&c, kind), st.first_size(&c, kind)), (20, 20));
+}
+
+#[tokio::test]
+async fn threshold_follows_the_reported_limit() {
+    let kind = ListKind::MergeRequests;
+    let server = MockServer::start().await;
+    mount_graphql(
+        &server,
+        Scored {
+            calls: Default::default(),
+            first_score: 130,
+            first_limit: 150,
+        },
+    )
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+    fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert_eq!(st.batch_size(&c, kind), 10);
+
+    let server = MockServer::start().await;
+    mount_graphql(
+        &server,
+        Scored {
+            calls: Default::default(),
+            first_score: 230,
+            first_limit: 300,
+        },
+    )
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+    fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert_eq!(st.batch_size(&c, kind), 20);
+}
+
+#[tokio::test]
+async fn missing_limit_defaults_to_250() {
+    let server = MockServer::start().await;
+    mount_graphql(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!({
+            "data": {
+                "projects": {"nodes": [project(1, "mergeRequests", vec![mr_node(1)], None)]},
+                "queryComplexity": {"score": 210}
+            }
+        })),
+    )
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+    fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+    assert_eq!(st.batch_size(&c, ListKind::MergeRequests), 10);
+}
+
+#[tokio::test]
+async fn followup_pages_are_capped_per_project() {
+    let server = MockServer::start().await;
+    mount_graphql(&server, |_: &Request| {
+        envelope(
+            vec![project(1, "mergeRequests", vec![mr_node(1)], Some("c"))],
+            10,
+        )
+    })
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+
+    let res = fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+
+    assert!(!res.complete);
+    assert_eq!(res.rows.len(), 4);
+    assert_eq!(graphql_requests(&server).await.len(), 4);
+}
+
+#[tokio::test]
+async fn rate_limited_followup_keeps_rows_and_flags_it() {
+    let server = MockServer::start().await;
+    mount_graphql(&server, |req: &Request| {
+        if body(req)["variables"]["after"].is_null() {
+            envelope(
+                vec![project(1, "mergeRequests", vec![mr_node(1)], Some("c"))],
+                10,
+            )
+        } else {
+            ResponseTemplate::new(429)
+        }
+    })
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+
+    let res = fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+
+    assert!(res.rate_limited);
+    assert!(!res.complete);
+    assert_eq!(res.rows.len(), 1);
+}
+
+#[tokio::test]
+async fn unparsable_ids_are_never_silently_zero() {
+    let server = MockServer::start().await;
+    let mut node = mr_node(1);
+    node["labels"] = json!({"nodes": [
+        {"id": "garbage", "title": "bad", "color": "#000000", "textColor": "#ffffff"},
+        {"id": "gid://gitlab/ProjectLabel/5", "title": "good", "color": "#000000", "textColor": "#ffffff"}
+    ]});
+    node["headPipeline"] = json!({"id": "garbage", "status": "FAILED"});
+    node["milestone"] = json!({"id": "garbage", "title": "v1"});
+    mount_graphql(
+        &server,
+        envelope(vec![project(1, "mergeRequests", vec![node], None)], 10),
+    )
+    .await;
+    let c = client(&server).await;
+    let st = GraphqlState::new();
+
+    let res = fetch_merge_requests(&c, &st, &[1], "opened", None)
+        .await
+        .unwrap();
+
+    assert!(!res.complete);
+    let row = &res.rows[0];
+    assert_eq!(row.mr.labels.len(), 1);
+    assert_eq!(row.mr.labels[0].name, "good");
+    assert_eq!(row.pipeline_id, None);
+    assert_eq!(row.milestone_id, None);
+    assert_eq!(row.mr.head_pipeline.as_ref().unwrap().status, "failed");
 }
 
 struct FailOne;
