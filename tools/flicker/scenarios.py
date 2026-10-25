@@ -133,6 +133,17 @@ def s8(lat):
     return s.wait(3000)
 
 
+def s9(lat):
+    s = Script(lat).settle()
+    gap = 1500 + 3 * lat
+    s.key("nav", "Home", "g h, Tab", "g", "h", "tab").wait(300)
+    s.key("nav", MR, "j j (sidebar)", "j", "j").wait(gap)
+    for _ in range(4):
+        s.key("nav", ISSUES, "j (sidebar)", "j").wait(gap)
+        s.key("nav", MR, "k (sidebar)", "k").wait(gap)
+    return s
+
+
 # name: (builder, description, big_only, quick)
 SCENARIOS = {
     "S1": (s1, "g m, g i, g m, g i every 1.5 s", False, True),
@@ -142,5 +153,6 @@ SCENARIOS = {
     "S5": (s5, "Enter into an item and Esc back, repeated", False, True),
     "S6": (s6, "Pipelines, Todos, Projects, Groups and back", False, False),
     "S7": (s7, "idle 90 s while the mock merges, closes and adds", False, False),
+    "S9": (s9, "switch MRs and Issues through the sidebar (Tab, j, k)", False, True),
     "S8": (s8, "mock fails or hangs some projects while switching", True, False),
 }

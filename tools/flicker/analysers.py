@@ -35,7 +35,7 @@ class Context:
         return 1500 + 8 * self.latency
 
     def mutation_ms(self):
-        return 15000 + 4 * self.latency
+        return 40000 + 4 * self.latency
 
 
 def load_events(lines):
