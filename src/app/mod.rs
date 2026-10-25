@@ -1055,7 +1055,16 @@ impl App {
                 let _ = self.check_pagination().await;
             }
             DataUpdate::MrList(update) => {
+                let scope = update.scope;
+                let ends = !update.progress;
                 self.apply_mr_list(*update);
+                if ends
+                    && let Some(scope) = scope
+                    && self.fanout_done(&format!("mr:{scope:?}"))
+                {
+                    self.mrs_force_full = true;
+                    self.fetch_global_mrs_guarded(false).await;
+                }
             }
             DataUpdate::CurrentUser(user) => {
                 let id = user.id;
