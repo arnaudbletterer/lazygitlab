@@ -418,9 +418,13 @@ pub fn render_diff_view(f: &mut Frame, app: &mut App, area: Rect) {
 
             if mr_diff.display_lines.is_empty() {
                 f.render_widget(
-                    Paragraph::new("  (No diff changes to display for this file.)")
-                        .fg(app.theme.dim)
-                        .block(Block::default().title(format!(" {} ", mr_diff.new_path))),
+                    Paragraph::new(if mr_diff.collapsed && mr_diff.diff.is_empty() {
+                        "  (Diff not loaded, press e to load it.)"
+                    } else {
+                        "  (No diff changes to display for this file.)"
+                    })
+                    .fg(app.theme.dim)
+                    .block(Block::default().title(format!(" {} ", mr_diff.new_path))),
                     workspace_chunks[1],
                 );
             } else if app.diff_side_by_side {

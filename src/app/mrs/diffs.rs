@@ -60,7 +60,7 @@ impl App {
         let sem = self.diff_fetch_semaphore.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
+            let _loading = crate::app::loading::LoadingGuard::new(tx.clone());
             let Ok(_permit) = sem.acquire().await else {
                 return;
             };
@@ -99,9 +99,10 @@ impl App {
             let mut set = tokio::task::JoinSet::new();
             for (old_path, new_path) in missing {
                 let _ = tx.send(DataUpdate::Loading(true));
+                let loading = crate::app::loading::LoadingGuard::new(tx.clone());
                 let (client, tx, sem, mr) = (client.clone(), tx.clone(), sem.clone(), mr.clone());
                 set.spawn(async move {
-                    let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
+                    let _loading = loading;
                     let Ok(_permit) = sem.acquire().await else {
                         return;
                     };

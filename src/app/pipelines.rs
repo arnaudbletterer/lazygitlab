@@ -8,28 +8,45 @@ use tokio::sync::Semaphore;
 /// Largest job log kept in memory; older output is dropped.
 pub const JOB_LOG_MAX_BYTES: usize = 8 * 1024 * 1024;
 
-struct InflightGuard(Arc<AtomicBool>);
+struct InflightGuard(Arc<JobLogFetch>);
 
 impl Drop for InflightGuard {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
+        self.0.inflight.store(false, Ordering::Release);
     }
 }
 
-/// Decodes a raw log, keeping only the last `JOB_LOG_MAX_BYTES` (cut at a line start).
-pub fn tail_log(data: &[u8]) -> String {
+struct MutationGuard(
+    Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    String,
+);
+
+impl Drop for MutationGuard {
+    fn drop(&mut self) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.1);
+    }
+}
+
+/// Decodes a raw log, keeping only the last `JOB_LOG_MAX_BYTES` cut at a line start.
+/// Returns the text (with a one-line notice when lines were dropped) and the dropped line count.
+pub fn tail_log(data: &[u8]) -> (String, usize) {
     if data.len() <= JOB_LOG_MAX_BYTES {
-        return String::from_utf8_lossy(data).into_owned();
+        return (String::from_utf8_lossy(data).into_owned(), 0);
     }
     let mut start = data.len() - JOB_LOG_MAX_BYTES;
     if let Some(nl) = data[start..].iter().position(|b| *b == b'\n') {
         start += nl + 1;
     }
-    format!(
-        "[log truncated: showing the last {} MB]\n{}",
+    let dropped = data[..start].iter().filter(|b| **b == b'\n').count();
+    let text = format!(
+        "[log truncated: {dropped} earlier lines dropped, showing the last {} MB]\n{}",
         JOB_LOG_MAX_BYTES / (1024 * 1024),
         String::from_utf8_lossy(&data[start..])
-    )
+    );
+    (text, dropped)
 }
 
 struct Mutation {
@@ -39,6 +56,7 @@ struct Mutation {
     pending: String,
     done: String,
     failed: &'static str,
+    action: &'static str,
     follow_up: FollowUp,
 }
 
@@ -519,58 +537,61 @@ impl App {
         project_id: u64,
         job_id: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if self
-            .job_log_inflight
-            .swap(true, std::sync::atomic::Ordering::AcqRel)
-        {
+        let fetch = self.job_log_fetch.clone();
+        if fetch.inflight.swap(true, Ordering::AcqRel) {
+            fetch.refetch.store(true, Ordering::Release);
             return Ok(());
         }
-        self.job_log_seq += 1;
         let generation = self.job_log_gen;
-        let seq = self.job_log_seq;
-        let inflight = self.job_log_inflight.clone();
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let _inflight = InflightGuard(inflight);
-            let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
-            let endpoint = JobLog {
-                project: project_id,
-                job: job_id,
-            };
-            let res: Result<Result<Vec<u8>, _>, _> = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                raw(endpoint).query_async(&client),
-            )
-            .await;
-            match res {
-                Ok(Ok(data)) => {
-                    let parsed = tokio::task::spawn_blocking(move || {
-                        let raw = tail_log(&data);
-                        let lines = parse_job_log(&raw);
-                        (raw, lines)
-                    })
-                    .await;
-                    if let Ok((raw, lines)) = parsed {
-                        let _ = tx.send(DataUpdate::JobLog {
-                            project_id,
-                            job_id,
-                            generation,
-                            seq,
-                            raw,
-                            lines,
-                        });
+        self.job_log_task = Some(tokio::spawn(async move {
+            let _inflight = InflightGuard(fetch.clone());
+            loop {
+                let seq = fetch.seq.fetch_add(1, Ordering::AcqRel) + 1;
+                let _ = tx.send(DataUpdate::Loading(true));
+                let _loading = crate::app::loading::LoadingGuard::new(tx.clone());
+                let endpoint = JobLog {
+                    project: project_id,
+                    job: job_id,
+                };
+                let res: Result<Result<Vec<u8>, _>, _> = tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    raw(endpoint).query_async(&client),
+                )
+                .await;
+                match res {
+                    Ok(Ok(data)) => {
+                        let parsed = tokio::task::spawn_blocking(move || {
+                            let (raw, dropped) = tail_log(&data);
+                            let lines = parse_job_log(&raw);
+                            (raw, lines, dropped)
+                        })
+                        .await;
+                        if let Ok((raw, lines, dropped)) = parsed {
+                            let _ = tx.send(DataUpdate::JobLog {
+                                project_id,
+                                job_id,
+                                generation,
+                                seq,
+                                raw,
+                                lines,
+                                dropped,
+                            });
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(DataUpdate::Error(format!("Job log fetch failed: {}", e)));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(DataUpdate::Error("Job log fetch timed out".into()));
                     }
                 }
-                Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("Job log fetch failed: {}", e)));
-                }
-                Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("Job log fetch timed out".into()));
+                if !fetch.refetch.swap(false, Ordering::AcqRel) {
+                    break;
                 }
             }
-        });
+        }));
         Ok(())
     }
 
@@ -612,6 +633,7 @@ impl App {
             pending: format!("Launching pipeline on {ref_name}..."),
             done: format!("Pipeline launched on {ref_name}"),
             failed: "Launch failed",
+            action: "Launch",
             follow_up: FollowUp::Refresh,
         });
         self.show_pipeline_popup = false;
@@ -631,6 +653,7 @@ impl App {
             pending: format!("Retrying pipeline #{pipeline_id}..."),
             done: format!("Pipeline #{pipeline_id} retry triggered"),
             failed: "Retry failed",
+            action: "Retry",
             follow_up: FollowUp::Refresh,
         });
         Ok(())
@@ -648,6 +671,7 @@ impl App {
             pending: format!("Cancelling pipeline #{pipeline_id}..."),
             done: format!("Pipeline #{pipeline_id} cancelled"),
             failed: "Cancel failed",
+            action: "Cancel",
             follow_up: FollowUp::Refresh,
         });
         Ok(())
@@ -678,6 +702,7 @@ impl App {
             pending: format!("Creating branch {branch} from {ref_name}..."),
             done: format!("Branch {branch} created"),
             failed: "Create failed",
+            action: "Create branch",
             follow_up: FollowUp::Branches(project_id),
         });
         Ok(())
@@ -702,18 +727,31 @@ impl App {
             pending: format!("Deleting branch {branch}..."),
             done: format!("Branch {branch} deleted"),
             failed: "Delete failed",
+            action: "Delete branch",
             follow_up: FollowUp::Branches(project_id),
         });
         Ok(())
     }
 
     fn spawn_mutation(&mut self, m: Mutation) {
+        let id = format!("{} {}", m.method, m.path);
+        if !self
+            .mutations_inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.clone())
+        {
+            self.status_message = Some(format!("{} already in progress", m.action));
+            return;
+        }
+        let pending_guard = MutationGuard(self.mutations_inflight.clone(), id);
         self.status_message = Some(m.pending);
         let http = self.http.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
-            let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
+            let _pending = pending_guard;
+            let _loading = crate::app::loading::LoadingGuard::new(tx.clone());
             match http.send_mutation(m.method, &m.path, m.body).await {
                 crate::http::Outcome::Ok(_) | crate::http::Outcome::NotModified => {
                     match m.follow_up {
@@ -736,7 +774,14 @@ impl App {
                     let _ = tx.send(DataUpdate::StatusMessage(m.done));
                 }
                 crate::http::Outcome::RateLimited { until } => {
-                    let _ = tx.send(DataUpdate::Error(crate::http::rate_limit_text(until)));
+                    let secs = until
+                        .saturating_duration_since(tokio::time::Instant::now())
+                        .as_secs()
+                        .max(1);
+                    let _ = tx.send(DataUpdate::StatusMessage(format!(
+                        "{} not sent: rate limited, try again in {secs}s",
+                        m.action
+                    )));
                 }
                 crate::http::Outcome::Failed(e) => {
                     let msg = format!("{}: {e}", m.failed);

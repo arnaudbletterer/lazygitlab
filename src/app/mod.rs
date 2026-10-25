@@ -2,6 +2,7 @@ pub mod boards;
 pub mod global;
 pub mod issues;
 pub mod keymap;
+pub(crate) mod loading;
 pub mod menus;
 pub mod merge;
 pub mod mrs;
@@ -257,9 +258,13 @@ impl App {
             job_log_epoch: 0,
             job_log_key: None,
             job_log_gen: 0,
-            job_log_seq: 0,
             job_log_applied_seq: 0,
-            job_log_inflight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            job_log_dropped: 0,
+            job_log_fetch: std::sync::Arc::new(JobLogFetch::default()),
+            job_log_task: None,
+            mutations_inflight: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            )),
             diffs_fetching_key: None,
             diff_fan_task: None,
             job_log_display_cache: (0, 0),
@@ -829,25 +834,6 @@ impl App {
                     self.project_variables = data;
                 }
             }
-            DataUpdate::Log {
-                project_id,
-                job_id,
-                data,
-            } => {
-                if self.selected_job.as_ref().is_some_and(|j| j.id == job_id)
-                    && match self.job_log_key {
-                        Some(key) => key == (project_id, job_id),
-                        None => self
-                            .selected_project
-                            .as_ref()
-                            .is_some_and(|p| p.id == project_id),
-                    }
-                {
-                    self.job_log = data;
-                    self.parse_job_log();
-                    self.bump_job_log_epoch();
-                }
-            }
             DataUpdate::JobLog {
                 project_id,
                 job_id,
@@ -855,6 +841,7 @@ impl App {
                 seq,
                 raw,
                 lines,
+                dropped,
             } => {
                 if generation == self.job_log_gen
                     && self.job_log_key == Some((project_id, job_id))
@@ -862,6 +849,18 @@ impl App {
                     && seq > self.job_log_applied_seq
                 {
                     self.job_log_applied_seq = seq;
+                    let before = self.job_log_dropped;
+                    let shift = |idx: usize| {
+                        let notice_before = usize::from(before > 0);
+                        let notice_now = usize::from(dropped > 0);
+                        (idx + notice_now)
+                            .saturating_sub(notice_before + dropped.saturating_sub(before))
+                    };
+                    if dropped != before {
+                        self.job_log_cursor = shift(self.job_log_cursor);
+                        self.job_log_selection_start = self.job_log_selection_start.map(shift);
+                    }
+                    self.job_log_dropped = dropped;
                     self.job_log = raw;
                     self.job_log_lines = lines;
                     self.bump_job_log_epoch();
@@ -2091,28 +2090,55 @@ impl App {
         {
             self.job_log = String::new();
             self.job_log_lines = Vec::new();
-            self.job_log_key = None;
-            self.job_log_gen += 1;
+            self.abort_job_log();
             self.bump_job_log_epoch();
         }
         if self.selected_pipeline.is_none() && !self.jobs.is_empty() {
             self.jobs = Vec::new();
         }
-        let needs_diffs = self.view_mode == ViewMode::Diff
-            || (self.active_panel == Panel::MainDetail
-                && self.detail_section == DetailSection::Changes);
+        let needs_diffs = self.diffs_on_screen();
         let selected = self.selected_mr.as_ref().map(|m| (m.project_id, m.iid));
         if let Some((key, handle)) = &self.diff_fan_task
             && (handle.is_finished() || !needs_diffs || selected != Some(*key))
         {
-            handle.abort();
-            self.diff_fan_task = None;
+            self.abort_diff_fan();
         }
         if !needs_diffs && !self.mr_diffs.is_empty() {
             self.mr_diffs = Vec::new();
             self.is_fetching_diffs = false;
             self.diffs_fetching_key = None;
         }
+    }
+
+    /// True when the selected MR's file diffs are drawn (diff view or Changes section).
+    pub fn diffs_on_screen(&self) -> bool {
+        self.selected_mr.is_some()
+            && (self.view_mode == ViewMode::Diff || self.detail_section == DetailSection::Changes)
+    }
+
+    fn abort_job_log(&mut self) {
+        if let Some(task) = self.job_log_task.take() {
+            task.abort();
+        }
+        self.job_log_key = None;
+        self.job_log_gen += 1;
+        self.job_log_dropped = 0;
+        self.job_log_fetch = std::sync::Arc::new(JobLogFetch::default());
+    }
+
+    fn abort_diff_fan(&mut self) {
+        if let Some((_, handle)) = self.diff_fan_task.take() {
+            handle.abort();
+        }
+    }
+
+    /// Aborts the job log and diff background tasks and clears their keys so late
+    /// responses are dropped. Navigation resets call this when changing screen.
+    pub fn release_view_tasks(&mut self) {
+        self.abort_job_log();
+        self.abort_diff_fan();
+        self.diffs_fetching_key = None;
+        self.is_fetching_diffs = false;
     }
 
     pub fn bump_job_log_epoch(&mut self) {
@@ -2530,10 +2556,7 @@ impl App {
         if let Some(mr) = &self.selected_mr {
             let pid = mr.project_id;
             let iid = mr.iid;
-            let needs_diffs = self.view_mode == ViewMode::Diff
-                || (self.active_panel == Panel::MainDetail
-                    && self.detail_section == DetailSection::Changes);
-            if needs_diffs && self.mr_diffs.is_empty() && !self.is_fetching_diffs {
+            if self.diffs_on_screen() && self.mr_diffs.is_empty() && !self.is_fetching_diffs {
                 let _ = self.fetch_mr_diffs(pid, iid).await;
             }
         }

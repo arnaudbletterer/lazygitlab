@@ -700,7 +700,7 @@ impl App {
     }
 
     /// Opens the log of the selected job. The log is fetched on a spawned task
-    /// and delivered through `DataUpdate::Log`.
+    /// and delivered through `DataUpdate::JobLog`.
     pub async fn open_selected_job(&mut self) {
         let Some(job) = self
             .jobs_state
@@ -726,10 +726,8 @@ impl App {
             .as_ref()
             .map(|p| p.project_id)
             .or_else(|| self.selected_project.as_ref().map(|p| p.id));
-        self.job_log_gen += 1;
-        self.job_log_seq = 0;
+        self.abort_job_log();
         self.job_log_applied_seq = 0;
-        self.job_log_inflight = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.job_log_key = project_id.map(|p| (p, job.id));
         if let Some(project_id) = project_id {
             let _ = self.fetch_job_log(project_id, job.id).await;

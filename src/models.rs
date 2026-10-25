@@ -923,11 +923,6 @@ pub enum DataUpdate {
         key: String,
         value: String,
     },
-    Log {
-        project_id: u64,
-        job_id: u64,
-        data: String,
-    },
     JobLog {
         project_id: u64,
         job_id: u64,
@@ -935,6 +930,7 @@ pub enum DataUpdate {
         seq: u64,
         raw: String,
         lines: Vec<LogLine>,
+        dropped: usize,
     },
     TerminalEscape(String),
     Diffs {
@@ -1055,6 +1051,13 @@ pub struct LocalGitStatus {
     pub is_dirty: bool,
 }
 
+#[derive(Debug, Default)]
+pub struct JobLogFetch {
+    pub inflight: std::sync::atomic::AtomicBool,
+    pub refetch: std::sync::atomic::AtomicBool,
+    pub seq: std::sync::atomic::AtomicU64,
+}
+
 pub struct App {
     pub target_project: Option<String>,
     pub local_git_status: Option<LocalGitStatus>,
@@ -1114,9 +1117,11 @@ pub struct App {
     pub job_log_epoch: u64,
     pub job_log_key: Option<(u64, u64)>,
     pub job_log_gen: u64,
-    pub job_log_seq: u64,
     pub job_log_applied_seq: u64,
-    pub job_log_inflight: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub job_log_dropped: usize,
+    pub job_log_fetch: std::sync::Arc<JobLogFetch>,
+    pub job_log_task: Option<tokio::task::JoinHandle<()>>,
+    pub mutations_inflight: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     pub diffs_fetching_key: Option<(u64, u64)>,
     pub diff_fan_task: Option<((u64, u64), tokio::task::JoinHandle<()>)>,
     pub job_log_display_cache: (u64, usize),
