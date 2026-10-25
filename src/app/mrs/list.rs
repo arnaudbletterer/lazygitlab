@@ -331,6 +331,7 @@ impl App {
     /// Cached rows are painted first when the list is empty.
     pub(super) fn start_mr_fetch(&mut self, project: Option<u64>) {
         let key = self.mr_scope_key(project);
+        self.status_message = Some("Fetching Merge Requests...".into());
         self.paint_cached_mrs(&key);
         let project_ids: Vec<u64> = match project {
             Some(pid) => vec![pid],
@@ -397,9 +398,6 @@ impl App {
             self.tx.clone(),
         );
         let _ = tx.send(DataUpdate::Loading(true));
-        if self.merge_requests.is_empty() {
-            self.status_message = Some("Fetching Merge Requests...".into());
-        }
         tokio::spawn(async move {
             let _guard = LoadingGuard::new(tx.clone());
             let update = fetch_global_mrs(&client, &http, &gql, &q).await;
@@ -485,15 +483,9 @@ impl App {
                 .last_list_refresh_ok
                 .map(|t| format!(", showing data from {}", t.format("%H:%M")))
                 .unwrap_or_default();
-            self.status_message = Some(if let Some(secs) = u.rate_limited_secs {
-                format!("{}{when}", rate_limit_text(secs))
-            } else if !u.failed_projects.is_empty() {
-                format!(
-                    "partial refresh, {} project(s) did not answer{when}",
-                    u.failed_projects.len()
-                )
-            } else {
-                format!("refresh failed{when}")
+            self.status_message = Some(match u.rate_limited_secs {
+                Some(secs) => format!("{}{when}", rate_limit_text(secs)),
+                None => format!("refresh failed{when}"),
             });
         }
     }
