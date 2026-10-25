@@ -1021,8 +1021,11 @@ impl App {
                 );
                 let key = (mr.project_id, mr.iid);
                 let pending = self.mr_edit_pending(key.0, key.1);
-                if let Some(selected) = &mut self.selected_mr {
-                    if selected.iid == mr.iid && selected.project_id == mr.project_id {
+                if let Some(selected) = &mut self.selected_mr
+                    && selected.iid == mr.iid
+                    && selected.project_id == mr.project_id
+                {
+                    {
                         for label in &mut mr.labels {
                             if (label.id == 0 || label.color == "#808080")
                                 && let Some(old) =
@@ -1052,8 +1055,11 @@ impl App {
                 self.fix_issue_labels(&mut issue);
                 let key = (issue.project_id, issue.iid);
                 let pending = self.issue_edit_pending(key.0, key.1);
-                if let Some(selected) = &mut self.selected_issue {
-                    if selected.iid == issue.iid && selected.project_id == issue.project_id {
+                if let Some(selected) = &mut self.selected_issue
+                    && selected.iid == issue.iid
+                    && selected.project_id == issue.project_id
+                {
+                    {
                         for label in &mut issue.labels {
                             if (label.id == 0 || label.color == "#808080")
                                 && let Some(old) =

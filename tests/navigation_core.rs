@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::future::Future;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -422,21 +421,16 @@ struct Script {
 }
 
 impl EventSource for Script {
-    fn next_event(
-        &self,
-        _timeout: Duration,
-    ) -> impl Future<Output = io::Result<Option<Event>>> + Send {
-        async move {
-            self.seen
-                .lock()
-                .unwrap()
-                .push(self.frames.load(Ordering::SeqCst));
-            let next = self.events.lock().unwrap().pop_front();
-            if next.is_none() {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            Ok(next)
+    async fn next_event(&self, _timeout: Duration) -> io::Result<Option<Event>> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(self.frames.load(Ordering::SeqCst));
+        let next = self.events.lock().unwrap().pop_front();
+        if next.is_none() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        Ok(next)
     }
 }
 
