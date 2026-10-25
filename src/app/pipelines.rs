@@ -5,6 +5,60 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Semaphore;
 
+/// Largest job log kept in memory; older output is dropped.
+pub const JOB_LOG_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+struct InflightGuard(Arc<AtomicBool>);
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Decodes a raw log, keeping only the last `JOB_LOG_MAX_BYTES` (cut at a line start).
+pub fn tail_log(data: &[u8]) -> String {
+    if data.len() <= JOB_LOG_MAX_BYTES {
+        return String::from_utf8_lossy(data).into_owned();
+    }
+    let mut start = data.len() - JOB_LOG_MAX_BYTES;
+    if let Some(nl) = data[start..].iter().position(|b| *b == b'\n') {
+        start += nl + 1;
+    }
+    format!(
+        "[log truncated: showing the last {} MB]\n{}",
+        JOB_LOG_MAX_BYTES / (1024 * 1024),
+        String::from_utf8_lossy(&data[start..])
+    )
+}
+
+struct Mutation {
+    method: crate::http::Method,
+    path: String,
+    body: Vec<u8>,
+    pending: String,
+    done: String,
+    failed: &'static str,
+    follow_up: FollowUp,
+}
+
+enum FollowUp {
+    Refresh,
+    Branches(u64),
+}
+
+fn encode_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 /// Upper bound on simultaneous per-project requests for the cross-project
 /// Pipelines tab.
 const CROSS_PIPELINES_MAX_IN_FLIGHT: usize = 8;
@@ -397,46 +451,6 @@ impl App {
         Ok(())
     }
 
-    pub async fn fetch_jobs_sync(
-        &mut self,
-        project_id: u64,
-        pipeline_id: u64,
-    ) -> Result<usize, Box<dyn std::error::Error>> {
-        use crate::api::ProjectPipelineJobs;
-        use gitlab::api::{AsyncQuery, Pagination, paged};
-        let endpoint = ProjectPipelineJobs {
-            project: project_id,
-            pipeline: pipeline_id,
-        };
-        let lp = paged(endpoint, Pagination::Limit(100));
-        let res = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&lp, &self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(mut data)) => {
-                data.sort_by_key(|j: &Job| j.id);
-                self.jobs = data.clone();
-                self.jobs_state
-                    .select(if self.jobs.is_empty() { None } else { Some(0) });
-                self.is_loading = false;
-                let _ = self.update_preview().await;
-                Ok(self.jobs.len())
-            }
-            Ok(Err(e)) => {
-                self.last_error = Some(format!("Jobs fetch failed: {}", e));
-                self.is_loading = false;
-                Err(e.into())
-            }
-            Err(_) => {
-                self.last_error = Some("Jobs fetch timed out".into());
-                self.is_loading = false;
-                Err("Jobs fetch timed out".into())
-            }
-        }
-    }
-
     pub async fn fetch_project_variables(
         &mut self,
         project_id: u64,
@@ -505,10 +519,22 @@ impl App {
         project_id: u64,
         job_id: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if self
+            .job_log_inflight
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            return Ok(());
+        }
+        self.job_log_seq += 1;
+        let generation = self.job_log_gen;
+        let seq = self.job_log_seq;
+        let inflight = self.job_log_inflight.clone();
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let _ = tx.send(DataUpdate::Loading(true));
         tokio::spawn(async move {
+            let _inflight = InflightGuard(inflight);
+            let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
             let endpoint = JobLog {
                 project: project_id,
                 job: job_id,
@@ -519,23 +545,24 @@ impl App {
             )
             .await;
             match res {
-                Ok(Ok(data)) => match String::from_utf8(data) {
-                    Ok(content) => {
-                        let _ = tx.send(DataUpdate::Log {
+                Ok(Ok(data)) => {
+                    let parsed = tokio::task::spawn_blocking(move || {
+                        let raw = tail_log(&data);
+                        let lines = parse_job_log(&raw);
+                        (raw, lines)
+                    })
+                    .await;
+                    if let Ok((raw, lines)) = parsed {
+                        let _ = tx.send(DataUpdate::JobLog {
                             project_id,
                             job_id,
-                            data: content,
+                            generation,
+                            seq,
+                            raw,
+                            lines,
                         });
                     }
-                    Err(e) => {
-                        let content = String::from_utf8_lossy(e.as_bytes()).to_string();
-                        let _ = tx.send(DataUpdate::Log {
-                            project_id,
-                            job_id,
-                            data: content,
-                        });
-                    }
-                },
+                }
                 Ok(Err(e)) => {
                     let _ = tx.send(DataUpdate::Error(format!("Job log fetch failed: {}", e)));
                 }
@@ -543,53 +570,8 @@ impl App {
                     let _ = tx.send(DataUpdate::Error("Job log fetch timed out".into()));
                 }
             }
-            let _ = tx.send(DataUpdate::Loading(false));
         });
         Ok(())
-    }
-
-    pub async fn fetch_job_log_sync(
-        &mut self,
-        project_id: u64,
-        job_id: u64,
-    ) -> Result<usize, Box<dyn std::error::Error>> {
-        use crate::api::JobLog;
-        use gitlab::api::{AsyncQuery, raw};
-        let endpoint = JobLog {
-            project: project_id,
-            job: job_id,
-        };
-        let res = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            raw(endpoint).query_async(&self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(data)) => {
-                let content = String::from_utf8_lossy(&data).to_string();
-                self.job_log = content;
-                self.parse_job_log();
-                self.job_log_cursor = 0;
-                self.job_log_selection_start = None;
-                self.follow_log = matches!(
-                    self.selected_job.as_ref().map(|j| j.status.as_str()),
-                    Some("running" | "pending")
-                );
-                self.is_loading = false;
-                let _ = self.update_preview().await;
-                Ok(self.job_log_lines.len())
-            }
-            Ok(Err(e)) => {
-                self.last_error = Some(format!("Job log fetch failed: {}", e));
-                self.is_loading = false;
-                Err(e.into())
-            }
-            Err(_) => {
-                self.last_error = Some("Job log fetch timed out".into());
-                self.is_loading = false;
-                Err("Job log fetch timed out".into())
-            }
-        }
     }
 
     pub fn filter_branches(&mut self) {
@@ -608,208 +590,33 @@ impl App {
     }
 
     pub async fn submit_pipeline_launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(project) = &self.selected_project {
-            let pid = project.id;
-            let ref_name = self.pipeline_ref_input.clone();
-            let vars = self.pipeline_variables.clone();
-            let client = self.gitlab.clone();
-            let tx = self.tx.clone();
-            let _ = tx.send(DataUpdate::Loading(true));
-
-            tokio::spawn(async move {
-                let endpoint = CreatePipeline {
-                    project: pid,
-                    ref_name,
-                    variables: Some(
-                        vars.into_iter()
-                            .map(|v| crate::models::PipelineVariable {
-                                key: v.key,
-                                value: v.value,
-                            })
-                            .collect(),
-                    ),
-                };
-                let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    endpoint.query_async(&client),
-                )
-                .await;
-                match res {
-                    Ok(Ok(_)) => {
-                        let _ = tx.send(DataUpdate::TriggerRefresh);
-                    }
-                    Ok(Err(e)) => {
-                        let _ = tx.send(DataUpdate::Error(format!("Launch failed: {}", e)));
-                    }
-                    Err(_) => {
-                        let _ = tx.send(DataUpdate::Error("Launch timed out".into()));
-                    }
-                }
-                let _ = tx.send(DataUpdate::Loading(false));
-            });
-            self.show_pipeline_popup = false;
-            self.input_mode = false;
-        }
-        Ok(())
-    }
-
-    pub async fn submit_pipeline_launch_sync(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let project = match &self.selected_project {
-            Some(p) => p.clone(),
-            None => {
-                self.status_message = Some("No project selected".into());
-                return Ok(());
-            }
+        let Some(pid) = self.selected_project.as_ref().map(|p| p.id) else {
+            self.status_message = Some("No project selected".into());
+            return Ok(());
         };
-        let pid = project.id;
         let ref_name = self.pipeline_ref_input.clone();
-        let vars = self.pipeline_variables.clone();
-
         if ref_name.is_empty() {
             self.status_message = Some("Ref name cannot be empty".into());
             return Ok(());
         }
-
-        self.status_message = Some(format!("Launching pipeline on {}...", ref_name));
-        let _ = self.update_preview().await;
-
-        use crate::api::CreatePipeline;
-        use gitlab::api::AsyncQuery;
-        let endpoint = CreatePipeline {
-            project: pid,
-            ref_name,
-            variables: Some(
-                vars.into_iter()
-                    .map(|v| crate::models::PipelineVariable {
-                        key: v.key,
-                        value: v.value,
-                    })
-                    .collect(),
-            ),
-        };
-        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&endpoint, &self.gitlab),
-        )
-        .await;
+        let variables: Vec<serde_json::Value> = self
+            .pipeline_variables
+            .iter()
+            .map(|v| serde_json::json!({"key": v.key, "value": v.value}))
+            .collect();
+        let body = serde_json::json!({"ref": ref_name, "variables": variables});
+        self.spawn_mutation(Mutation {
+            method: crate::http::Method::POST,
+            path: format!("projects/{pid}/pipeline"),
+            body: body.to_string().into_bytes(),
+            pending: format!("Launching pipeline on {ref_name}..."),
+            done: format!("Pipeline launched on {ref_name}"),
+            failed: "Launch failed",
+            follow_up: FollowUp::Refresh,
+        });
         self.show_pipeline_popup = false;
         self.input_mode = false;
-        match res {
-            Ok(Ok(p)) => {
-                self.status_message = Some(format!("Pipeline #{} launched", p.id));
-                let _ = self.refresh().await;
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                self.status_message = Some(format!("Launch failed: {}", e));
-                self.last_error = Some(format!("Launch failed: {}", e));
-                Err(e.into())
-            }
-            Err(_) => {
-                self.status_message = Some("Launch timed out".into());
-                self.last_error = Some("Launch timed out".into());
-                Err("Launch timed out".into())
-            }
-        }
-    }
-
-    pub async fn create_branch_sync(
-        &mut self,
-        project_id: u64,
-        branch: String,
-        ref_name: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::api::CreateBranch;
-        use gitlab::api::AsyncQuery;
-        if branch.is_empty() {
-            self.status_message = Some("Branch name cannot be empty".into());
-            return Err("Branch name cannot be empty".into());
-        }
-        if ref_name.is_empty() {
-            self.status_message = Some("Reference cannot be empty".into());
-            return Err("Reference cannot be empty".into());
-        }
-        self.status_message = Some(format!("Creating branch {branch} from {ref_name}..."));
-        let _ = self.update_preview().await;
-        let endpoint = CreateBranch {
-            project: project_id,
-            branch: branch.clone(),
-            ref_name: ref_name.clone(),
-        };
-        let res: Result<Result<crate::models::Branch, _>, _> = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&endpoint, &self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(b)) => {
-                self.status_message = Some(format!("Branch {} created", b.name));
-                self.project_branches.push(b);
-                if self.branches_state.selected().is_none() && !self.project_branches.is_empty() {
-                    self.branches_state.select(Some(0));
-                }
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                self.status_message = Some(format!("Create failed: {}", e));
-                self.last_error = Some(format!("Create branch failed: {}", e));
-                Err(e.into())
-            }
-            Err(_) => {
-                self.status_message = Some("Create timed out".into());
-                self.last_error = Some("Create branch timed out".into());
-                Err("Create branch timed out".into())
-            }
-        }
-    }
-
-    pub async fn delete_branch_sync(
-        &mut self,
-        project_id: u64,
-        branch: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::api::DeleteBranch;
-        use gitlab::api::AsyncQuery;
-        if branch.is_empty() {
-            self.status_message = Some("No branch selected".into());
-            return Err("No branch selected".into());
-        }
-        self.status_message = Some(format!("Deleting branch {branch}..."));
-        let _ = self.update_preview().await;
-        let endpoint = DeleteBranch {
-            project: project_id,
-            branch: branch.clone(),
-        };
-        let res: Result<Result<serde_json::Value, _>, _> = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&endpoint, &self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(_)) => {
-                self.status_message = Some(format!("Branch {branch} deleted"));
-                self.project_branches.retain(|b| b.name != branch);
-                if let Some(idx) = self.branches_state.selected() {
-                    if idx >= self.project_branches.len() && !self.project_branches.is_empty() {
-                        self.branches_state
-                            .select(Some(self.project_branches.len() - 1));
-                    } else if self.project_branches.is_empty() {
-                        self.branches_state.select(None);
-                    }
-                }
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                self.status_message = Some(format!("Delete failed: {}", e));
-                self.last_error = Some(format!("Delete branch failed: {}", e));
-                Err(e.into())
-            }
-            Err(_) => {
-                self.status_message = Some("Delete timed out".into());
-                self.last_error = Some("Delete branch timed out".into());
-                Err("Delete branch timed out".into())
-            }
-        }
+        Ok(())
     }
 
     pub async fn retry_pipeline(
@@ -817,31 +624,14 @@ impl App {
         project_id: u64,
         pipeline_id: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone();
-        let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let endpoint = RetryPipeline {
-                project: project_id,
-                pipeline: pipeline_id,
-            };
-            let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                endpoint.query_async(&client),
-            )
-            .await;
-            match res {
-                Ok(Ok(_)) => {
-                    let _ = tx.send(DataUpdate::TriggerRefresh);
-                }
-                Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("Retry failed: {}", e)));
-                }
-                Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("Retry timed out".into()));
-                }
-            }
-            let _ = tx.send(DataUpdate::Loading(false));
+        self.spawn_mutation(Mutation {
+            method: crate::http::Method::POST,
+            path: format!("projects/{project_id}/pipelines/{pipeline_id}/retry"),
+            body: Vec::new(),
+            pending: format!("Retrying pipeline #{pipeline_id}..."),
+            done: format!("Pipeline #{pipeline_id} retry triggered"),
+            failed: "Retry failed",
+            follow_up: FollowUp::Refresh,
         });
         Ok(())
     }
@@ -851,107 +641,110 @@ impl App {
         project_id: u64,
         pipeline_id: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = self.gitlab.clone();
-        let tx = self.tx.clone();
-        let _ = tx.send(DataUpdate::Loading(true));
-        tokio::spawn(async move {
-            let endpoint = CancelPipeline {
-                project: project_id,
-                pipeline: pipeline_id,
-            };
-            let res: Result<Result<Pipeline, _>, _> = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                endpoint.query_async(&client),
-            )
-            .await;
-            match res {
-                Ok(Ok(_)) => {
-                    let _ = tx.send(DataUpdate::TriggerRefresh);
-                }
-                Ok(Err(e)) => {
-                    let _ = tx.send(DataUpdate::Error(format!("Cancel failed: {}", e)));
-                }
-                Err(_) => {
-                    let _ = tx.send(DataUpdate::Error("Cancel timed out".into()));
-                }
-            }
-            let _ = tx.send(DataUpdate::Loading(false));
+        self.spawn_mutation(Mutation {
+            method: crate::http::Method::POST,
+            path: format!("projects/{project_id}/pipelines/{pipeline_id}/cancel"),
+            body: Vec::new(),
+            pending: format!("Cancelling pipeline #{pipeline_id}..."),
+            done: format!("Pipeline #{pipeline_id} cancelled"),
+            failed: "Cancel failed",
+            follow_up: FollowUp::Refresh,
         });
         Ok(())
     }
 
-    pub async fn cancel_pipeline_sync(
+    pub async fn create_branch(
         &mut self,
         project_id: u64,
-        pipeline_id: u64,
+        branch: String,
+        ref_name: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::api::CancelPipeline;
-        use gitlab::api::AsyncQuery;
-        self.status_message = Some(format!("Cancelling pipeline #{}...", pipeline_id));
-        let _ = self.update_preview().await;
-        let endpoint = CancelPipeline {
-            project: project_id,
-            pipeline: pipeline_id,
-        };
-        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&endpoint, &self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(_)) => {
-                self.status_message = Some(format!("Pipeline #{} cancelled", pipeline_id));
-                let _ = self.refresh().await;
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                self.status_message = Some(format!("Cancel failed: {}", e));
-                self.last_error = Some(format!("Cancel failed: {}", e));
-                Err(e.into())
-            }
-            Err(_) => {
-                self.status_message = Some("Cancel timed out".into());
-                self.last_error = Some("Cancel timed out".into());
-                Err("Cancel timed out".into())
-            }
+        if branch.is_empty() {
+            self.status_message = Some("Branch name cannot be empty".into());
+            return Err("Branch name cannot be empty".into());
         }
+        if ref_name.is_empty() {
+            self.status_message = Some("Reference cannot be empty".into());
+            return Err("Reference cannot be empty".into());
+        }
+        self.spawn_mutation(Mutation {
+            method: crate::http::Method::POST,
+            path: format!(
+                "projects/{project_id}/repository/branches?branch={}&ref={}",
+                encode_component(&branch),
+                encode_component(&ref_name)
+            ),
+            body: Vec::new(),
+            pending: format!("Creating branch {branch} from {ref_name}..."),
+            done: format!("Branch {branch} created"),
+            failed: "Create failed",
+            follow_up: FollowUp::Branches(project_id),
+        });
+        Ok(())
     }
 
-    pub async fn retry_pipeline_sync(
+    pub async fn delete_branch(
         &mut self,
         project_id: u64,
-        pipeline_id: u64,
+        branch: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::api::RetryPipeline;
-        use gitlab::api::AsyncQuery;
-        self.status_message = Some(format!("Retrying pipeline #{}...", pipeline_id));
-        let _ = self.update_preview().await;
-        let endpoint = RetryPipeline {
-            project: project_id,
-            pipeline: pipeline_id,
-        };
-        let res: Result<Result<crate::models::Pipeline, _>, _> = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            AsyncQuery::query_async(&endpoint, &self.gitlab),
-        )
-        .await;
-        match res {
-            Ok(Ok(_)) => {
-                self.status_message = Some(format!("Pipeline #{} retry triggered", pipeline_id));
-                let _ = self.refresh().await;
-                Ok(())
-            }
-            Ok(Err(e)) => {
-                self.status_message = Some(format!("Retry failed: {}", e));
-                self.last_error = Some(format!("Retry failed: {}", e));
-                Err(e.into())
-            }
-            Err(_) => {
-                self.status_message = Some("Retry timed out".into());
-                self.last_error = Some("Retry timed out".into());
-                Err("Retry timed out".into())
-            }
+        if branch.is_empty() {
+            self.status_message = Some("No branch selected".into());
+            return Err("No branch selected".into());
         }
+        self.spawn_mutation(Mutation {
+            method: crate::http::Method::DELETE,
+            path: format!(
+                "projects/{project_id}/repository/branches/{}",
+                encode_component(&branch)
+            ),
+            body: Vec::new(),
+            pending: format!("Deleting branch {branch}..."),
+            done: format!("Branch {branch} deleted"),
+            failed: "Delete failed",
+            follow_up: FollowUp::Branches(project_id),
+        });
+        Ok(())
+    }
+
+    fn spawn_mutation(&mut self, m: Mutation) {
+        self.status_message = Some(m.pending);
+        let http = self.http.clone();
+        let tx = self.tx.clone();
+        let _ = tx.send(DataUpdate::Loading(true));
+        tokio::spawn(async move {
+            let _loading = crate::app::mrs::LoadingGuard::new(tx.clone());
+            match http.send_mutation(m.method, &m.path, m.body).await {
+                crate::http::Outcome::Ok(_) | crate::http::Outcome::NotModified => {
+                    match m.follow_up {
+                        FollowUp::Refresh => {
+                            let _ = tx.send(DataUpdate::TriggerRefresh);
+                        }
+                        FollowUp::Branches(project_id) => {
+                            let path = format!("projects/{project_id}/repository/branches");
+                            let pages = http.get_pages_capped::<Branch>(&path, 1).await;
+                            if pages.complete {
+                                let _ = tx.send(DataUpdate::Branches {
+                                    project_id,
+                                    data: pages.items,
+                                    page: 1,
+                                    has_more: false,
+                                });
+                            }
+                        }
+                    }
+                    let _ = tx.send(DataUpdate::StatusMessage(m.done));
+                }
+                crate::http::Outcome::RateLimited { until } => {
+                    let _ = tx.send(DataUpdate::Error(crate::http::rate_limit_text(until)));
+                }
+                crate::http::Outcome::Failed(e) => {
+                    let msg = format!("{}: {e}", m.failed);
+                    let _ = tx.send(DataUpdate::StatusMessage(msg.clone()));
+                    let _ = tx.send(DataUpdate::Error(msg));
+                }
+            }
+        });
     }
 
     pub async fn retry_job(

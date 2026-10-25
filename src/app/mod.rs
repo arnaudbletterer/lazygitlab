@@ -229,7 +229,7 @@ impl App {
             status_since: std::time::Instant::now(),
             last_error_since: None,
             loading_tasks: 0,
-            diff_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(10)),
+            diff_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
             last_fetch_todos: None,
             last_fetch_mrs: None,
             last_fetch_issues: None,
@@ -255,6 +255,13 @@ impl App {
             file_viewport_height: 0,
             file_highlight_cache: None,
             job_log_epoch: 0,
+            job_log_key: None,
+            job_log_gen: 0,
+            job_log_seq: 0,
+            job_log_applied_seq: 0,
+            job_log_inflight: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            diffs_fetching_key: None,
+            diff_fan_task: None,
             job_log_display_cache: (0, 0),
             markdown_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             commits: Vec::new(),
@@ -795,7 +802,11 @@ impl App {
                     if let Some(curr_job) = &self.selected_job
                         && let Some(updated_job) = data.iter().find(|j| j.id == curr_job.id)
                     {
+                        let just_finished = !curr_job.is_finished() && updated_job.is_finished();
                         self.selected_job = Some(updated_job.clone());
+                        if just_finished && self.view_mode == ViewMode::JobLog {
+                            let _ = self.fetch_job_log(project_id, updated_job.id).await;
+                        }
                     }
                     if self.open_job_when_loaded.take() == Some((project_id, pipeline_id))
                         && self.view_mode == ViewMode::List
@@ -824,13 +835,35 @@ impl App {
                 data,
             } => {
                 if self.selected_job.as_ref().is_some_and(|j| j.id == job_id)
-                    && self
-                        .selected_project
-                        .as_ref()
-                        .is_some_and(|p| p.id == project_id)
+                    && match self.job_log_key {
+                        Some(key) => key == (project_id, job_id),
+                        None => self
+                            .selected_project
+                            .as_ref()
+                            .is_some_and(|p| p.id == project_id),
+                    }
                 {
                     self.job_log = data;
                     self.parse_job_log();
+                    self.bump_job_log_epoch();
+                }
+            }
+            DataUpdate::JobLog {
+                project_id,
+                job_id,
+                generation,
+                seq,
+                raw,
+                lines,
+            } => {
+                if generation == self.job_log_gen
+                    && self.job_log_key == Some((project_id, job_id))
+                    && self.view_mode == ViewMode::JobLog
+                    && seq > self.job_log_applied_seq
+                {
+                    self.job_log_applied_seq = seq;
+                    self.job_log = raw;
+                    self.job_log_lines = lines;
                     self.bump_job_log_epoch();
                 }
             }
@@ -860,7 +893,13 @@ impl App {
                 iid,
                 data,
             } => {
-                self.is_fetching_diffs = false;
+                if self
+                    .diffs_fetching_key
+                    .is_none_or(|k| k == (project_id, iid))
+                {
+                    self.is_fetching_diffs = false;
+                    self.diffs_fetching_key = None;
+                }
                 if let Some(selected) = &self.selected_mr
                     && selected.iid == iid
                     && selected.project_id == project_id
@@ -1832,6 +1871,7 @@ impl App {
     }
 
     pub async fn refresh_impl(&mut self, force_detail: bool) {
+        self.release_idle_view_state();
         self.last_refresh = std::time::Instant::now();
         if force_detail {
             self.mrs_force_full = true;
@@ -2000,7 +2040,10 @@ impl App {
             }
         } else if let Some(pipeline) = self.selected_pipeline.clone() {
             if self.view_mode == ViewMode::JobLog {
-                let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                let job_running = self.selected_job.as_ref().is_some_and(|j| !j.is_finished());
+                if force_detail || job_running {
+                    let _ = self.fetch_jobs(pipeline.project_id, pipeline.id).await;
+                }
                 if let Some(job) = &self.selected_job
                     && (force_detail || !job.is_finished())
                 {
@@ -2037,6 +2080,38 @@ impl App {
             self.job_log_scroll = self.job_log_cursor as u16;
         } else if self.job_log_cursor >= self.job_log_scroll as usize + viewport {
             self.job_log_scroll = (self.job_log_cursor + 1).saturating_sub(viewport) as u16;
+        }
+    }
+
+    /// Drops per-view data (job log, jobs, MR diffs) once its view is left and stops the
+    /// background diff fan-out that no longer matches the selected MR or view.
+    pub fn release_idle_view_state(&mut self) {
+        if self.view_mode != ViewMode::JobLog
+            && (self.job_log_key.is_some() || !self.job_log.is_empty())
+        {
+            self.job_log = String::new();
+            self.job_log_lines = Vec::new();
+            self.job_log_key = None;
+            self.job_log_gen += 1;
+            self.bump_job_log_epoch();
+        }
+        if self.selected_pipeline.is_none() && !self.jobs.is_empty() {
+            self.jobs = Vec::new();
+        }
+        let needs_diffs = self.view_mode == ViewMode::Diff
+            || (self.active_panel == Panel::MainDetail
+                && self.detail_section == DetailSection::Changes);
+        let selected = self.selected_mr.as_ref().map(|m| (m.project_id, m.iid));
+        if let Some((key, handle)) = &self.diff_fan_task
+            && (handle.is_finished() || !needs_diffs || selected != Some(*key))
+        {
+            handle.abort();
+            self.diff_fan_task = None;
+        }
+        if !needs_diffs && !self.mr_diffs.is_empty() {
+            self.mr_diffs = Vec::new();
+            self.is_fetching_diffs = false;
+            self.diffs_fetching_key = None;
         }
     }
 

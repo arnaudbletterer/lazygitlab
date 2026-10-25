@@ -928,6 +928,14 @@ pub enum DataUpdate {
         job_id: u64,
         data: String,
     },
+    JobLog {
+        project_id: u64,
+        job_id: u64,
+        generation: u64,
+        seq: u64,
+        raw: String,
+        lines: Vec<LogLine>,
+    },
     TerminalEscape(String),
     Diffs {
         project_id: u64,
@@ -1104,6 +1112,13 @@ pub struct App {
     pub file_viewport_height: u16,
     pub file_highlight_cache: Option<(String, String, Vec<ratatui::text::Line<'static>>)>,
     pub job_log_epoch: u64,
+    pub job_log_key: Option<(u64, u64)>,
+    pub job_log_gen: u64,
+    pub job_log_seq: u64,
+    pub job_log_applied_seq: u64,
+    pub job_log_inflight: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub diffs_fetching_key: Option<(u64, u64)>,
+    pub diff_fan_task: Option<((u64, u64), tokio::task::JoinHandle<()>)>,
     pub job_log_display_cache: (u64, usize),
     pub markdown_cache: std::cell::RefCell<
         std::collections::HashMap<u64, std::sync::Arc<Vec<ratatui::text::Line<'static>>>>,

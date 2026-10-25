@@ -280,10 +280,10 @@ impl Drop for FetchGuard {
     }
 }
 
-pub(super) struct LoadingGuard(tokio::sync::mpsc::UnboundedSender<DataUpdate>);
+pub(crate) struct LoadingGuard(tokio::sync::mpsc::UnboundedSender<DataUpdate>);
 
 impl LoadingGuard {
-    pub(super) fn new(tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
+    pub(crate) fn new(tx: tokio::sync::mpsc::UnboundedSender<DataUpdate>) -> Self {
         Self(tx)
     }
 }

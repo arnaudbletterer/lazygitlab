@@ -819,7 +819,7 @@ impl App {
                     } else if self.show_confirm_delete_branch_popup {
                         self.show_confirm_delete_branch_popup = false;
                         if let Some((pid, name)) = self.pending_delete_branch.take() {
-                            let _ = self.delete_branch_sync(pid, name).await;
+                            let _ = self.delete_branch(pid, name).await;
                         }
                     }
                 }
@@ -952,7 +952,7 @@ impl App {
                                 let pid = p.id;
                                 self.show_create_branch_popup = false;
                                 self.input_mode = false;
-                                let _ = self.create_branch_sync(pid, name, ref_name).await;
+                                let _ = self.create_branch(pid, name, ref_name).await;
                                 return true;
                             }
                         } else {
@@ -1016,17 +1016,17 @@ impl App {
                     _ => self.input_target = InputTarget::PipelineRef,
                 },
                 KeyCode::Char('r') if processed_key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    let _ = self.submit_pipeline_launch_sync().await;
+                    let _ = self.submit_pipeline_launch().await;
                 }
                 KeyCode::Enter if processed_key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    let _ = self.submit_pipeline_launch_sync().await;
+                    let _ = self.submit_pipeline_launch().await;
                 }
                 KeyCode::Char('p')
                     if self.input_target == InputTarget::PipelineVariableList
                         || (self.input_target == InputTarget::PipelineVariableKey
                             && self.pipeline_variable_key_input.is_empty()) =>
                 {
-                    let _ = self.submit_pipeline_launch_sync().await;
+                    let _ = self.submit_pipeline_launch().await;
                 }
                 KeyCode::Enter => match self.input_target {
                     InputTarget::PipelineRef => {

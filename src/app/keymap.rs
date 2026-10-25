@@ -2372,7 +2372,7 @@ impl App {
                     })
                     .flatten()
                 {
-                    let _ = self.cancel_pipeline_sync(p.project_id, p.id).await;
+                    let _ = self.cancel_pipeline(p.project_id, p.id).await;
                 }
             }
             KeyCode::Char('R') => {
@@ -2384,7 +2384,7 @@ impl App {
                     })
                     .flatten()
                 {
-                    let _ = self.retry_pipeline_sync(p.project_id, p.id).await;
+                    let _ = self.retry_pipeline(p.project_id, p.id).await;
                 } else if self.selected_mr.is_some() {
                     let _ = self.unapprove_mr().await;
                 }
