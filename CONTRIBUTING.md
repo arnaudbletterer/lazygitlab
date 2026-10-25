@@ -83,7 +83,7 @@ lazygitlab --headless --width 120 --height 40 --script events.txt --frames-dir o
 - `q`, `j`, `k`, `<Enter>`, `<Esc>`, `<F1>`, `up`, `down`, ... (named keys)
 - `<S-q>`, `<C-r>`, `<A-x>`, ... (modifiers: Shift, Ctrl, Alt)
 - `mouse:down:10:5`, `mouse:scroll_down:0:0` (mouse events)
-- `wait:<ms>` pauses the script; `until:<text>` waits until the text is on screen, `until:@mrs>=500` until a list (`mrs`, `issues`, `todos`, `pipelines`) holds that many rows; `until_key:j*15:<cond>` presses `j` in bursts of 15 every 200 ms until the condition holds; `timeout:<ms>` sets the limit for later `until` lines (default 30000); `mark:<name>` records a named instant
+- `wait:<ms>` pauses the script; `until:<text>` waits until the text is on screen, `until:text:@ada` for text that starts with `@` (a plain `@` prefix means a list condition), `until:@mrs>=500` until a list (`mrs`, `issues`, `todos`, `pipelines`) holds that many rows; `until_key:j*15:<cond>` presses `j` in bursts of 15 every 200 ms until the condition holds; `timeout:<ms>` sets the limit for later `until` lines (default 30000); `mark:<name>` records a named instant
 - `#` starts a comment; blank lines are ignored
 - `quit` is a shortcut for `q`
 
