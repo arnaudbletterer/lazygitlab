@@ -136,9 +136,29 @@ async fn test_pipeline_overview_status_pills_and_stage_drill_in() {
     assert!(frame.contains("test-unit"));
 }
 
+async fn wait_for_status(
+    app: &mut App,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<DataUpdate>,
+    needle: &str,
+) {
+    for _ in 0..100 {
+        while let Ok(update) = rx.try_recv() {
+            app.process_update_single(update).await;
+        }
+        if app
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains(needle))
+        {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn test_pipeline_retry_and_cancel_actions() {
-    let (server, mut app, _rx) = setup_app().await;
+    let (server, mut app, mut rx) = setup_app().await;
     app.selected_project = Some(sample_project());
     app.active_context = Context::Project;
     app.active_selection = MenuSelection::Pipelines;
@@ -162,6 +182,7 @@ async fn test_pipeline_retry_and_cancel_actions() {
 
     // Retry pipeline with 'R'
     app.handle_key(key(KeyCode::Char('R'))).await;
+    wait_for_status(&mut app, &mut rx, "retry triggered").await;
     assert_eq!(
         app.status_message.as_deref(),
         Some("Pipeline #101 retry triggered")
@@ -178,6 +199,7 @@ async fn test_pipeline_retry_and_cancel_actions() {
         .await;
 
     app.handle_key(key(KeyCode::Char('C'))).await;
+    wait_for_status(&mut app, &mut rx, "cancelled").await;
     let cancel_msg = app.status_message.as_deref().unwrap_or("");
     assert!(
         cancel_msg.contains("102")
