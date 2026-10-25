@@ -286,60 +286,6 @@ async fn project_issues_server_error_keeps_list_and_reports() {
 }
 
 #[tokio::test]
-async fn first_page_refresh_keeps_rows_paged_in_later() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::MergeRequests);
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[10, 9, 8]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[7, 6]),
-    })
-    .await;
-    assert_eq!(mr_ids(&app).len(), 5);
-
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[11, 10, 9]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(mr_ids(&app), vec![6, 7, 8, 9, 10, 11]);
-}
-
-#[tokio::test]
-async fn first_page_issue_refresh_keeps_rows_paged_in_later() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::Issues);
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: issues(1, &[10, 9]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectIssues {
-        project_id: 1,
-        data: issues(1, &[8, 7]),
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: issues(1, &[10, 9]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(issue_ids(&app), vec![7, 8, 9, 10]);
-}
-
-#[tokio::test]
 async fn successful_empty_refresh_still_empties_list() {
     let (_server, mut app, _rx) = setup_app().await;
     project_ctx(&mut app, MenuSelection::MergeRequests);
@@ -422,52 +368,6 @@ fn pipeline_json(project: u64, id: u64) -> serde_json::Value {
 
 fn pipeline(project: u64, id: u64) -> Pipeline {
     serde_json::from_value(pipeline_json(project, id)).unwrap()
-}
-
-#[tokio::test]
-async fn first_page_todos_refresh_keeps_rows_paged_in_later() {
-    let (_server, mut app, _rx) = setup_app().await;
-    app.process_update_single(DataUpdate::Todos {
-        data: vec![todo(5), todo(4)],
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendTodos(vec![todo(3), todo(2)]))
-        .await;
-    app.process_update_single(DataUpdate::Todos {
-        data: vec![todo(6), todo(5)],
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(app.todos.len(), 5);
-}
-
-#[tokio::test]
-async fn first_page_pipelines_refresh_keeps_rows_paged_in_later() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::Pipelines);
-    app.process_update_single(DataUpdate::ProjectPipelines {
-        project_id: 1,
-        data: vec![pipeline(1, 5), pipeline(1, 4)],
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectPipelines {
-        project_id: 1,
-        data: vec![pipeline(1, 3), pipeline(1, 2)],
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectPipelines {
-        project_id: 1,
-        data: vec![pipeline(1, 6), pipeline(1, 5)],
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(app.pipelines.len(), 5);
 }
 
 #[tokio::test]
@@ -559,58 +459,6 @@ async fn result_for_a_filter_the_user_left_is_dropped() {
 }
 
 #[tokio::test]
-async fn row_merged_server_side_is_removed_even_after_paging() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::MergeRequests);
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[10, 9, 8]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[7, 6]),
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: mrs(1, &[10, 8, 7]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(mr_ids(&app), vec![6, 7, 8, 10]);
-}
-
-#[tokio::test]
-async fn issue_closed_server_side_is_removed_even_after_paging() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::Issues);
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: issues(1, &[10, 9, 8]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectIssues {
-        project_id: 1,
-        data: issues(1, &[7, 6]),
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: issues(1, &[10, 8, 7]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(issue_ids(&app), vec![6, 7, 8, 10]);
-}
-
-#[tokio::test]
 async fn project_that_fails_every_pass_does_not_freeze_other_projects() {
     let (server, mut app, mut rx) = setup_app().await;
     dashboard(&mut app, MenuSelection::MergeRequests);
@@ -676,13 +524,6 @@ fn mr_at(project: u64, iid: u64, created_day: u64, updated_day: u64) -> MergeReq
     serde_json::from_value(v).unwrap()
 }
 
-fn issue_at(project: u64, iid: u64, created_day: u64, updated_day: u64) -> Issue {
-    let mut v = issue(project, iid);
-    v["created_at"] = format!("2026-01-{:02}T00:00:00Z", created_day).into();
-    v["updated_at"] = format!("2026-02-{:02}T00:00:00Z", updated_day).into();
-    serde_json::from_value(v).unwrap()
-}
-
 fn visible_mr_order(app: &App) -> Vec<u64> {
     app.filtered_mrs
         .iter()
@@ -710,87 +551,6 @@ async fn recently_updated_rows_stay_on_top_after_loading_page_two() {
     })
     .await;
     assert_eq!(visible_mr_order(&app), vec![1, 2, 3]);
-}
-
-#[tokio::test]
-async fn first_page_refresh_keeps_page_two_rows_created_after_the_cut_off() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::MergeRequests);
-    let page_one = || vec![mr_at(1, 1, 1, 20), mr_at(1, 2, 2, 19)];
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectMRs {
-        project_id: 1,
-        data: vec![mr_at(1, 3, 25, 10)],
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectMRs {
-        project_id: 1,
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(visible_mr_order(&app), vec![1, 2, 3]);
-}
-
-#[tokio::test]
-async fn first_page_issue_refresh_keeps_page_two_rows_created_after_the_cut_off() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::Issues);
-    let page_one = || vec![issue_at(1, 1, 1, 20), issue_at(1, 2, 2, 19)];
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendProjectIssues {
-        project_id: 1,
-        data: vec![issue_at(1, 3, 25, 10)],
-    })
-    .await;
-    app.process_update_single(DataUpdate::ProjectIssues {
-        project_id: 1,
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(issue_ids(&app), vec![1, 2, 3]);
-}
-
-#[tokio::test]
-async fn global_refresh_keeps_busy_project_page_two_rows_despite_quiet_project() {
-    let (_server, mut app, _rx) = setup_app().await;
-    dashboard(&mut app, MenuSelection::MergeRequests);
-    let page_one = || vec![mr_at(1, 1, 1, 20), mr_at(1, 2, 2, 19), mr_at(2, 50, 3, 2)];
-    app.process_update_single(DataUpdate::GlobalMRs {
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::AppendGlobalMRs {
-        data: vec![mr_at(1, 3, 25, 10)],
-        has_more: false,
-        page: 2,
-        complete: true,
-    })
-    .await;
-    app.process_update_single(DataUpdate::GlobalMRs {
-        data: page_one(),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    assert_eq!(mr_ids(&app), vec![1, 2, 3, 50]);
 }
 
 #[tokio::test]
@@ -876,4 +636,217 @@ async fn switching_filter_restarts_paging_at_page_two() {
         .collect();
     assert!(pages.contains(&"2".to_string()), "pages: {:?}", pages);
     assert!(!pages.contains(&"4".to_string()), "pages: {:?}", pages);
+}
+
+fn ts(day: &str, n: u64) -> String {
+    format!("{}T{:02}:{:02}:00Z", day, n / 60, n % 60)
+}
+
+fn mr_n(project: u64, iid: u64) -> MergeRequest {
+    let mut v = mr(project, iid);
+    v["created_at"] = ts("2026-01-01", 1439 - iid).into();
+    v["updated_at"] = ts("2026-02-01", iid).into();
+    serde_json::from_value(v).unwrap()
+}
+
+fn issue_n(project: u64, iid: u64) -> Issue {
+    let mut v = issue(project, iid);
+    v["created_at"] = ts("2026-01-01", 1439 - iid).into();
+    v["updated_at"] = ts("2026-02-01", iid).into();
+    serde_json::from_value(v).unwrap()
+}
+
+fn range(hi: u64, lo: u64) -> impl Iterator<Item = u64> {
+    (lo..=hi).rev()
+}
+
+#[tokio::test]
+async fn scenario_120_mrs_paged_then_one_updated_and_one_merged() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::MergeRequests);
+    let rows = |hi, lo| range(hi, lo).map(|i| mr_n(1, i)).collect::<Vec<_>>();
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: rows(120, 71),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectMRs {
+        project_id: 1,
+        data: rows(70, 21),
+    })
+    .await;
+    assert_eq!(visible_mr_order(&app).len(), 100);
+
+    let mut updated = mr(1, 100);
+    updated["created_at"] = ts("2026-01-01", 1439 - 100).into();
+    updated["updated_at"] = ts("2026-02-02", 0).into();
+    let mut fresh: Vec<MergeRequest> = vec![serde_json::from_value(updated).unwrap()];
+    fresh.extend(
+        range(120, 71)
+            .filter(|i| *i != 100 && *i != 80)
+            .map(|i| mr_n(1, i)),
+    );
+    fresh.push(mr_n(1, 70));
+    assert_eq!(fresh.len(), 50);
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: fresh,
+        page: 1,
+        has_more: true,
+    })
+    .await;
+
+    let order = visible_mr_order(&app);
+    assert_eq!(order[0], 100, "updated row jumps to the top");
+    assert_eq!(
+        order.iter().filter(|i| **i == 100).count(),
+        1,
+        "no duplicate"
+    );
+    assert!(!order.contains(&80), "merged row leaves");
+    assert_eq!(order.len(), 99);
+    for i in 21..=69 {
+        assert!(order.contains(&i), "row {} from page two is kept", i);
+    }
+}
+
+#[tokio::test]
+async fn short_first_page_is_the_whole_list_so_the_tail_goes() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::MergeRequests);
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: vec![mr_n(1, 10), mr_n(1, 9), mr_n(1, 8)],
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectMRs {
+        project_id: 1,
+        data: vec![mr_n(1, 7), mr_n(1, 6)],
+    })
+    .await;
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: vec![mr_n(1, 10), mr_n(1, 8), mr_n(1, 7)],
+        page: 1,
+        has_more: false,
+    })
+    .await;
+    assert_eq!(visible_mr_order(&app), vec![10, 8, 7]);
+}
+
+#[tokio::test]
+async fn issues_paged_then_one_closed_keeps_older_pages() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::Issues);
+    let rows = |hi, lo| range(hi, lo).map(|i| issue_n(1, i)).collect::<Vec<_>>();
+    app.process_update_single(DataUpdate::ProjectIssues {
+        project_id: 1,
+        data: rows(100, 51),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectIssues {
+        project_id: 1,
+        data: rows(50, 1),
+    })
+    .await;
+    let mut fresh: Vec<Issue> = range(100, 50)
+        .filter(|i| *i != 90)
+        .map(|i| issue_n(1, i))
+        .collect();
+    assert_eq!(fresh.len(), 50);
+    app.process_update_single(DataUpdate::ProjectIssues {
+        project_id: 1,
+        data: std::mem::take(&mut fresh),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    let ids = issue_ids(&app);
+    assert_eq!(ids.len(), 99);
+    assert!(!ids.contains(&90));
+}
+
+#[tokio::test]
+async fn global_refresh_keeps_busy_project_page_two_despite_quiet_project() {
+    let (_server, mut app, _rx) = setup_app().await;
+    dashboard(&mut app, MenuSelection::MergeRequests);
+    let first = || {
+        let mut v: Vec<MergeRequest> = range(100, 51).map(|i| mr_n(1, i)).collect();
+        v.push(mr_n(2, 5));
+        v
+    };
+    app.process_update_single(DataUpdate::GlobalMRs {
+        data: first(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendGlobalMRs {
+        data: range(50, 40).map(|i| mr_n(1, i)).collect(),
+        has_more: true,
+        page: 2,
+        complete: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::GlobalMRs {
+        data: first(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(mr_ids(&app).len(), 62);
+}
+
+#[tokio::test]
+async fn todos_paged_refresh_keeps_older_pages() {
+    let (_server, mut app, _rx) = setup_app().await;
+    let page = |hi, lo| range(hi, lo).map(todo).collect::<Vec<_>>();
+    app.process_update_single(DataUpdate::Todos {
+        data: page(100, 51),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendTodos(page(50, 1)))
+        .await;
+    app.process_update_single(DataUpdate::Todos {
+        data: page(100, 51),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(app.todos.len(), 100);
+}
+
+#[tokio::test]
+async fn project_pipelines_paged_refresh_keeps_older_pages() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::Pipelines);
+    let page = |hi, lo| range(hi, lo).map(|i| pipeline(1, i)).collect::<Vec<_>>();
+    app.process_update_single(DataUpdate::ProjectPipelines {
+        project_id: 1,
+        data: page(100, 51),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectPipelines {
+        project_id: 1,
+        data: page(50, 1),
+    })
+    .await;
+    app.process_update_single(DataUpdate::ProjectPipelines {
+        project_id: 1,
+        data: page(100, 51),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(app.pipelines.len(), 100);
 }

@@ -30,6 +30,7 @@ fn first_page_merge<T>(
     existing: &mut Vec<T>,
     fresh: Vec<T>,
     keep_tail: bool,
+    page_size: usize,
     key: impl Fn(&T) -> Key,
     project_of: impl Fn(&T) -> u64,
     after: impl Fn(&T, &T) -> bool,
@@ -40,13 +41,18 @@ fn first_page_merge<T>(
     }
     let fresh_keys: HashSet<Key> = fresh.iter().map(&key).collect();
     let mut last_of_project: HashMap<u64, &T> = HashMap::new();
+    let mut count_of_project: HashMap<u64, usize> = HashMap::new();
     for item in &fresh {
         last_of_project.insert(project_of(item), item);
+        *count_of_project.entry(project_of(item)).or_default() += 1;
     }
     let tail: Vec<T> = std::mem::take(existing)
         .into_iter()
         .filter(|e| {
             !fresh_keys.contains(&key(e))
+                && count_of_project
+                    .get(&project_of(e))
+                    .is_some_and(|c| *c >= page_size)
                 && last_of_project
                     .get(&project_of(e))
                     .is_some_and(|last| after(e, last))
@@ -66,13 +72,16 @@ fn replace_window<T: Clone + PartialEq>(
     has_more: &mut bool,
     new_page: u64,
     new_has_more: bool,
+    page_size: usize,
     key: impl Fn(&T) -> Key,
     project_of: impl Fn(&T) -> u64,
     after: impl Fn(&T, &T) -> bool,
 ) -> bool {
     let keep_tail = *page > 1;
     let old = existing.clone();
-    let tail_kept = first_page_merge(existing, fresh, keep_tail, key, project_of, after);
+    let tail_kept = first_page_merge(
+        existing, fresh, keep_tail, page_size, key, project_of, after,
+    );
     let mut changed = old != *existing;
     if !tail_kept && (*page != new_page || *has_more != new_has_more) {
         *page = new_page;
@@ -100,6 +109,7 @@ fn replace_partial<T>(
         &mut answered,
         fresh,
         keep_tail,
+        50,
         &key,
         &project_of,
         |a, b| cmp(a, b) == Ordering::Greater,
@@ -110,17 +120,21 @@ fn replace_partial<T>(
 }
 
 fn mr_cmp(a: &MergeRequest, b: &MergeRequest) -> Ordering {
-    let time = |m: &MergeRequest| m.updated_at.clone().or_else(|| m.created_at.clone());
-    time(b)
-        .cmp(&time(a))
+    let (ta, tb) = (
+        a.updated_at.as_deref().or(a.created_at.as_deref()),
+        b.updated_at.as_deref().or(b.created_at.as_deref()),
+    );
+    tb.cmp(&ta)
         .then(a.project_id.cmp(&b.project_id))
         .then(b.iid.cmp(&a.iid))
 }
 
 fn issue_cmp(a: &Issue, b: &Issue) -> Ordering {
-    let time = |i: &Issue| i.updated_at.clone().or_else(|| i.created_at.clone());
-    time(b)
-        .cmp(&time(a))
+    let (ta, tb) = (
+        a.updated_at.as_deref().or(a.created_at.as_deref()),
+        b.updated_at.as_deref().or(b.created_at.as_deref()),
+    );
+    tb.cmp(&ta)
         .then(a.project_id.cmp(&b.project_id))
         .then(b.iid.cmp(&a.iid))
 }
@@ -233,6 +247,7 @@ impl App {
             &mut self.todos_has_more,
             page,
             has_more,
+            50,
             |t| (t.id, 0),
             |_| 0,
             |a, b| a.id < b.id,
@@ -251,6 +266,7 @@ impl App {
             &mut self.mrs_has_more,
             page,
             has_more,
+            50,
             |m| (m.project_id, m.iid),
             |m| m.project_id,
             |a, b| mr_cmp(a, b) == Ordering::Greater,
@@ -269,6 +285,7 @@ impl App {
             &mut self.issues_has_more,
             page,
             has_more,
+            50,
             |i| (i.project_id, i.iid),
             |i| i.project_id,
             |a, b| issue_cmp(a, b) == Ordering::Greater,
@@ -287,6 +304,7 @@ impl App {
             &mut self.pipelines_has_more,
             page,
             has_more,
+            50,
             |p| (p.project_id, p.id),
             |p| p.project_id,
             pipeline_after,
@@ -310,6 +328,7 @@ impl App {
             &mut self.cross_pipelines_has_more,
             page,
             has_more,
+            20,
             |p| (p.project_id, p.id),
             |p| p.project_id,
             pipeline_after,

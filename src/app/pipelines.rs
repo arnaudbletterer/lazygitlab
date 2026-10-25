@@ -290,7 +290,7 @@ impl App {
             loop {
                 let (mut all, complete) =
                     fetch_cross_round(client.clone(), project_ids.clone(), deadline).await;
-                all.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                all.sort_by_key(|p| std::cmp::Reverse(p.id));
                 all.truncate(50);
                 if complete {
                     let _ = tx.send(DataUpdate::GlobalPipelines {
