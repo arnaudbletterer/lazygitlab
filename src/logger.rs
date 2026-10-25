@@ -65,6 +65,20 @@ pub fn default_log_path() -> PathBuf {
     )
 }
 
+pub fn state_dir() -> PathBuf {
+    let log = resolve_log_path(
+        None,
+        env_var("XDG_STATE_HOME").as_deref(),
+        env_var("HOME")
+            .or_else(|| env_var("USERPROFILE"))
+            .as_deref(),
+        env_var("LOCALAPPDATA").as_deref(),
+        cfg!(windows),
+        &user_tag(),
+    );
+    log.parent().map(Path::to_path_buf).unwrap_or_default()
+}
+
 pub fn open_log_file(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.create(true).append(true);

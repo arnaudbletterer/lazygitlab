@@ -1,5 +1,6 @@
 pub mod api;
 pub mod app;
+pub mod cache;
 pub mod cli;
 pub mod client;
 pub mod config;
