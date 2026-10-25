@@ -1,5 +1,6 @@
 use crate::api::*;
 use crate::app::merge::LoadingGuard;
+use crate::app::startup::issues_fanout_key;
 use crate::models::*;
 use gitlab::api::AsyncQuery;
 
@@ -16,7 +17,14 @@ impl App {
             };
             let guard = LoadingGuard::start(tx.clone());
             self.status_message = Some("Fetching Issues...".into());
-            let scope = self.issue_filter;
+            self.fanout_seq += 1;
+            self.issues_fetch_gen = self.fanout_seq;
+            let scope = IssueScope {
+                filter: self.issue_filter,
+                project: Some(pid),
+                generation: self.issues_fetch_gen,
+                fanout_id: 0,
+            };
             tokio::spawn(async move {
                 let _guard = guard;
                 let ep = PagedIssues {
@@ -81,7 +89,12 @@ impl App {
                 IssueFilter::Closed => "closed".to_string(),
                 IssueFilter::All => "all".to_string(),
             };
-            let scope = self.issue_filter;
+            let scope = IssueScope {
+                filter: self.issue_filter,
+                project: Some(pid),
+                generation: self.issues_fetch_gen,
+                fanout_id: 0,
+            };
             tokio::spawn(async move {
                 let _guard = guard;
                 let ep = PagedIssues {
@@ -133,7 +146,14 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
-        let scope = self.issue_filter;
+        self.fanout_seq += 1;
+        self.issues_fetch_gen = self.fanout_seq;
+        let scope = IssueScope {
+            filter: self.issue_filter,
+            project: None,
+            generation: self.issues_fetch_gen,
+            fanout_id: self.fanout_ids.get(&issues_fanout_key(None, self.issue_filter)).copied().unwrap_or(0),
+        };
         tokio::spawn(async move {
             let _guard = guard;
             // Sends nothing: the membership filter already hides rows of non-members.
@@ -226,7 +246,12 @@ impl App {
 
         let project_ids: Vec<u64> = self.member_project_ids.iter().cloned().collect();
 
-        let scope = self.issue_filter;
+        let scope = IssueScope {
+            filter: self.issue_filter,
+            project: None,
+            generation: self.issues_fetch_gen,
+            fanout_id: 0,
+        };
         tokio::spawn(async move {
             let _guard = guard;
             if project_ids.is_empty() {

@@ -16,6 +16,17 @@ pub enum IssueFilter {
     All,
 }
 
+/// Where an issue list result comes from: the filter it was fetched for, the project
+/// (`None` for the dashboard lists), the generation of the fetch (a newer fetch makes it
+/// stale) and the id of the fan-out it ends (0 when it ends none).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct IssueScope {
+    pub filter: IssueFilter,
+    pub project: Option<u64>,
+    pub generation: u64,
+    pub fanout_id: u64,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub enum MergeRequestFilter {
     Opened,
@@ -842,7 +853,7 @@ pub enum DataUpdate {
     },
     Preselected(Result<Project, String>),
     ScopedMr(MergeRequestFilter, Box<DataUpdate>),
-    ScopedIssue(IssueFilter, Box<DataUpdate>),
+    ScopedIssue(IssueScope, Box<DataUpdate>),
     AppendGlobalMRs {
         data: Vec<MergeRequest>,
         has_more: bool,
@@ -1380,7 +1391,12 @@ pub struct App {
     pub user_fetch_in_flight: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub fanouts_started: std::collections::HashMap<String, std::time::Instant>,
     pub fanout_rerun: std::collections::HashSet<String>,
-    pub fanout_data_seen: std::collections::HashSet<String>,
+    pub fanout_ids: std::collections::HashMap<String, u64>,
+    pub fanout_seq: u64,
+    pub issues_fetch_gen: u64,
+    pub membership_timeout: std::time::Duration,
+    pub membership_failures: u32,
+    pub membership_retry_at: Option<std::time::Instant>,
     pub auth_failed: bool,
     pub exit_on_connect_failure: bool,
     pub fatal_error: Option<String>,

@@ -307,7 +307,12 @@ impl App {
             user_fetch_in_flight: Default::default(),
             fanouts_started: std::collections::HashMap::new(),
             fanout_rerun: std::collections::HashSet::new(),
-            fanout_data_seen: std::collections::HashSet::new(),
+            fanout_ids: std::collections::HashMap::new(),
+            fanout_seq: 0,
+            issues_fetch_gen: 0,
+            membership_timeout: crate::app::startup::MEMBERSHIP_TIMEOUT,
+            membership_failures: 0,
+            membership_retry_at: None,
             auth_failed: false,
             exit_on_connect_failure: false,
             fatal_error: None,
@@ -509,7 +514,7 @@ impl App {
                     DataUpdate::RefreshFailed => ScopedKind::Failed,
                     _ => ScopedKind::Other,
                 };
-                let ends_fanout = self.scoped_ends_fanout(&key, kind);
+                let ends_fanout = matches!(kind, ScopedKind::Result);
                 if scope == self.mr_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
@@ -518,7 +523,7 @@ impl App {
                 }
             }
             DataUpdate::ScopedIssue(scope, inner) => {
-                let key = format!("issues:{scope:?}");
+                let key = startup::issues_fanout_key(scope.project, scope.filter);
                 let kind = match *inner {
                     DataUpdate::GlobalIssues { .. } | DataUpdate::GlobalIssuesPartial { .. } => {
                         ScopedKind::Result
@@ -527,8 +532,8 @@ impl App {
                     DataUpdate::RefreshFailed => ScopedKind::Failed,
                     _ => ScopedKind::Other,
                 };
-                let ends_fanout = self.scoped_ends_fanout(&key, kind);
-                if scope == self.issue_filter {
+                let ends_fanout = self.scoped_ends_fanout(&key, scope.fanout_id, kind);
+                if scope.generation == self.issues_fetch_gen && scope.filter == self.issue_filter {
                     Box::pin(self.process_update_single(*inner)).await;
                 }
                 if ends_fanout && self.fanout_done(&key) {

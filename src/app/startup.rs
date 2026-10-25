@@ -7,6 +7,18 @@ const FANOUT_STALE: Duration = Duration::from_secs(65);
 /// How long Home waits before prefetching merge requests, so a screen opened
 /// right away gets the network first.
 pub const HOME_PREFETCH_DELAY: Duration = Duration::from_millis(400);
+/// A membership sync that has not answered after this long is given up.
+pub const MEMBERSHIP_TIMEOUT: Duration = Duration::from_secs(20);
+const MEMBERSHIP_RETRY_BASE: Duration = Duration::from_secs(10);
+const MEMBERSHIP_RETRY_MAX: Duration = Duration::from_secs(60);
+
+/// Key of a fan-out marker: global lists and the lists of one project never share one.
+pub(crate) fn issues_fanout_key(project: Option<u64>, filter: IssueFilter) -> String {
+    match project {
+        Some(pid) => format!("issues:project:{pid}:{filter:?}"),
+        None => format!("issues:global:{filter:?}"),
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum ScopedKind {
@@ -136,25 +148,35 @@ impl App {
     /// Marks a fan-out as finished. Returns true when a follow-up was requested meanwhile.
     pub(crate) fn fanout_done(&mut self, key: &str) -> bool {
         self.fanouts_started.remove(key);
+        self.fanout_ids.remove(key);
         self.fanout_rerun.remove(key)
     }
 
-    /// Classifies a scoped fan-out message. A fan-out ends with its data message
-    /// (full or partial); the `RefreshFailed` that follows a data message belongs
-    /// to the same fan-out and is ignored, so every fan-out ends exactly once. A
-    /// `RefreshFailed` with no data before it is a fan-out where every project failed.
-    pub(crate) fn scoped_ends_fanout(&mut self, key: &str, kind: ScopedKind) -> bool {
+    /// Counts a failed membership sync. The first failure retries on the next tick,
+    /// later ones back off up to a minute.
+    pub(crate) fn note_membership_failure(&mut self) {
+        self.membership_failures += 1;
+        self.membership_retry_at = (self.membership_failures > 1).then(|| {
+            let exp = (self.membership_failures - 2).min(3);
+            Instant::now() + (MEMBERSHIP_RETRY_BASE * 2u32.pow(exp)).min(MEMBERSHIP_RETRY_MAX)
+        });
+    }
+
+    pub(crate) fn membership_retry_due(&self) -> bool {
+        self.membership_retry_at
+            .is_none_or(|at| Instant::now() >= at)
+    }
+
+    /// Classifies a scoped fan-out message. A fan-out ends with the first data message
+    /// (full or partial) or failure that carries its id; the key's id is dropped when it
+    /// ends, so a later message of the same fan-out, or one of a superseded or unrelated
+    /// fetch (id 0), ends nothing and every fan-out ends exactly once.
+    pub(crate) fn scoped_ends_fanout(&mut self, key: &str, id: u64, kind: ScopedKind) -> bool {
         match kind {
-            ScopedKind::Result => {
-                self.fanout_data_seen.insert(key.to_string());
-                true
+            ScopedKind::Result | ScopedKind::Failed => {
+                id != 0 && self.fanout_ids.get(key) == Some(&id)
             }
-            ScopedKind::NextPage => {
-                self.fanout_data_seen.insert(key.to_string());
-                false
-            }
-            ScopedKind::Failed => !self.fanout_data_seen.remove(key),
-            ScopedKind::Other => false,
+            ScopedKind::NextPage | ScopedKind::Other => false,
         }
     }
 
@@ -171,7 +193,8 @@ impl App {
             }
             return false;
         }
-        self.fanout_data_seen.remove(&key);
+        self.fanout_seq += 1;
+        self.fanout_ids.insert(key.clone(), self.fanout_seq);
         self.fanouts_started.insert(key, Instant::now());
         true
     }
@@ -179,7 +202,7 @@ impl App {
     /// Global issues fan-out, skipped while one for the same filter is in flight.
     /// With `rerun_if_busy` a follow-up runs when the running one ends.
     pub(crate) async fn fetch_global_issues_guarded(&mut self, rerun_if_busy: bool) {
-        let key = format!("issues:{:?}", self.issue_filter);
+        let key = issues_fanout_key(None, self.issue_filter);
         if self.begin_fanout(key, rerun_if_busy) {
             let _ = self.fetch_global_issues().await;
         }
