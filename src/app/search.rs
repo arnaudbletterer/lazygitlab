@@ -46,7 +46,15 @@ impl App {
                         per_page: Some(100),
                         page: Some(1),
                     };
-                    let res: Result<Vec<serde_json::Value>, _> = ep.query_async(&s1_client).await;
+                    let res: Result<Vec<serde_json::Value>, _> = tokio::time::timeout(
+                        std::time::Duration::from_secs(15),
+                        ep.query_async(&s1_client),
+                    )
+                    .await
+                    .unwrap_or_else(|_| {
+                        tracing::warn!("Global search timed out");
+                        Ok(Vec::new())
+                    });
                     if let Ok(data) = res {
                         let mut results = Vec::new();
                         for val in data {
@@ -201,7 +209,7 @@ impl App {
                 let _ = handle.await;
             }
             let _ = tx.send(DataUpdate::Loading(false));
-            let _ = tx.send(DataUpdate::TriggerRefresh);
+            let _ = tx.send(DataUpdate::TriggerBackgroundRefresh);
         });
 
         Ok(())

@@ -599,6 +599,7 @@ impl App {
         self.is_syncing_membership = true;
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
+        let timeout = self.membership_timeout;
         tokio::spawn(async move {
             let ep = PagedProjects {
                 membership: true,
@@ -609,12 +610,13 @@ impl App {
                 archived: Some(false),
                 order_by: None,
             };
-            let res: Result<Vec<serde_json::Value>, _> =
-                gitlab::api::paged(ep, gitlab::api::Pagination::All)
-                    .query_async(&client)
-                    .await;
+            let res: Result<Result<Vec<serde_json::Value>, _>, _> = tokio::time::timeout(
+                timeout,
+                gitlab::api::paged(ep, gitlab::api::Pagination::All).query_async(&client),
+            )
+            .await;
             match res {
-                Ok(data) => {
+                Ok(Ok(data)) => {
                     let mut ids = std::collections::HashSet::new();
                     for val in data {
                         if let Some(id) = val.get("id").and_then(|v| v.as_u64()) {
@@ -624,8 +626,12 @@ impl App {
                     tracing::info!("Membership sync complete: {} projects found", ids.len());
                     let _ = tx.send(DataUpdate::MemberProjectIds(ids));
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     tracing::error!("Membership sync failed: {}", e);
+                    let _ = tx.send(DataUpdate::MemberSyncFailed);
+                }
+                Err(_) => {
+                    tracing::error!("Membership sync timed out");
                     let _ = tx.send(DataUpdate::MemberSyncFailed);
                 }
             }

@@ -1064,6 +1064,7 @@ pub enum DataUpdate {
     Loading(bool),
     Error(String),
     TriggerRefresh,
+    TriggerBackgroundRefresh,
     RemovePendingIssue {
         project_id: u64,
         iid: u64,

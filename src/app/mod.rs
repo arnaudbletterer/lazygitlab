@@ -336,6 +336,7 @@ impl App {
             }
             DataUpdate::MemberSyncFailed => {
                 self.is_syncing_membership = false;
+                self.note_membership_failure();
                 self.clear_loading_projects_status();
                 if !self.member_project_ids.is_empty() {
                     self.membership_sync_attempted = true;
@@ -348,6 +349,8 @@ impl App {
                 self.clear_loading_projects_status();
                 self.member_project_ids = ids;
                 self.is_syncing_membership = false;
+                self.membership_failures = 0;
+                self.membership_retry_at = None;
                 self.membership_sync_attempted = true;
                 self.filter_lists();
                 self.save_membership_cache();
@@ -1135,6 +1138,9 @@ impl App {
             }
             DataUpdate::TriggerRefresh => {
                 self.refresh().await;
+            }
+            DataUpdate::TriggerBackgroundRefresh => {
+                self.refresh_background().await;
             }
             DataUpdate::RemovePendingIssue { project_id, iid } => {
                 self.issues
@@ -2052,6 +2058,7 @@ impl App {
         if self.member_project_ids.is_empty()
             && !self.is_syncing_membership
             && !self.membership_sync_attempted
+            && self.membership_retry_due()
         {
             let _ = self.fetch_membership_project_ids().await;
         }
