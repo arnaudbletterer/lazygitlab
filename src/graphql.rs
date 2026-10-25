@@ -1,9 +1,16 @@
+//! Batched GraphQL fetch of the dashboard merge request and issue lists.
+//!
+//! Minimum versions: the base query works on CE and EE 15.x. `approvalsLeft` exists only
+//! on EE, and `resolvableDiscussionsCount` / `resolvedDiscussionsCount` need GitLab 17.7.
+//! When the server rejects one of those optional fields, the query drops exactly that group
+//! and retries; the level is remembered per (host, kind) in [`GraphqlState`].
+
 use crate::models::{Author, Issue, Label, MergeRequest, Milestone, PipelineMin, References};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -13,9 +20,76 @@ const MAX_PAGES_PER_PROJECT: usize = 5;
 const COMPLEXITY_THRESHOLD: u64 = 200;
 const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-const MR_QUERY: &str = "query($ids:[ID!], $state:MergeRequestState, $since:Time, $after:String){ projects(ids:$ids, first:20){ nodes{ id fullPath mergeRequests(state:$state, sort:UPDATED_DESC, first:20, updatedAfter:$since, after:$after){ pageInfo{hasNextPage endCursor} nodes{ iid title state draft webUrl createdAt updatedAt detailedMergeStatus conflicts sourceBranch targetBranch author{id username name} assignees{nodes{id username}} reviewers{nodes{id username}} labels{nodes{title color textColor}} milestone{title} headPipeline{status} approved approvalsLeft resolvableDiscussionsCount resolvedDiscussionsCount } } } } queryComplexity{score limit} }";
+const MR_FIELDS_HEAD: &str = "iid title state draft webUrl createdAt updatedAt detailedMergeStatus conflicts sourceBranch targetBranch author{id username name} assignees{nodes{id username}} reviewers{nodes{id username}} labels{nodes{id title color textColor}} milestone{id title} headPipeline{id status} approved";
+const ISSUE_FIELDS: &str = "iid title state confidential webUrl createdAt updatedAt dueDate userNotesCount author{id username name} assignees{nodes{id username}} labels{nodes{id title color textColor}} milestone{id title}";
 
-const ISSUE_QUERY: &str = "query($ids:[ID!], $state:IssuableState, $since:Time, $after:String){ projects(ids:$ids, first:20){ nodes{ id fullPath issues(state:$state, sort:UPDATED_DESC, first:20, updatedAfter:$since, after:$after){ pageInfo{hasNextPage endCursor} nodes{ iid title state webUrl createdAt updatedAt dueDate userNotesCount author{id username name} assignees{nodes{id username}} labels{nodes{title color textColor}} milestone{title} } } } } queryComplexity{score limit} }";
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ListKind {
+    MergeRequests,
+    Issues,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Level {
+    pub approvals: bool,
+    pub discussions: bool,
+}
+
+impl Level {
+    pub const FULL: Level = Level {
+        approvals: true,
+        discussions: true,
+    };
+
+    fn without(self, field: &str) -> Option<Level> {
+        match field {
+            "approvalsLeft" => Some(Level {
+                approvals: false,
+                ..self
+            }),
+            "resolvableDiscussionsCount" | "resolvedDiscussionsCount" => Some(Level {
+                discussions: false,
+                ..self
+            }),
+            _ => None,
+        }
+    }
+
+    fn and(self, o: Level) -> Level {
+        Level {
+            approvals: self.approvals && o.approvals,
+            discussions: self.discussions && o.discussions,
+        }
+    }
+}
+
+fn connection_args(name: &str, ty: &str) -> String {
+    format!(
+        "query($ids:[ID!], $state:{ty}, $since:Time, $after:String, $first:Int){{ projects(ids:$ids, first:20){{ nodes{{ id fullPath {name}(state:$state, sort:UPDATED_DESC, first:$first, updatedAfter:$since, after:$after){{ pageInfo{{hasNextPage endCursor}} nodes{{ "
+    )
+}
+
+const QUERY_TAIL: &str = " } } } } queryComplexity{score limit} }";
+
+fn mr_query(level: Level) -> String {
+    let mut q = connection_args("mergeRequests", "MergeRequestState");
+    q.push_str(MR_FIELDS_HEAD);
+    if level.approvals {
+        q.push_str(" approvalsLeft");
+    }
+    if level.discussions {
+        q.push_str(" resolvableDiscussionsCount resolvedDiscussionsCount");
+    }
+    q.push_str(QUERY_TAIL);
+    q
+}
+
+fn issue_query(_: Level) -> String {
+    let mut q = connection_args("issues", "IssuableState");
+    q.push_str(ISSUE_FIELDS);
+    q.push_str(QUERY_TAIL);
+    q
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Complexity {
@@ -76,23 +150,72 @@ pub struct IssueRow {
     pub user_notes_count: Option<u64>,
 }
 
-struct HostState {
+#[derive(Clone, Copy)]
+struct KindState {
     unsupported: bool,
-    batch: usize,
+    size: usize,
+    level: Level,
     last: Option<Complexity>,
 }
 
-static HOSTS: LazyLock<Mutex<HashMap<String, HostState>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+impl Default for KindState {
+    fn default() -> Self {
+        Self {
+            unsupported: false,
+            size: MAX_BATCH,
+            level: Level::FULL,
+            last: None,
+        }
+    }
+}
 
-fn with_host<R>(key: &str, f: impl FnOnce(&mut HostState) -> R) -> R {
-    let mut map = HOSTS.lock().unwrap_or_else(|e| e.into_inner());
-    let st = map.entry(key.to_string()).or_insert(HostState {
-        unsupported: false,
-        batch: MAX_BATCH,
-        last: None,
-    });
-    f(st)
+#[derive(Default)]
+pub struct GraphqlState {
+    inner: Mutex<HashMap<(String, ListKind), KindState>>,
+}
+
+impl GraphqlState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn with<R>(&self, url: &str, kind: ListKind, f: impl FnOnce(&mut KindState) -> R) -> R {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        f(map.entry((url.to_string(), kind)).or_default())
+    }
+
+    fn read<R>(
+        &self,
+        client: &gitlab::AsyncGitlab,
+        kind: ListKind,
+        f: impl FnOnce(&KindState) -> R,
+        default: R,
+    ) -> R {
+        match graphql_url(client) {
+            Ok(url) => self.with(&url, kind, |k| f(k)),
+            Err(_) => default,
+        }
+    }
+
+    pub fn last_complexity(
+        &self,
+        client: &gitlab::AsyncGitlab,
+        kind: ListKind,
+    ) -> Option<Complexity> {
+        self.read(client, kind, |k| k.last, None)
+    }
+
+    pub fn batch_size(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> usize {
+        self.read(client, kind, |k| k.size, MAX_BATCH)
+    }
+
+    pub fn is_unsupported(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> bool {
+        self.read(client, kind, |k| k.unsupported, false)
+    }
+
+    pub fn level(&self, client: &gitlab::AsyncGitlab, kind: ListKind) -> Level {
+        self.read(client, kind, |k| k.level, Level::FULL)
+    }
 }
 
 pub fn graphql_url(client: &gitlab::AsyncGitlab) -> Result<String, GraphqlError> {
@@ -107,25 +230,6 @@ pub fn graphql_url(client: &gitlab::AsyncGitlab) -> Result<String, GraphqlError>
     Ok(format!("{base}/api/graphql"))
 }
 
-pub fn last_complexity(client: &gitlab::AsyncGitlab) -> Option<Complexity> {
-    let url = graphql_url(client).ok()?;
-    with_host(&url, |h| h.last)
-}
-
-pub fn current_batch_size(client: &gitlab::AsyncGitlab) -> usize {
-    match graphql_url(client) {
-        Ok(url) => with_host(&url, |h| h.batch),
-        Err(_) => MAX_BATCH,
-    }
-}
-
-pub fn is_marked_unsupported(client: &gitlab::AsyncGitlab) -> bool {
-    match graphql_url(client) {
-        Ok(url) => with_host(&url, |h| h.unsupported),
-        Err(_) => false,
-    }
-}
-
 #[derive(Deserialize)]
 struct Envelope {
     data: Option<Value>,
@@ -137,13 +241,6 @@ struct Envelope {
 struct GqlMessage {
     #[serde(default)]
     message: String,
-}
-
-#[derive(Deserialize)]
-struct Connection<N> {
-    #[serde(rename = "pageInfo")]
-    page_info: PageInfo,
-    nodes: Vec<Option<N>>,
 }
 
 #[derive(Deserialize)]
@@ -169,6 +266,8 @@ struct GqlUser {
 
 #[derive(Deserialize)]
 struct GqlLabel {
+    #[serde(default)]
+    id: Option<String>,
     title: String,
     #[serde(default)]
     color: String,
@@ -178,11 +277,15 @@ struct GqlLabel {
 
 #[derive(Deserialize)]
 struct GqlMilestone {
+    #[serde(default)]
+    id: Option<String>,
     title: String,
 }
 
 #[derive(Deserialize)]
 struct GqlPipeline {
+    #[serde(default)]
+    id: Option<String>,
     status: String,
 }
 
@@ -245,6 +348,8 @@ struct IssueNode {
     #[serde(default)]
     updated_at: Option<String>,
     #[serde(default)]
+    confidential: Option<bool>,
+    #[serde(default)]
     due_date: Option<String>,
     #[serde(default)]
     user_notes_count: Option<u64>,
@@ -263,6 +368,10 @@ fn gid_number(gid: &str) -> Result<u64, String> {
         .next()
         .and_then(|n| n.parse().ok())
         .ok_or_else(|| format!("bad global id {gid}"))
+}
+
+fn optional_id(id: &Option<String>) -> u64 {
+    id.as_deref().and_then(|g| gid_number(g).ok()).unwrap_or(0)
 }
 
 fn author(u: &GqlUser) -> Result<Author, String> {
@@ -284,7 +393,7 @@ fn labels(n: &Option<Nodes<GqlLabel>>) -> Vec<Label> {
                 .iter()
                 .flatten()
                 .map(|l| Label {
-                    id: 0,
+                    id: optional_id(&l.id),
                     name: l.title.clone(),
                     color: l.color.clone(),
                     text_color: l.text_color.clone(),
@@ -296,7 +405,7 @@ fn labels(n: &Option<Nodes<GqlLabel>>) -> Vec<Label> {
 
 fn milestone(m: &Option<GqlMilestone>) -> Option<Milestone> {
     m.as_ref().map(|m| Milestone {
-        id: 0,
+        id: optional_id(&m.id),
         title: m.title.clone(),
     })
 }
@@ -336,7 +445,7 @@ fn map_mr(project_id: u64, path: &str, n: MrNode) -> Result<MrRow, String> {
         detailed_merge_status: n.detailed_merge_status.map(|s| s.to_lowercase()),
         has_conflicts: n.conflicts,
         head_pipeline: n.head_pipeline.map(|p| PipelineMin {
-            id: 0,
+            id: optional_id(&p.id),
             status: p.status.to_lowercase(),
         }),
         source_branch: n.source_branch,
@@ -371,11 +480,11 @@ fn map_issue(project_id: u64, path: &str, n: IssueNode) -> Result<IssueRow, Stri
         }),
         issue_type: None,
         milestone: milestone(&n.milestone),
-        due_date: n.due_date,
+        due_date: n.due_date.map(|d| d.chars().take(10).collect()),
         start_date: None,
         weight: None,
         task_completion_status: None,
-        confidential: false,
+        confidential: n.confidential.unwrap_or(false),
         created_at: n.created_at,
         upvotes: None,
         downvotes: None,
@@ -390,20 +499,46 @@ fn map_issue(project_id: u64, path: &str, n: IssueNode) -> Result<IssueRow, Stri
     })
 }
 
-fn is_unsupported_message(m: &str) -> bool {
-    let l = m.to_ascii_lowercase();
-    l.contains("doesn't exist")
-        || l.contains("does not exist")
-        || l.contains("unknown field")
-        || l.contains("unknown type")
-        || l.contains("unknown argument")
-        || l.contains("undefined field")
-        || l.contains("isn't a defined input type")
-        || l.contains("not defined")
+enum Fail {
+    Err(GraphqlError),
+    UnknownFields(Vec<String>),
+    ComplexityExceeded,
+}
+
+impl From<GraphqlError> for Fail {
+    fn from(e: GraphqlError) -> Self {
+        Fail::Err(e)
+    }
+}
+
+enum Validation {
+    Fields(Vec<String>),
+    Schema,
+}
+
+fn classify_validation(errors: &[GqlMessage]) -> Option<Validation> {
+    let mut fields = Vec::new();
+    for e in errors {
+        let m = &e.message;
+        let l = m.to_ascii_lowercase();
+        if l.contains("unknown type") || l.contains("isn't a defined input type") {
+            return Some(Validation::Schema);
+        }
+        if l.starts_with("field '") && l.contains("' doesn't exist on type") {
+            let name = m["Field '".len()..].split('\'').next().unwrap_or("");
+            fields.push(name.to_string());
+        }
+    }
+    if fields.is_empty() {
+        None
+    } else {
+        Some(Validation::Fields(fields))
+    }
 }
 
 struct Kind<N, T> {
-    query: &'static str,
+    list: ListKind,
+    query: fn(Level) -> String,
     field: &'static str,
     map: fn(u64, &str, N) -> Result<T, String>,
 }
@@ -419,6 +554,7 @@ struct Request {
     url: String,
     state: String,
     since: Option<String>,
+    size: usize,
 }
 
 struct Page {
@@ -433,7 +569,7 @@ async fn post(
     query: &str,
     ids: &[u64],
     after: Option<&str>,
-) -> Result<Page, GraphqlError> {
+) -> Result<Page, Fail> {
     use gitlab::api::AsyncClient;
     let gids: Vec<String> = ids
         .iter()
@@ -446,6 +582,7 @@ async fn post(
             "state": req.state,
             "since": req.since,
             "after": after,
+            "first": req.size,
         }
     });
     let http_req = http::Request::builder()
@@ -462,30 +599,36 @@ async fn post(
     .map_err(|e| GraphqlError::Failed(e.to_string()))?;
     let status = resp.status();
     if status == http::StatusCode::TOO_MANY_REQUESTS {
-        return Err(GraphqlError::RateLimited);
+        return Err(GraphqlError::RateLimited.into());
     }
     if status == http::StatusCode::NOT_FOUND || status == http::StatusCode::BAD_REQUEST {
-        return Err(GraphqlError::Unsupported);
+        return Err(GraphqlError::Unsupported.into());
     }
     if !status.is_success() {
-        return Err(GraphqlError::Failed(format!("HTTP {status}")));
+        return Err(GraphqlError::Failed(format!("HTTP {status}")).into());
     }
-    let env: Envelope =
-        serde_json::from_slice(resp.body()).map_err(|_| GraphqlError::Unsupported)?;
-    if env
-        .errors
-        .iter()
-        .any(|e| is_unsupported_message(&e.message))
-    {
-        return Err(GraphqlError::Unsupported);
-    }
-    let Some(data) = env.data else {
-        let msg = env
-            .errors
-            .first()
-            .map(|e| e.message.clone())
-            .unwrap_or_else(|| "empty response".into());
-        return Err(GraphqlError::Failed(msg));
+    let env: Envelope = serde_json::from_slice(resp.body())
+        .map_err(|_| GraphqlError::Failed("response is not GraphQL JSON".into()))?;
+    let data = match env.data {
+        Some(d) if !d.is_null() => d,
+        _ => {
+            return Err(match classify_validation(&env.errors) {
+                Some(Validation::Schema) => GraphqlError::Unsupported.into(),
+                Some(Validation::Fields(f)) => Fail::UnknownFields(f),
+                None => {
+                    let msg = env
+                        .errors
+                        .first()
+                        .map(|e| e.message.clone())
+                        .unwrap_or_else(|| "empty response".into());
+                    if msg.to_ascii_lowercase().contains("complexity") {
+                        Fail::ComplexityExceeded
+                    } else {
+                        GraphqlError::Failed(msg).into()
+                    }
+                }
+            });
+        }
     };
     let complexity = data.get("queryComplexity").and_then(|c| {
         Some(Complexity {
@@ -507,13 +650,15 @@ struct BatchOut<T> {
     rows: Vec<T>,
     complete: bool,
     max_score: Option<Complexity>,
+    level: Level,
+    over_limit: bool,
 }
 
 fn project_nodes(data: &Value) -> Result<&Vec<Value>, GraphqlError> {
     data.get("projects")
         .and_then(|p| p.get("nodes"))
         .and_then(Value::as_array)
-        .ok_or(GraphqlError::Unsupported)
+        .ok_or_else(|| GraphqlError::Failed("unexpected GraphQL response shape".into()))
 }
 
 fn merge_complexity(acc: &mut Option<Complexity>, c: Option<Complexity>) {
@@ -526,63 +671,88 @@ fn merge_complexity(acc: &mut Option<Complexity>, c: Option<Complexity>) {
 
 type NextPage = Option<(u64, String)>;
 
-fn absorb<N, T>(
-    node: &Value,
-    kind: &Kind<N, T>,
-    out: &mut BatchOut<T>,
-) -> Result<NextPage, GraphqlError>
+fn absorb<N, T>(node: &Value, kind: &Kind<N, T>, out: &mut BatchOut<T>) -> NextPage
 where
     N: DeserializeOwned,
 {
-    if node.is_null() {
-        return Ok(None);
-    }
-    let id = node
+    let ident = node
         .get("id")
         .and_then(Value::as_str)
-        .ok_or(GraphqlError::Unsupported)?;
-    let pid = gid_number(id).map_err(|_| GraphqlError::Unsupported)?;
-    let path = node
-        .get("fullPath")
-        .and_then(Value::as_str)
-        .ok_or(GraphqlError::Unsupported)?;
-    let Some(conn) = node.get(kind.field).filter(|c| !c.is_null()) else {
-        return Ok(None);
+        .and_then(|g| gid_number(g).ok());
+    let path = node.get("fullPath").and_then(Value::as_str);
+    let (Some(pid), Some(path)) = (ident, path) else {
+        out.complete = false;
+        return None;
     };
-    let conn: Connection<N> =
-        serde_json::from_value(conn.clone()).map_err(|_| GraphqlError::Unsupported)?;
-    for n in conn.nodes.into_iter().flatten() {
-        out.rows
-            .push((kind.map)(pid, path, n).map_err(|_| GraphqlError::Unsupported)?);
+    let conn = node.get(kind.field).filter(|c| !c.is_null())?;
+    let Some(items) = conn.get("nodes").and_then(Value::as_array) else {
+        out.complete = false;
+        return None;
+    };
+    for item in items.iter().filter(|i| !i.is_null()) {
+        let row = N::deserialize(item)
+            .map_err(|e| e.to_string())
+            .and_then(|n| (kind.map)(pid, path, n));
+        match row {
+            Ok(r) => out.rows.push(r),
+            Err(e) => {
+                tracing::warn!("skipping unparsable graphql node: {e}");
+                out.complete = false;
+            }
+        }
     }
-    if conn.page_info.has_next_page
-        && let Some(cursor) = conn.page_info.end_cursor
-    {
-        return Ok(Some((pid, cursor)));
+    let info = conn
+        .get("pageInfo")
+        .and_then(|p| PageInfo::deserialize(p).ok());
+    match info {
+        Some(PageInfo {
+            has_next_page: true,
+            end_cursor: Some(cursor),
+        }) => Some((pid, cursor)),
+        Some(_) => None,
+        None => {
+            out.complete = false;
+            None
+        }
     }
-    Ok(None)
 }
 
 async fn run_batch<N, T>(
     client: gitlab::AsyncGitlab,
     req: Arc<Request>,
     kind: Kind<N, T>,
+    start: Level,
     ids: Vec<u64>,
-) -> Result<BatchOut<T>, GraphqlError>
+) -> Result<BatchOut<T>, Fail>
 where
     N: DeserializeOwned,
 {
+    let mut level = start;
+    let mut retries = 0;
+    let page = loop {
+        match post(&client, &req, &(kind.query)(level), &ids, None).await {
+            Ok(p) => break p,
+            Err(Fail::UnknownFields(fields)) if retries < 2 => {
+                retries += 1;
+                for f in &fields {
+                    level = level.without(f).ok_or(GraphqlError::Unsupported)?;
+                }
+            }
+            Err(Fail::UnknownFields(_)) => return Err(GraphqlError::Unsupported.into()),
+            Err(e) => return Err(e),
+        }
+    };
+    let query = (kind.query)(level);
     let mut out = BatchOut {
         rows: Vec::new(),
-        complete: true,
-        max_score: None,
+        complete: page.complete,
+        max_score: page.complexity,
+        level,
+        over_limit: false,
     };
-    let page = post(&client, &req, kind.query, &ids, None).await?;
-    merge_complexity(&mut out.max_score, page.complexity);
-    out.complete &= page.complete;
     let mut followups: Vec<(u64, String)> = Vec::new();
     for node in project_nodes(&page.data)? {
-        if let Some(next) = absorb(node, &kind, &mut out)? {
+        if let Some(next) = absorb(node, &kind, &mut out) {
             followups.push(next);
         }
     }
@@ -594,12 +764,26 @@ where
                 break;
             }
             pages += 1;
-            let page = post(&client, &req, kind.query, &[pid], Some(&cursor)).await?;
+            let page = match post(&client, &req, &query, &[pid], Some(&cursor)).await {
+                Ok(p) => p,
+                Err(Fail::ComplexityExceeded) => {
+                    out.complete = false;
+                    out.over_limit = true;
+                    break;
+                }
+                Err(Fail::UnknownFields(_)) => return Err(GraphqlError::Unsupported.into()),
+                Err(Fail::Err(GraphqlError::Failed(m))) => {
+                    tracing::warn!("graphql follow-up page failed: {m}");
+                    out.complete = false;
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             merge_complexity(&mut out.max_score, page.complexity);
             out.complete &= page.complete;
             let mut next = None;
             for node in project_nodes(&page.data)? {
-                if let Some((_, n)) = absorb(node, &kind, &mut out)? {
+                if let Some((_, n)) = absorb(node, &kind, &mut out) {
                     next = Some(n);
                 }
             }
@@ -612,11 +796,20 @@ where
     Ok(out)
 }
 
+fn shrink(size: usize) -> usize {
+    match size {
+        s if s > 10 => 10,
+        s if s > 5 => 5,
+        s => s,
+    }
+}
+
 async fn fetch<N, T>(
     client: &gitlab::AsyncGitlab,
+    state: &GraphqlState,
     kind: Kind<N, T>,
     project_ids: &[u64],
-    state: &str,
+    list_state: &str,
     since: Option<&str>,
 ) -> Result<ListResult<T>, GraphqlError>
 where
@@ -624,29 +817,35 @@ where
     T: Send + 'static,
 {
     let url = graphql_url(client)?;
-    let batch = with_host(&url, |h| if h.unsupported { None } else { Some(h.batch) })
-        .ok_or(GraphqlError::Unsupported)?;
+    let snapshot = state.with(&url, kind.list, |k| *k);
+    if snapshot.unsupported {
+        return Err(GraphqlError::Unsupported);
+    }
+    let size = snapshot.size;
     let req = Arc::new(Request {
         url: url.clone(),
-        state: state.to_string(),
+        state: list_state.to_string(),
         since: since.map(str::to_string),
+        size,
     });
     let sem = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
     let mut set = JoinSet::new();
-    for (idx, chunk) in project_ids.chunks(batch).enumerate() {
+    for (idx, chunk) in project_ids.chunks(size).enumerate() {
         let (client, req, sem, chunk) = (client.clone(), req.clone(), sem.clone(), chunk.to_vec());
+        let level = snapshot.level;
         set.spawn(async move {
             let _permit = sem.acquire_owned().await;
-            (idx, run_batch(client, req, kind, chunk).await)
+            (idx, run_batch(client, req, kind, level, chunk).await)
         });
     }
-    let mut results: Vec<(usize, Result<BatchOut<T>, GraphqlError>)> = Vec::new();
+    let mut results: Vec<(usize, Result<BatchOut<T>, Fail>)> = Vec::new();
     while let Some(r) = set.join_next().await {
         match r {
             Ok(r) => results.push(r),
-            Err(e) => {
-                results.push((usize::MAX, Err(GraphqlError::Failed(e.to_string()))));
-            }
+            Err(e) => results.push((
+                usize::MAX,
+                Err(Fail::Err(GraphqlError::Failed(e.to_string()))),
+            )),
         }
     }
     results.sort_by_key(|(i, _)| *i);
@@ -655,38 +854,45 @@ where
     let mut fatal: Option<GraphqlError> = None;
     let mut rows = Vec::new();
     let mut complete = true;
+    let mut over_limit = false;
+    let mut level = snapshot.level;
     for (_, r) in results {
         match r {
             Ok(b) => {
                 merge_complexity(&mut worst, b.max_score);
                 complete &= b.complete;
+                over_limit |= b.over_limit;
+                level = level.and(b.level);
                 rows.extend(b.rows);
             }
-            Err(GraphqlError::Unsupported) => fatal = Some(GraphqlError::Unsupported),
-            Err(GraphqlError::RateLimited) => {
+            Err(Fail::Err(GraphqlError::Unsupported)) | Err(Fail::UnknownFields(_)) => {
+                fatal = Some(GraphqlError::Unsupported)
+            }
+            Err(Fail::Err(GraphqlError::RateLimited)) => {
                 if fatal != Some(GraphqlError::Unsupported) {
                     fatal = Some(GraphqlError::RateLimited);
                 }
             }
-            Err(e) => {
-                tracing::warn!("graphql batch failed: {e}");
+            Err(Fail::ComplexityExceeded) => {
+                over_limit = true;
+                complete = false;
+            }
+            Err(Fail::Err(GraphqlError::Failed(m))) => {
+                tracing::warn!("graphql batch failed: {m}");
                 complete = false;
             }
         }
     }
-    with_host(&url, |h| {
+    state.with(&url, kind.list, |k| {
+        k.level = k.level.and(level);
         if let Some(c) = worst {
-            h.last = Some(c);
-            if c.score > COMPLEXITY_THRESHOLD {
-                h.batch = match h.batch {
-                    b if b > 10 => 10,
-                    b if b > 5 => 5,
-                    b => b,
-                };
-            }
+            k.last = Some(c);
+        }
+        if over_limit || worst.is_some_and(|c| c.score > COMPLEXITY_THRESHOLD) {
+            k.size = shrink(k.size);
         }
         if fatal == Some(GraphqlError::Unsupported) {
-            h.unsupported = true;
+            k.unsupported = true;
         }
     });
     if let Some(e) = fatal {
@@ -697,28 +903,32 @@ where
 
 pub async fn fetch_merge_requests(
     client: &gitlab::AsyncGitlab,
+    state: &GraphqlState,
     project_ids: &[u64],
-    state: &str,
+    list_state: &str,
     since: Option<&str>,
 ) -> Result<ListResult<MrRow>, GraphqlError> {
     let kind: Kind<MrNode, MrRow> = Kind {
-        query: MR_QUERY,
+        list: ListKind::MergeRequests,
+        query: mr_query,
         field: "mergeRequests",
         map: map_mr,
     };
-    fetch(client, kind, project_ids, state, since).await
+    fetch(client, state, kind, project_ids, list_state, since).await
 }
 
 pub async fn fetch_issues(
     client: &gitlab::AsyncGitlab,
+    state: &GraphqlState,
     project_ids: &[u64],
-    state: &str,
+    list_state: &str,
     since: Option<&str>,
 ) -> Result<ListResult<IssueRow>, GraphqlError> {
     let kind: Kind<IssueNode, IssueRow> = Kind {
-        query: ISSUE_QUERY,
+        list: ListKind::Issues,
+        query: issue_query,
         field: "issues",
         map: map_issue,
     };
-    fetch(client, kind, project_ids, state, since).await
+    fetch(client, state, kind, project_ids, list_state, since).await
 }
