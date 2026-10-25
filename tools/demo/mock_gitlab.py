@@ -482,8 +482,14 @@ def stats_reset():
 
 def paginate(items, query, host, path):
     """Slice a list like GitLab and return (slice, headers)."""
-    per_page = max(1, min(100, int(query.get("per_page", ["20"])[0])))
-    page = max(1, int(query.get("page", ["1"])[0]))
+    def num(name, default):
+        try:
+            return int(query.get(name, [str(default)])[0])
+        except ValueError:
+            return default
+
+    per_page = max(1, min(100, num("per_page", 20)))
+    page = max(1, num("page", 1))
     total = len(items)
     pages = max(1, -(-total // per_page))
     chunk = items[(page - 1) * per_page: page * per_page]

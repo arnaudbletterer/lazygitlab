@@ -113,3 +113,14 @@ fn mock_big_world_totals() {
     );
     assert!(head.to_ascii_lowercase().contains("x-total: 40"), "{head}");
 }
+
+#[test]
+fn mock_ignores_non_numeric_paging_params() {
+    let Some(mock) = start(&["--big"]) else {
+        return;
+    };
+    let (head, body) = request(mock.1, "GET", "/api/v4/projects?per_page=abc&page=-");
+    assert!(head.starts_with("HTTP/1.0 200"), "{head}");
+    assert!(head.to_ascii_lowercase().contains("x-page: 1"), "{head}");
+    assert!(serde_json::from_str::<serde_json::Value>(&body).is_ok());
+}
