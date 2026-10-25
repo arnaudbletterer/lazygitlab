@@ -1192,6 +1192,10 @@ impl App {
             DataUpdate::CurrentUser(user) => {
                 let id = user.id;
                 let was_unknown = self.current_user.is_none();
+                let fetched_with_cached_user = self
+                    .list_cache
+                    .as_ref()
+                    .is_some_and(|c| c.last_user_id().is_some());
                 let user_changed = self.on_user_known(id);
                 self.current_user = Some(user);
                 self.on_current_user(id);
@@ -1199,7 +1203,7 @@ impl App {
                     self.mr_filter,
                     MergeRequestFilter::Review | MergeRequestFilter::Assigned
                 );
-                if user_changed || (was_unknown && needs_user) {
+                if user_changed || (was_unknown && needs_user && !fetched_with_cached_user) {
                     self.fetch_active_global_list(user_changed).await;
                 }
             }
@@ -2047,6 +2051,7 @@ impl App {
 
         if force_detail {
             self.membership_sync_attempted = false;
+            self.membership_retry_at = None;
         }
 
         if self.auth_failed {

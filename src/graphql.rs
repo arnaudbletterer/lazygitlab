@@ -642,11 +642,6 @@ async fn post(
             "first": req.first,
         }
     });
-    let http_req = http::Request::builder()
-        .method("POST")
-        .uri(req.url.as_str())
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .header(http::header::ACCEPT, "application/json");
     let _permit = req.sem.acquire().await;
     let (status, resp_body) = match &req.http {
         Some(layer) => {
@@ -661,6 +656,11 @@ async fn post(
             (resp.status, resp.body.to_vec())
         }
         None => {
+            let http_req = http::Request::builder()
+                .method("POST")
+                .uri(req.url.as_str())
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .header(http::header::ACCEPT, "application/json");
             let resp = tokio::time::timeout(
                 REQUEST_TIMEOUT,
                 client.rest_async(http_req, body.to_string().into_bytes()),
@@ -1113,4 +1113,22 @@ pub async fn fetch_issues<C: Clone + Into<TracedClient>>(
         map: map_issue,
     };
     fetch(client, None, state, kind, project_ids, list_state, since).await
+}
+
+/// Like [`fetch_issues`], but through the shared request layer (see [`fetch_merge_requests_via`]).
+pub async fn fetch_issues_via<C: Clone + Into<TracedClient>>(
+    client: &C,
+    http: Option<&HttpLayer>,
+    state: &GraphqlState,
+    project_ids: &[u64],
+    list_state: &str,
+    since: Option<&str>,
+) -> Result<ListResult<IssueRow>, GraphqlError> {
+    let kind: Kind<IssueNode, IssueRow> = Kind {
+        list: ListKind::Issues,
+        query: issue_query,
+        field: "issues",
+        map: map_issue,
+    };
+    fetch(client, http, state, kind, project_ids, list_state, since).await
 }

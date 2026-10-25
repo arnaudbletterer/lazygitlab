@@ -53,6 +53,7 @@ impl App {
                     .await
                     .unwrap_or_else(|_| {
                         tracing::warn!("Global search timed out");
+                        let _ = s1_tx.send(DataUpdate::Error("Search timed out".into()));
                         Ok(Vec::new())
                     });
                     if let Ok(data) = res {
