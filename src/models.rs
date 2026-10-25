@@ -1,5 +1,5 @@
-use crate::ui::Theme;
 use crate::trace::TracedClient;
+use crate::ui::Theme;
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 

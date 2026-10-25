@@ -105,6 +105,7 @@ the --token flag, or a [gitlab] table with `token` in ~/.config/lazygitlab/confi
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    lazygitlab::trace::mark_start();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cli = match cli::parse_args(&args) {
         Ok(cli) => cli,
@@ -168,6 +169,7 @@ pub async fn run_headless(
     use ratatui::backend::TestBackend;
 
     let mut terminal: ratatui::Terminal<TestBackend> = headless_terminal(opts.width, opts.height);
+    lazygitlab::headless::start_observing(opts.bench_out.as_deref())?;
     let capture = match &opts.frames_dir {
         Some(dir) => FrameCapture::new(dir)?,
         None => FrameCapture::disabled(),
@@ -188,9 +190,9 @@ pub async fn run_headless(
             None
         };
 
-    run_app(&mut terminal, app, &event_source, rx, &mut capture_opt).await?;
-
-    Ok(())
+    let result = run_app(&mut terminal, app, &event_source, rx, &mut capture_opt).await;
+    lazygitlab::headless::finish_observing();
+    result
 }
 
 pub use lazygitlab::EventSource;

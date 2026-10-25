@@ -128,3 +128,73 @@ async fn test_scripted_event_source_fifo_order() {
         "ScriptedEventSource must deliver events in script order (FIFO), not LIFO"
     );
 }
+
+#[test]
+fn test_script_items_directives() {
+    use lazygitlab::headless::{Condition, ScriptItem, parse_script_items};
+    use std::time::Duration;
+    let items = parse_script_items(
+        "g\nwait:250\ntimeout:5000\nuntil:Merge\nuntil_key:G:@mrs>=500\nmark:x\n",
+    )
+    .unwrap();
+    assert_eq!(items.len(), 5);
+    assert_eq!(items[4], ScriptItem::Mark("x".into()));
+    assert_eq!(items[1], ScriptItem::Wait(Duration::from_millis(250)));
+    match &items[2] {
+        ScriptItem::Until {
+            condition,
+            press,
+            timeout,
+        } => {
+            assert_eq!(*condition, Condition::Text("Merge".into()));
+            assert!(press.is_none());
+            assert_eq!(*timeout, Duration::from_millis(5000));
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    match &items[3] {
+        ScriptItem::Until {
+            condition, press, ..
+        } => {
+            assert_eq!(
+                *condition,
+                Condition::AtLeast {
+                    list: "mrs".into(),
+                    count: 500
+                }
+            );
+            assert!(press.is_some());
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn test_script_directive_errors() {
+    use lazygitlab::headless::parse_script_items;
+    assert!(parse_script_items("wait:abc").is_err());
+    assert!(parse_script_items("until:@bogus>=3").is_err());
+    assert!(parse_script_items("until:").is_err());
+    assert!(parse_script_items("until_key:G").is_err());
+    assert!(lazygitlab::headless::parse_script("wait:10").is_err());
+}
+
+#[tokio::test]
+async fn test_wait_delays_following_events() {
+    use lazygitlab::EventSource;
+    use lazygitlab::headless::ScriptedEventSource;
+    use std::time::{Duration, Instant};
+    let src = ScriptedEventSource::from_text("a\nwait:120\nb").unwrap();
+    assert!(
+        src.next_event(Duration::from_millis(50))
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let start = Instant::now();
+    let mut got = None;
+    while got.is_none() {
+        got = src.next_event(Duration::from_millis(50)).await.unwrap();
+    }
+    assert!(start.elapsed() >= Duration::from_millis(100));
+}

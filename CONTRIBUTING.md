@@ -83,8 +83,11 @@ lazygitlab --headless --width 120 --height 40 --script events.txt --frames-dir o
 - `q`, `j`, `k`, `<Enter>`, `<Esc>`, `<F1>`, `up`, `down`, ... (named keys)
 - `<S-q>`, `<C-r>`, `<A-x>`, ... (modifiers: Shift, Ctrl, Alt)
 - `mouse:down:10:5`, `mouse:scroll_down:0:0` (mouse events)
+- `wait:<ms>` pauses the script; `until:<text>` waits until the text is on screen, `until:@mrs>=500` until a list (`mrs`, `issues`, `todos`, `pipelines`) holds that many rows; `until_key:j*15:<cond>` presses `j` in bursts of 15 every 200 ms until the condition holds; `timeout:<ms>` sets the limit for later `until` lines (default 30000); `mark:<name>` records a named instant
 - `#` starts a comment; blank lines are ignored
 - `quit` is a shortcut for `q`
+
+With `--bench-out file.jsonl` the runner writes one JSON line per changed frame (time since start, requests and bytes so far, list sizes, the frame text) plus `mark` and `until` events. `make bench` uses this against `tools/demo/mock_gitlab.py --big` (generated fixtures, `--latency-ms`, `GET /__stats`, `POST /__reset`) through `tools/bench/run_bench.py`; results and analysis are in [docs/performance.md](docs/performance.md). Set `LAZYGITLAB_TRACE=1` for one timing line per API request in the log (`src/trace.rs`, summary with `scripts/summarize_trace.py`).
 
 Snapshot tests in `tests/headless_snapshots.rs` use [`insta`](https://insta.rs/) to diff the rendered TUI buffer against `tests/snapshots/*.snap`. To accept a new snapshot, run with `INSTA_UPDATE=always cargo test --test headless_snapshots` (or `cargo insta review`).
 

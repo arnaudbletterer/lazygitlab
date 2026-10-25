@@ -60,7 +60,10 @@ where
         // Redraw only when something changed, or at spinner cadence while loading.
         let animate = app.is_loading && last_draw.elapsed() >= Duration::from_millis(150);
         if needs_draw || animate {
-            terminal.draw(|f| ui(f, app))?;
+            let completed = terminal.draw(|f| ui(f, app))?;
+            if crate::headless::observing() {
+                crate::headless::observe(completed.buffer, app);
+            }
             if let Some(capture) = frame_capture.as_deref_mut() {
                 capture(terminal);
             }

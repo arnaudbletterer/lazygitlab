@@ -1,53 +1,403 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
 
 use crate::events::EventSource;
+use crate::models::App;
+
+const DEFAULT_UNTIL_TIMEOUT_MS: u64 = 30_000;
+const UNTIL_KEY_REPEAT: Duration = Duration::from_millis(200);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Condition {
+    Text(String),
+    AtLeast { list: String, count: usize },
+}
+
+impl Condition {
+    fn parse(spec: &str) -> Result<Self, String> {
+        let Some(rest) = spec.strip_prefix('@') else {
+            if spec.is_empty() {
+                return Err("until: needs a text".into());
+            }
+            return Ok(Condition::Text(spec.to_string()));
+        };
+        let (list, count) = rest
+            .split_once(">=")
+            .ok_or("expected until:@LIST>=COUNT (LIST: mrs, issues, todos, pipelines)")?;
+        if !matches!(list, "mrs" | "issues" | "todos" | "pipelines") {
+            return Err(format!("unknown list: {list}"));
+        }
+        let count = count.parse().map_err(|_| "invalid count")?;
+        Ok(Condition::AtLeast {
+            list: list.to_string(),
+            count,
+        })
+    }
+
+    fn holds(&self, obs: &Observation) -> bool {
+        match self {
+            Condition::Text(text) => obs.frame.contains(text.as_str()),
+            Condition::AtLeast { list, count } => {
+                let have = match list.as_str() {
+                    "mrs" => obs.counts.mrs,
+                    "issues" => obs.counts.issues,
+                    "todos" => obs.counts.todos,
+                    _ => obs.counts.pipelines,
+                };
+                have >= *count
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptItem {
+    Event(Event),
+    Wait(Duration),
+    Mark(String),
+    Until {
+        condition: Condition,
+        press: Option<(Event, u32)>,
+        timeout: Duration,
+    },
+}
+
+enum Active {
+    Wait {
+        deadline: Instant,
+    },
+    Until {
+        condition: Condition,
+        press: Option<(Event, u32)>,
+        deadline: Instant,
+        last_press: Option<Instant>,
+        burst_left: u32,
+        spec: String,
+    },
+}
+
+#[derive(Default)]
+struct Script {
+    items: VecDeque<ScriptItem>,
+    active: Option<Active>,
+}
 
 pub struct ScriptedEventSource {
-    events: std::sync::Mutex<VecDeque<Event>>,
+    script: Mutex<Script>,
 }
 
 impl ScriptedEventSource {
     pub fn from_text(text: &str) -> Result<Self, String> {
-        let events: VecDeque<Event> = parse_script(text)?.into();
         Ok(Self {
-            events: std::sync::Mutex::new(events),
+            script: Mutex::new(Script {
+                items: parse_script_items(text)?.into(),
+                active: None,
+            }),
         })
     }
 
     pub fn empty() -> Self {
         Self {
-            events: std::sync::Mutex::new(VecDeque::new()),
+            script: Mutex::new(Script::default()),
         }
     }
 }
 
 impl EventSource for ScriptedEventSource {
-    async fn next_event(&self, _timeout: Duration) -> std::io::Result<Option<Event>> {
-        let mut events = self.events.lock().unwrap();
-        Ok(events.pop_front())
+    async fn next_event(&self, timeout: Duration) -> std::io::Result<Option<Event>> {
+        enum Step {
+            Return(Option<Event>),
+            Sleep(Duration),
+        }
+        let step = {
+            let mut script = self.script.lock().unwrap();
+            loop {
+                match script.active.take() {
+                    Some(Active::Wait { deadline }) => {
+                        let now = Instant::now();
+                        if now < deadline {
+                            script.active = Some(Active::Wait { deadline });
+                            break Step::Sleep(timeout.min(deadline - now));
+                        }
+                    }
+                    Some(Active::Until {
+                        condition,
+                        press,
+                        deadline,
+                        last_press,
+                        mut burst_left,
+                        spec,
+                    }) => {
+                        let satisfied = observe_state(|obs| condition.holds(obs));
+                        let now = Instant::now();
+                        if satisfied {
+                            bench_mark("until", &spec, true);
+                        } else if now >= deadline {
+                            bench_mark("until", &spec, false);
+                        } else {
+                            let due = burst_left > 0
+                                || last_press
+                                    .is_none_or(|t| now.duration_since(t) >= UNTIL_KEY_REPEAT);
+                            let mut last_press = last_press;
+                            let key = match (&press, due) {
+                                (Some((event, count)), true) => {
+                                    if burst_left == 0 {
+                                        burst_left = *count;
+                                    }
+                                    burst_left -= 1;
+                                    if burst_left == 0 {
+                                        last_press = Some(now);
+                                    }
+                                    Some(event.clone())
+                                }
+                                _ => None,
+                            };
+                            script.active = Some(Active::Until {
+                                condition,
+                                press,
+                                deadline,
+                                last_press,
+                                burst_left,
+                                spec,
+                            });
+                            break match key {
+                                Some(key) => Step::Return(Some(key)),
+                                None => Step::Sleep(timeout),
+                            };
+                        }
+                    }
+                    None => match script.items.pop_front() {
+                        None => break Step::Return(None),
+                        Some(ScriptItem::Event(event)) => break Step::Return(Some(event)),
+                        Some(ScriptItem::Mark(name)) => bench_mark("mark", &name, true),
+                        Some(ScriptItem::Wait(d)) => {
+                            script.active = Some(Active::Wait {
+                                deadline: Instant::now() + d,
+                            });
+                        }
+                        Some(ScriptItem::Until {
+                            condition,
+                            press,
+                            timeout,
+                        }) => {
+                            let spec = format!("{condition:?}");
+                            script.active = Some(Active::Until {
+                                condition,
+                                press,
+                                deadline: Instant::now() + timeout,
+                                last_press: None,
+                                burst_left: 0,
+                                spec,
+                            });
+                        }
+                    },
+                }
+            }
+        };
+        match step {
+            Step::Return(event) => Ok(event),
+            Step::Sleep(d) => {
+                tokio::time::sleep(d).await;
+                Ok(None)
+            }
+        }
     }
 }
 
 pub fn parse_script(text: &str) -> Result<Vec<Event>, String> {
-    let mut events = Vec::new();
+    parse_script_items(text)?
+        .into_iter()
+        .map(|item| match item {
+            ScriptItem::Event(event) => Ok(event),
+            _ => Err("wait:, until: and timeout: need a ScriptedEventSource".to_string()),
+        })
+        .collect()
+}
+
+pub fn parse_script_items(text: &str) -> Result<Vec<ScriptItem>, String> {
+    let mut items = Vec::new();
+    let mut until_timeout = Duration::from_millis(DEFAULT_UNTIL_TIMEOUT_MS);
     for (line_no, raw) in text.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let event = parse_event(line).map_err(|e| format!("line {}: {}", line_no + 1, e))?;
-        events.push(event);
+        let at = |e: String| format!("line {}: {}", line_no + 1, e);
+        if let Some(ms) = line.strip_prefix("wait:") {
+            let ms: u64 = ms
+                .trim()
+                .parse()
+                .map_err(|_| at("invalid wait ms".into()))?;
+            items.push(ScriptItem::Wait(Duration::from_millis(ms)));
+        } else if let Some(name) = line.strip_prefix("mark:") {
+            items.push(ScriptItem::Mark(name.trim().to_string()));
+        } else if let Some(ms) = line.strip_prefix("timeout:") {
+            let ms: u64 = ms
+                .trim()
+                .parse()
+                .map_err(|_| at("invalid timeout ms".into()))?;
+            until_timeout = Duration::from_millis(ms);
+        } else if let Some(spec) = line.strip_prefix("until_key:") {
+            let (key, cond) = spec
+                .split_once(':')
+                .ok_or_else(|| at("expected until_key:KEY:CONDITION".into()))?;
+            let (key, count) = match key.split_once('*') {
+                Some((k, n)) => (
+                    k,
+                    n.trim()
+                        .parse()
+                        .map_err(|_| at("invalid key repeat".into()))?,
+                ),
+                None => (key, 1),
+            };
+            items.push(ScriptItem::Until {
+                condition: Condition::parse(cond.trim()).map_err(at)?,
+                press: Some((parse_event(key.trim()).map_err(at)?, count)),
+                timeout: until_timeout,
+            });
+        } else if let Some(spec) = line.strip_prefix("until:") {
+            items.push(ScriptItem::Until {
+                condition: Condition::parse(spec.trim()).map_err(at)?,
+                press: None,
+                timeout: until_timeout,
+            });
+        } else {
+            items.push(ScriptItem::Event(parse_event(line).map_err(at)?));
+        }
     }
-    Ok(events)
+    Ok(items)
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ListCounts {
+    pub mrs: usize,
+    pub issues: usize,
+    pub todos: usize,
+    pub pipelines: usize,
+}
+
+#[derive(Default)]
+pub struct Observation {
+    pub frame: String,
+    pub counts: ListCounts,
+}
+
+struct BenchOut {
+    file: std::io::BufWriter<fs::File>,
+    last_key: Option<(String, ListCounts, bool)>,
+}
+
+static OBSERVING: AtomicBool = AtomicBool::new(false);
+static OBSERVATION: OnceLock<Mutex<Observation>> = OnceLock::new();
+static BENCH_OUT: OnceLock<Mutex<Option<BenchOut>>> = OnceLock::new();
+
+fn observation() -> &'static Mutex<Observation> {
+    OBSERVATION.get_or_init(|| Mutex::new(Observation::default()))
+}
+
+fn bench_out() -> &'static Mutex<Option<BenchOut>> {
+    BENCH_OUT.get_or_init(|| Mutex::new(None))
+}
+
+fn observe_state<T>(f: impl FnOnce(&Observation) -> T) -> T {
+    f(&observation().lock().unwrap())
+}
+
+pub fn observing() -> bool {
+    OBSERVING.load(Ordering::Relaxed)
+}
+
+pub fn start_observing(bench_path: Option<&Path>) -> std::io::Result<()> {
+    crate::trace::mark_start();
+    if let Some(path) = bench_path {
+        let file = fs::File::create(path)?;
+        *bench_out().lock().unwrap() = Some(BenchOut {
+            file: std::io::BufWriter::new(file),
+            last_key: None,
+        });
+        bench_write(serde_json::json!({"event": "start"}));
+    }
+    OBSERVING.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+fn elapsed_ms() -> u64 {
+    crate::trace::elapsed().as_millis() as u64
+}
+
+fn bench_write(mut value: serde_json::Value) {
+    let mut guard = bench_out().lock().unwrap();
+    let Some(out) = guard.as_mut() else {
+        return;
+    };
+    let (requests, bytes) = crate::trace::totals();
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("t_ms".into(), elapsed_ms().into());
+        obj.insert("requests".into(), requests.into());
+        obj.insert("bytes".into(), bytes.into());
+    }
+    let _ = writeln!(out.file, "{value}");
+    let _ = out.file.flush();
+}
+
+fn bench_mark(name: &str, detail: &str, ok: bool) {
+    bench_write(serde_json::json!({"event": name, "detail": detail, "ok": ok}));
+}
+
+pub fn finish_observing() {
+    bench_write(serde_json::json!({"event": "end"}));
+}
+
+pub fn observe(buffer: &Buffer, app: &App) {
+    let frame = buffer_to_string(buffer);
+    let counts = ListCounts {
+        mrs: app.merge_requests.len(),
+        issues: app.issues.len(),
+        todos: app.todos.len(),
+        pipelines: if app.active_context == crate::models::Context::Project {
+            app.pipelines.len()
+        } else {
+            app.cross_pipelines.len()
+        },
+    };
+    {
+        let mut obs = observation().lock().unwrap();
+        obs.frame = frame.clone();
+        obs.counts = counts;
+    }
+    let screen = format!("{:?}", app.active_selection);
+    let mut guard = bench_out().lock().unwrap();
+    let Some(out) = guard.as_mut() else {
+        return;
+    };
+    let key = (frame.clone(), counts, app.is_loading);
+    if out.last_key.as_ref() == Some(&key) {
+        return;
+    }
+    out.last_key = Some(key);
+    drop(guard);
+    bench_write(serde_json::json!({
+        "event": "frame",
+        "screen": screen,
+        "loading": app.is_loading,
+        "mrs": counts.mrs,
+        "issues": counts.issues,
+        "todos": counts.todos,
+        "pipelines": counts.pipelines,
+        "frame": frame,
+    }));
 }
 
 fn parse_event(line: &str) -> Result<Event, String> {
@@ -241,7 +591,10 @@ impl FrameCapture {
 }
 
 pub fn render_to_string(terminal: &Terminal<TestBackend>) -> String {
-    let buffer = terminal.backend().buffer().clone();
+    buffer_to_string(terminal.backend().buffer())
+}
+
+pub fn buffer_to_string(buffer: &Buffer) -> String {
     let mut out = String::new();
     let area = buffer.area;
     for y in 0..area.height {
@@ -270,6 +623,7 @@ pub struct HeadlessOptions {
     pub height: u16,
     pub script_path: Option<PathBuf>,
     pub frames_dir: Option<PathBuf>,
+    pub bench_out: Option<PathBuf>,
 }
 
 pub fn load_script(path: &Path) -> Result<String, String> {

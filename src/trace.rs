@@ -89,6 +89,10 @@ pub fn mark_start() {
     START.get_or_init(Instant::now);
 }
 
+pub fn elapsed() -> std::time::Duration {
+    START.get_or_init(Instant::now).elapsed()
+}
+
 pub fn template(path: &str) -> String {
     let rest = match path.find("/api/v4") {
         Some(i) => &path[i + "/api/v4".len()..],

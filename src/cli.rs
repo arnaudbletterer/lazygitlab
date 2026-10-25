@@ -12,6 +12,7 @@ pub struct CliOptions {
     pub height: Option<u16>,
     pub script: Option<String>,
     pub frames_dir: Option<String>,
+    pub bench_out: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +56,7 @@ OPTIONS:\n\
 \x20       --config <PATH>      Config file (default: ~/.config/lazygitlab/config.toml)\n\
 \x20       --insecure           Skip TLS certificate verification (http:// URLs use plain HTTP)\n\
 \x20       --headless           Render off-screen (with --width, --height, --script, --frames-dir)\n\
+\x20       --bench-out <FILE>   With --headless, write per-frame timings as JSON lines\n\
 \n\
 ENVIRONMENT:\n\
 \x20   GITLAB_URL, GITLAB_TOKEN, LAZYGITLAB_LOG (log file path),\n\
@@ -117,6 +119,7 @@ pub fn parse_args(args: &[String]) -> Result<CliOptions, CliError> {
             "--height" => opts.height = Some(dimension(flag, &value(flag)?)?),
             "--script" => opts.script = Some(value("--script")?),
             "--frames-dir" => opts.frames_dir = Some(value("--frames-dir")?),
+            "--bench-out" => opts.bench_out = Some(value("--bench-out")?),
             _ => {
                 let shown = if arg.starts_with('-') {
                     arg.split('=').next().unwrap_or(flag)
@@ -149,6 +152,7 @@ impl CliOptions {
             height: self.height.unwrap_or(40),
             script_path: self.script.as_ref().map(std::path::PathBuf::from),
             frames_dir: self.frames_dir.as_ref().map(std::path::PathBuf::from),
+            bench_out: self.bench_out.as_ref().map(std::path::PathBuf::from),
         }
     }
 }
