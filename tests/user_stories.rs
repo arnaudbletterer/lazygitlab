@@ -46,6 +46,7 @@ async fn test_user_story_label_editing() {
     app.active_panel = Panel::MainDetail;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -135,6 +136,7 @@ async fn test_user_story_discussion_reply() {
     app.active_panel = Panel::MainDetail;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -231,6 +233,7 @@ async fn test_user_story_assignee_milestone_editing() {
     app.active_panel = Panel::MainDetail;
 
     let issue = Issue {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "I1".into(),
@@ -320,6 +323,7 @@ async fn test_user_story_post_comment_and_visibility() {
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -464,6 +468,7 @@ async fn test_user_story_multiline_deleted_comment() {
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -583,6 +588,7 @@ async fn test_user_story_comment_validation_and_errors() {
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -691,6 +697,7 @@ async fn test_user_story_kanban_filtering_coherency() {
     app.board_lists_state.select(Some(0));
 
     let issue1 = Issue {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "Apple".into(),
@@ -715,6 +722,7 @@ async fn test_user_story_kanban_filtering_coherency() {
         participants: vec![],
     };
     let issue2 = Issue {
+        updated_at: None,
         iid: 2,
         project_id: 1,
         title: "Banana".into(),
@@ -739,6 +747,7 @@ async fn test_user_story_kanban_filtering_coherency() {
         participants: vec![],
     };
     let issue3 = Issue {
+        updated_at: None,
         iid: 3,
         project_id: 1,
         title: "Cherry".into(),
@@ -929,6 +938,7 @@ async fn test_user_story_diff_navigation_and_reviewers() {
     app.view_mode = ViewMode::Diff;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -1057,6 +1067,7 @@ async fn test_user_story_target_branch_editing() {
     app.selected_metadata_field = lazygitlab::models::MetadataField::TargetBranch;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR1".into(),
@@ -1187,6 +1198,7 @@ async fn test_user_story_issue_metadata_editing() {
     app.detail_section = lazygitlab::models::DetailSection::Metadata;
 
     let issue = Issue {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "I1".into(),

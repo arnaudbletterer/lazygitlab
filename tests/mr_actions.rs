@@ -29,6 +29,7 @@ async fn setup_app() -> (
 
 fn dummy_mr(iid: u64, title: &str) -> MergeRequest {
     MergeRequest {
+        updated_at: None,
         iid,
         project_id: 1,
         title: title.into(),

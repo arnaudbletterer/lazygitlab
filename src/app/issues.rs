@@ -133,6 +133,7 @@ impl App {
 
         let scope = self.issue_filter;
         tokio::spawn(async move {
+            // Sends nothing: the membership filter already hides rows of non-members.
             if project_ids.is_empty() {
                 let _ = tx.send(DataUpdate::Loading(false));
                 return;
@@ -164,16 +165,16 @@ impl App {
                         _ => (pid, None),
                     }
                 });
-                handles.push(handle);
+                handles.push((pid, handle));
             }
 
             let total = handles.len();
             let mut failed: Vec<u64> = Vec::new();
-            for handle in handles {
+            for (joined_pid, handle) in handles {
                 match handle.await {
                     Ok((_, Some(items))) => all_issues.extend(items),
                     Ok((pid, None)) => failed.push(pid),
-                    Err(_) => failed.push(0),
+                    Err(_) => failed.push(joined_pid),
                 }
             }
 
@@ -713,6 +714,7 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| Author::new(0, "you".into()));
             let pending_issue = Issue {
+                updated_at: None,
                 iid: pending_iid,
                 project_id: pid,
                 title: title.clone(),

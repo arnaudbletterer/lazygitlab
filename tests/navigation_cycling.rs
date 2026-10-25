@@ -23,6 +23,7 @@ async fn setup_app() -> (MockServer, App) {
     app.active_selection = MenuSelection::MergeRequests;
 
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "Test MR".into(),

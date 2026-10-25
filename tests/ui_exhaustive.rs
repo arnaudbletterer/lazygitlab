@@ -110,6 +110,7 @@ async fn test_ui_all_view_modes() {
     // Detail Mode
     app.view_mode = ViewMode::Detail;
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "T".into(),
@@ -162,6 +163,7 @@ async fn test_ui_all_view_modes() {
     // Diff Mode
     app.view_mode = ViewMode::Diff;
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "T".into(),

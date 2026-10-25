@@ -105,6 +105,7 @@ async fn live_full_remove_pending_issue_data_update() {
 
     let fake_iid = u64::MAX - 1;
     app.issues.push(lazygitlab::models::Issue {
+        updated_at: None,
         iid: fake_iid,
         project_id: ground.project.id,
         title: "Synthetic".into(),

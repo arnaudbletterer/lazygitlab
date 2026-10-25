@@ -700,6 +700,7 @@ mod tests {
         let mut app = App::new(client, tx, None);
 
         app.selected_mr = Some(MergeRequest {
+            updated_at: None,
             iid: 1,
             project_id: 1,
             title: "T".into(),

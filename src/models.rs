@@ -99,6 +99,8 @@ pub struct MergeRequest {
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(default)]
     pub diff_refs: Option<DiffRefs>,
     #[serde(skip)]
     pub reactions: Vec<AwardEmoji>,
@@ -509,6 +511,8 @@ pub struct Issue {
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(default)]
     pub upvotes: Option<u64>,
     #[serde(default)]
     pub downvotes: Option<u64>,
@@ -780,7 +784,6 @@ pub enum DataUpdate {
         page: u64,
         has_more: bool,
     },
-    ClearGlobalMRs,
     GlobalMRsPartial {
         data: Vec<MergeRequest>,
         failed: Vec<u64>,
@@ -805,7 +808,6 @@ pub enum DataUpdate {
         page: u64,
         has_more: bool,
     },
-    ClearGlobalIssues,
     AppendGlobalIssues {
         data: Vec<Issue>,
         has_more: bool,

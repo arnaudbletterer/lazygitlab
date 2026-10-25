@@ -193,6 +193,7 @@ async fn test_ux_interaction_refinements() {
 
     // 2. Tab cycling using '[' and ']'
     let mr = lazygitlab::models::MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "MR".to_string(),
@@ -306,6 +307,7 @@ async fn test_work_item_and_mr_detail_navigation_coherence() {
     let (_server, mut app) = setup_app().await;
 
     app.selected_mr = Some(lazygitlab::models::MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "Feature MR".into(),

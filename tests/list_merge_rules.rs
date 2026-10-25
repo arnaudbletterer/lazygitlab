@@ -611,21 +611,6 @@ async fn issue_closed_server_side_is_removed_even_after_paging() {
 }
 
 #[tokio::test]
-async fn switching_filter_resets_paging() {
-    let (_server, mut app, _rx) = setup_app().await;
-    project_ctx(&mut app, MenuSelection::MergeRequests);
-    app.mrs_page = 3;
-    app.mrs_has_more = false;
-    app.handle_key(crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::Char(']'),
-        crossterm::event::KeyModifiers::NONE,
-    ))
-    .await;
-    assert_eq!(app.mrs_page, 1);
-    assert!(app.mrs_has_more);
-}
-
-#[tokio::test]
 async fn project_that_fails_every_pass_does_not_freeze_other_projects() {
     let (server, mut app, mut rx) = setup_app().await;
     dashboard(&mut app, MenuSelection::MergeRequests);
@@ -664,47 +649,6 @@ async fn cross_pipelines_partial_merge_is_capped_at_fifty() {
 }
 
 #[tokio::test]
-async fn failed_global_next_page_is_retried_not_skipped() {
-    let (server, mut app, mut rx) = setup_app().await;
-    dashboard(&mut app, MenuSelection::MergeRequests);
-    app.mrs_has_more = true;
-    app.mrs_page = 1;
-    app.process_update_single(DataUpdate::GlobalMRs {
-        data: mrs(1, &[1]),
-        page: 1,
-        has_more: true,
-    })
-    .await;
-    Mock::given(method("GET"))
-        .and(path("/api/v4/projects/1/merge_requests"))
-        .respond_with(ResponseTemplate::new(500))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/v4/projects/1/merge_requests"))
-        .and(wiremock::matchers::query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(vec![mr(1, 2)]))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/v4/projects/2/merge_requests"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(Vec::<serde_json::Value>::new()))
-        .mount(&server)
-        .await;
-
-    app.fetch_next_global_merge_requests().await.unwrap();
-    settle(&mut app, &mut rx).await;
-    assert_eq!(app.mrs_page, 1, "failed page must not be consumed");
-    assert_failed_status(&app);
-
-    app.fetch_next_global_merge_requests().await.unwrap();
-    settle(&mut app, &mut rx).await;
-    assert_eq!(mr_ids(&app), vec![1, 2]);
-    assert_eq!(app.mrs_page, 2);
-}
-
-#[tokio::test]
 async fn successful_empty_membership_clears_the_set() {
     let (_server, mut app, _rx) = setup_app().await;
     dashboard(&mut app, MenuSelection::MergeRequests);
@@ -725,26 +669,211 @@ async fn refresh_failure_for_a_filter_the_user_left_is_not_shown() {
     assert!(app.status_message.is_none());
 }
 
+fn mr_at(project: u64, iid: u64, created_day: u64, updated_day: u64) -> MergeRequest {
+    let mut v = mr(project, iid);
+    v["created_at"] = format!("2026-01-{:02}T00:00:00Z", created_day).into();
+    v["updated_at"] = format!("2026-02-{:02}T00:00:00Z", updated_day).into();
+    serde_json::from_value(v).unwrap()
+}
+
+fn issue_at(project: u64, iid: u64, created_day: u64, updated_day: u64) -> Issue {
+    let mut v = issue(project, iid);
+    v["created_at"] = format!("2026-01-{:02}T00:00:00Z", created_day).into();
+    v["updated_at"] = format!("2026-02-{:02}T00:00:00Z", updated_day).into();
+    serde_json::from_value(v).unwrap()
+}
+
+fn visible_mr_order(app: &App) -> Vec<u64> {
+    app.filtered_mrs
+        .iter()
+        .filter_map(|g| match g {
+            GroupedItem::Item(m) => Some(m.iid),
+            _ => None,
+        })
+        .collect()
+}
+
 #[tokio::test]
-async fn newer_row_from_a_later_page_sorts_first() {
+async fn recently_updated_rows_stay_on_top_after_loading_page_two() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::MergeRequests);
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: vec![mr_at(1, 1, 1, 20), mr_at(1, 2, 2, 19)],
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectMRs {
+        project_id: 1,
+        data: vec![mr_at(1, 3, 25, 10)],
+    })
+    .await;
+    assert_eq!(visible_mr_order(&app), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn first_page_refresh_keeps_page_two_rows_created_after_the_cut_off() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::MergeRequests);
+    let page_one = || vec![mr_at(1, 1, 1, 20), mr_at(1, 2, 2, 19)];
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: page_one(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectMRs {
+        project_id: 1,
+        data: vec![mr_at(1, 3, 25, 10)],
+    })
+    .await;
+    app.process_update_single(DataUpdate::ProjectMRs {
+        project_id: 1,
+        data: page_one(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(visible_mr_order(&app), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn first_page_issue_refresh_keeps_page_two_rows_created_after_the_cut_off() {
+    let (_server, mut app, _rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::Issues);
+    let page_one = || vec![issue_at(1, 1, 1, 20), issue_at(1, 2, 2, 19)];
+    app.process_update_single(DataUpdate::ProjectIssues {
+        project_id: 1,
+        data: page_one(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    app.process_update_single(DataUpdate::AppendProjectIssues {
+        project_id: 1,
+        data: vec![issue_at(1, 3, 25, 10)],
+    })
+    .await;
+    app.process_update_single(DataUpdate::ProjectIssues {
+        project_id: 1,
+        data: page_one(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(issue_ids(&app), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn global_refresh_keeps_busy_project_page_two_rows_despite_quiet_project() {
     let (_server, mut app, _rx) = setup_app().await;
     dashboard(&mut app, MenuSelection::MergeRequests);
-    let mut a = mr(1, 1);
-    a["created_at"] = "2026-02-01T00:00:00Z".into();
-    let mut b = mr(2, 9);
-    b["created_at"] = "2026-03-01T00:00:00Z".into();
+    let page_one = || vec![mr_at(1, 1, 1, 20), mr_at(1, 2, 2, 19), mr_at(2, 50, 3, 2)];
     app.process_update_single(DataUpdate::GlobalMRs {
-        data: vec![serde_json::from_value(a).unwrap()],
+        data: page_one(),
         page: 1,
         has_more: true,
     })
     .await;
     app.process_update_single(DataUpdate::AppendGlobalMRs {
-        data: vec![serde_json::from_value(b).unwrap()],
+        data: vec![mr_at(1, 3, 25, 10)],
         has_more: false,
         page: 2,
         complete: true,
     })
     .await;
-    assert_eq!(app.merge_requests[0].iid, 9);
+    app.process_update_single(DataUpdate::GlobalMRs {
+        data: page_one(),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    assert_eq!(mr_ids(&app), vec![1, 2, 3, 50]);
+}
+
+#[tokio::test]
+async fn failed_global_next_page_is_retried_with_the_same_page() {
+    let (server, mut app, mut rx) = setup_app().await;
+    dashboard(&mut app, MenuSelection::MergeRequests);
+    app.mrs_has_more = true;
+    app.process_update_single(DataUpdate::GlobalMRs {
+        data: mrs(1, &[1]),
+        page: 1,
+        has_more: true,
+    })
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/1/merge_requests"))
+        .respond_with(ResponseTemplate::new(500))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/1/merge_requests"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![mr(1, 2)]))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v4/projects/2/merge_requests"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(Vec::<serde_json::Value>::new()))
+        .mount(&server)
+        .await;
+
+    app.fetch_next_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    assert_failed_status(&app);
+    app.fetch_next_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+
+    assert_eq!(mr_ids(&app), vec![1, 2]);
+    let pages: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/api/v4/projects/1/merge_requests")
+        .filter_map(|r| {
+            r.url
+                .query_pairs()
+                .find(|(k, _)| k == "page")
+                .map(|(_, v)| v.to_string())
+        })
+        .collect();
+    assert_eq!(pages, vec!["2", "2"], "the failed page is requested again");
+}
+
+#[tokio::test]
+async fn switching_filter_restarts_paging_at_page_two() {
+    let (server, mut app, mut rx) = setup_app().await;
+    project_ctx(&mut app, MenuSelection::MergeRequests);
+    app.mrs_page = 3;
+    app.mrs_has_more = false;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![mr(1, 1)]))
+        .mount(&server)
+        .await;
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char(']'),
+        crossterm::event::KeyModifiers::NONE,
+    ))
+    .await;
+    app.fetch_next_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+
+    let pages: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|r| {
+            r.url
+                .query_pairs()
+                .find(|(k, _)| k == "page")
+                .map(|(_, v)| v.to_string())
+        })
+        .collect();
+    assert!(pages.contains(&"2".to_string()), "pages: {:?}", pages);
+    assert!(!pages.contains(&"4".to_string()), "pages: {:?}", pages);
 }

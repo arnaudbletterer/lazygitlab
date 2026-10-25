@@ -80,6 +80,7 @@ async fn live_full_issue_resolve_discussion_sends_correct_payload() {
     app.active_selection = MenuSelection::Issues;
     app.detail_section = DetailSection::Discussions;
     app.selected_issue = Some(lazygitlab::models::Issue {
+        updated_at: None,
         iid: 1,
         project_id: ground.project.id,
         title: "Test Issue".into(),
@@ -145,6 +146,7 @@ async fn live_full_issue_resolve_no_discussion_status_message() {
         namespace: None,
     });
     app.selected_issue = Some(lazygitlab::models::Issue {
+        updated_at: None,
         iid: 1,
         project_id: ground.project.id,
         title: "Test Issue".into(),
@@ -206,6 +208,7 @@ async fn live_full_issue_s_key_dispatches_to_issue_resolve() {
     app.active_selection = MenuSelection::Issues;
     app.detail_section = DetailSection::Discussions;
     app.selected_issue = Some(lazygitlab::models::Issue {
+        updated_at: None,
         iid: 1,
         project_id: ground.project.id,
         title: "Test Issue".into(),
@@ -278,6 +281,7 @@ async fn live_full_help_lists_resolve_shortcut_for_issues() {
     app.active_selection = MenuSelection::Issues;
     app.detail_section = DetailSection::Discussions;
     app.selected_issue = Some(lazygitlab::models::Issue {
+        updated_at: None,
         iid: 1,
         project_id: ground.project.id,
         title: "Test Issue".into(),

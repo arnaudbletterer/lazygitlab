@@ -520,13 +520,6 @@ impl App {
                     self.append_mrs(data, has_more, page, true);
                 }
             }
-            DataUpdate::ClearGlobalMRs => {
-                if self.active_context == Context::Dashboard && !self.merge_requests.is_empty() {
-                    self.merge_requests.clear();
-                    self.filter_lists();
-                }
-            }
-
             DataUpdate::GlobalIssues {
                 data,
                 page,
@@ -590,13 +583,6 @@ impl App {
                     self.append_issues(data, has_more, page, true);
                 }
             }
-            DataUpdate::ClearGlobalIssues => {
-                if self.active_context == Context::Dashboard && !self.issues.is_empty() {
-                    self.issues.clear();
-                    self.filter_lists();
-                }
-            }
-
             DataUpdate::ProjectPipelines {
                 project_id,
                 data,
@@ -2185,6 +2171,7 @@ impl App {
                                 self.mr_diffs.clear();
                                 self.is_fetching_diffs = false;
                                 self.selected_mr = Some(MergeRequest {
+                                    updated_at: None,
                                     iid,
                                     project_id,
                                     title,
@@ -2226,6 +2213,7 @@ impl App {
                                 self.selected_mr = None;
                                 self.discussions.clear();
                                 self.selected_issue = Some(Issue {
+                                    updated_at: None,
                                     iid,
                                     project_id,
                                     title,
@@ -2909,6 +2897,12 @@ impl App {
                 .position(|g| matches!(g, GroupedItem::Item(m) if (m.project_id, m.iid) == key))
         {
             self.mrs_state.select(Some(idx));
+        } else if selected_mr.is_some()
+            && let Some(i) = self.mrs_state.selected()
+            && !self.filtered_mrs.is_empty()
+        {
+            self.mrs_state
+                .select(Some(i.min(self.filtered_mrs.len() - 1)));
         }
         if let Some(key) = selected_issue
             && let Some(idx) = self
@@ -2917,6 +2911,12 @@ impl App {
                 .position(|g| matches!(g, GroupedItem::Item(i) if (i.project_id, i.iid) == key))
         {
             self.issues_state.select(Some(idx));
+        } else if selected_issue.is_some()
+            && let Some(i) = self.issues_state.selected()
+            && !self.filtered_issues.is_empty()
+        {
+            self.issues_state
+                .select(Some(i.min(self.filtered_issues.len() - 1)));
         }
 
         if let Some(id) = selected_todo
@@ -2926,6 +2926,12 @@ impl App {
                 .position(|g| matches!(g, GroupedItem::Item(t) if t.id == id))
         {
             self.todos_state.select(Some(idx));
+        } else if selected_todo.is_some()
+            && let Some(i) = self.todos_state.selected()
+            && !self.filtered_todos.is_empty()
+        {
+            self.todos_state
+                .select(Some(i.min(self.filtered_todos.len() - 1)));
         }
         if let Some(key) = selected_pipeline
             && let Some(idx) = self
@@ -2934,6 +2940,12 @@ impl App {
                 .position(|p| (p.project_id, p.id) == key)
         {
             self.pipelines_state.select(Some(idx));
+        } else if selected_pipeline.is_some()
+            && let Some(i) = self.pipelines_state.selected()
+            && !self.filtered_pipelines.is_empty()
+        {
+            self.pipelines_state
+                .select(Some(i.min(self.filtered_pipelines.len() - 1)));
         }
 
         // Selection normalization

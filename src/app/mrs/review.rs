@@ -804,6 +804,7 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| Author::new(0, "you".into()));
             let pending_mr = MergeRequest {
+                updated_at: None,
                 iid: pending_iid,
                 project_id: pid,
                 title: title.clone(),

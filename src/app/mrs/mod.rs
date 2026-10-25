@@ -188,6 +188,7 @@ impl App {
 
         let scope = self.mr_filter;
         tokio::spawn(async move {
+            // Sends nothing: the membership filter already hides rows of non-members.
             if project_ids.is_empty() {
                 let _ = tx.send(DataUpdate::Loading(false));
                 return;
@@ -207,7 +208,7 @@ impl App {
                         state: Some(state),
                         page: 1,
                         per_page: 50,
-                        order_by: Some("created_at".into()),
+                        order_by: Some("updated_at".into()),
                         sort: Some("desc".into()),
                         with_labels_details: Some(true),
                         assignee_id,
@@ -223,16 +224,16 @@ impl App {
                         _ => (pid, None),
                     }
                 });
-                handles.push(handle);
+                handles.push((pid, handle));
             }
 
             let total = handles.len();
             let mut failed: Vec<u64> = Vec::new();
-            for handle in handles {
+            for (joined_pid, handle) in handles {
                 match handle.await {
                     Ok((_, Some(items))) => all_mrs.extend(items),
                     Ok((pid, None)) => failed.push(pid),
-                    Err(_) => failed.push(0),
+                    Err(_) => failed.push(joined_pid),
                 }
             }
 
@@ -318,7 +319,7 @@ impl App {
                         state: Some(state),
                         page: next_page,
                         per_page: 50,
-                        order_by: Some("created_at".into()),
+                        order_by: Some("updated_at".into()),
                         sort: Some("desc".into()),
                         with_labels_details: Some(true),
                         assignee_id,

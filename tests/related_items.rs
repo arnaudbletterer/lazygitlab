@@ -61,6 +61,7 @@ async fn test_mr_related_items_fetched_and_applied() {
         namespace: None,
     });
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 10,
         project_id: 1,
         title: "M".into(),
@@ -124,6 +125,7 @@ async fn test_issue_links_and_closed_by_applied() {
         namespace: None,
     });
     app.selected_issue = Some(Issue {
+        updated_at: None,
         iid: 5,
         project_id: 1,
         title: "I".into(),
@@ -171,6 +173,7 @@ async fn test_stale_updates_rejected() {
         namespace: None,
     });
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 10,
         project_id: 1,
         title: "M".into(),
@@ -234,6 +237,7 @@ async fn test_metadata_panel_renders_related_rows() {
     app.related_mrs.push(related);
     app.mr_closing_issues.push(closes);
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 10,
         project_id: 1,
         title: "M".into(),

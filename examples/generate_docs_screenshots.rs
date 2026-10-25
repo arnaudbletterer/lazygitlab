@@ -397,6 +397,7 @@ async fn main() {
     ];
     app.merge_requests = vec![
         MergeRequest {
+            updated_at: None,
             iid: 124,
             project_id: 1,
             title: "feat(diff): add syntax-highlighted side-by-side diff review".into(),
@@ -446,6 +447,7 @@ async fn main() {
             participants: vec![],
         },
         MergeRequest {
+            updated_at: None,
             iid: 123,
             project_id: 1,
             title: "fix(pipelines): handle cancelled pipeline status gracefully".into(),
@@ -558,6 +560,7 @@ async fn main() {
     app.view_mode = ViewMode::List;
     app.active_selection = MenuSelection::Issues;
     app.issues = vec![Issue {
+        updated_at: None,
         iid: 47,
         project_id: 1,
         title: "Optimize tree loading for massive repositories with 10k+ files".into(),
@@ -645,6 +648,7 @@ async fn main() {
     board_issues.insert(
         2,
         vec![Issue {
+            updated_at: None,
             iid: 48,
             project_id: 1,
             title: "Support custom themes via theme.toml".into(),

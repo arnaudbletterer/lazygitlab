@@ -31,6 +31,7 @@ async fn setup_app() -> (
 
 fn dummy_mr(iid: u64, title: &str) -> MergeRequest {
     MergeRequest {
+        updated_at: None,
         iid,
         project_id: 1,
         title: title.into(),
@@ -201,6 +202,7 @@ async fn test_lazy_load_mrs_diffs() {
     }];
     app.is_fetching_diffs = true;
     app.selected_issue = Some(Issue {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "issue".into(),

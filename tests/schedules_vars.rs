@@ -158,6 +158,7 @@ async fn test_approvals_fetched_and_rendered_in_confirm_popup() {
         .await;
     app.selected_project = Some(project());
     app.selected_mr = Some(MergeRequest {
+        updated_at: None,
         iid: 10,
         project_id: 1,
         title: "M".into(),

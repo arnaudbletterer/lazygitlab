@@ -114,6 +114,7 @@ async fn test_project_selection_focus_and_lazy_metadata() {
 
     // Test Lazy Metadata Loading: Select an MR in list view, metadata should not load yet
     let mr = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "mr title".into(),

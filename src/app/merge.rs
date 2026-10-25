@@ -31,6 +31,7 @@ fn first_page_merge<T>(
     fresh: Vec<T>,
     keep_tail: bool,
     key: impl Fn(&T) -> Key,
+    project_of: impl Fn(&T) -> u64,
     after: impl Fn(&T, &T) -> bool,
 ) -> bool {
     if !keep_tail {
@@ -38,13 +39,19 @@ fn first_page_merge<T>(
         return false;
     }
     let fresh_keys: HashSet<Key> = fresh.iter().map(&key).collect();
-    let tail: Vec<T> = match fresh.last() {
-        Some(last) => std::mem::take(existing)
-            .into_iter()
-            .filter(|e| !fresh_keys.contains(&key(e)) && after(e, last))
-            .collect(),
-        None => Vec::new(),
-    };
+    let mut last_of_project: HashMap<u64, &T> = HashMap::new();
+    for item in &fresh {
+        last_of_project.insert(project_of(item), item);
+    }
+    let tail: Vec<T> = std::mem::take(existing)
+        .into_iter()
+        .filter(|e| {
+            !fresh_keys.contains(&key(e))
+                && last_of_project
+                    .get(&project_of(e))
+                    .is_some_and(|last| after(e, last))
+        })
+        .collect();
     let kept = !tail.is_empty();
     *existing = fresh;
     existing.extend(tail);
@@ -60,11 +67,12 @@ fn replace_window<T: Clone + PartialEq>(
     new_page: u64,
     new_has_more: bool,
     key: impl Fn(&T) -> Key,
+    project_of: impl Fn(&T) -> u64,
     after: impl Fn(&T, &T) -> bool,
 ) -> bool {
     let keep_tail = *page > 1;
     let old = existing.clone();
-    let tail_kept = first_page_merge(existing, fresh, keep_tail, key, after);
+    let tail_kept = first_page_merge(existing, fresh, keep_tail, key, project_of, after);
     let mut changed = old != *existing;
     if !tail_kept && (*page != new_page || *has_more != new_has_more) {
         *page = new_page;
@@ -88,30 +96,39 @@ fn replace_partial<T>(
     let (kept_failed, mut answered): (Vec<T>, Vec<T>) = std::mem::take(existing)
         .into_iter()
         .partition(|e| failed.contains(&project_of(e)));
-    first_page_merge(&mut answered, fresh, keep_tail, &key, |a, b| {
-        cmp(a, b) == Ordering::Greater
-    });
+    first_page_merge(
+        &mut answered,
+        fresh,
+        keep_tail,
+        &key,
+        &project_of,
+        |a, b| cmp(a, b) == Ordering::Greater,
+    );
     answered.extend(kept_failed);
     answered.sort_by(cmp);
     *existing = answered;
 }
 
 fn mr_cmp(a: &MergeRequest, b: &MergeRequest) -> Ordering {
-    b.created_at
-        .cmp(&a.created_at)
+    let time = |m: &MergeRequest| m.updated_at.clone().or_else(|| m.created_at.clone());
+    time(b)
+        .cmp(&time(a))
         .then(a.project_id.cmp(&b.project_id))
         .then(b.iid.cmp(&a.iid))
 }
 
 fn issue_cmp(a: &Issue, b: &Issue) -> Ordering {
-    b.created_at
-        .cmp(&a.created_at)
+    let time = |i: &Issue| i.updated_at.clone().or_else(|| i.created_at.clone());
+    time(b)
+        .cmp(&time(a))
         .then(a.project_id.cmp(&b.project_id))
         .then(b.iid.cmp(&a.iid))
 }
 
+/// Pipelines are listed by id desc. A round that is never complete never
+/// removes rows, so pipelines deleted on the server linger until it completes.
 fn pipeline_after(a: &Pipeline, b: &Pipeline) -> bool {
-    (&a.created_at, a.id) < (&b.created_at, b.id)
+    a.id < b.id
 }
 
 impl App {
@@ -198,7 +215,7 @@ impl App {
     pub(super) fn upsert_cross_pipelines(&mut self, data: Vec<Pipeline>) {
         upsert_by_key(&mut self.cross_pipelines, data, |p| (p.project_id, p.id));
         self.cross_pipelines
-            .sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+            .sort_by_key(|p| std::cmp::Reverse(p.id));
         self.cross_pipelines.truncate(50);
         self.filter_lists();
     }
@@ -217,7 +234,8 @@ impl App {
             page,
             has_more,
             |t| (t.id, 0),
-            |a, b| (&a.created_at, a.id) < (&b.created_at, b.id),
+            |_| 0,
+            |a, b| a.id < b.id,
         );
         if changed {
             self.filter_lists();
@@ -234,6 +252,7 @@ impl App {
             page,
             has_more,
             |m| (m.project_id, m.iid),
+            |m| m.project_id,
             |a, b| mr_cmp(a, b) == Ordering::Greater,
         );
         if changed {
@@ -251,6 +270,7 @@ impl App {
             page,
             has_more,
             |i| (i.project_id, i.iid),
+            |i| i.project_id,
             |a, b| issue_cmp(a, b) == Ordering::Greater,
         );
         if changed {
@@ -268,6 +288,7 @@ impl App {
             page,
             has_more,
             |p| (p.project_id, p.id),
+            |p| p.project_id,
             pipeline_after,
         );
         if changed {
@@ -290,6 +311,7 @@ impl App {
             page,
             has_more,
             |p| (p.project_id, p.id),
+            |p| p.project_id,
             pipeline_after,
         );
         if changed {

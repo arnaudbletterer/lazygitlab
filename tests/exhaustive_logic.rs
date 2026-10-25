@@ -20,6 +20,7 @@ fn dummy_project(id: u64, name: &str) -> Project {
 
 fn dummy_issue(iid: u64, title: &str) -> Issue {
     Issue {
+        updated_at: None,
         iid,
         project_id: 1,
         title: title.into(),
@@ -192,6 +193,7 @@ async fn test_involved_filtering() {
 
     use lazygitlab::models::MergeRequest;
     let mr_1 = MergeRequest {
+        updated_at: None,
         iid: 1,
         project_id: 1,
         title: "Authored by me".into(),
@@ -220,6 +222,7 @@ async fn test_involved_filtering() {
         participants: vec![],
     };
     let mr_2 = MergeRequest {
+        updated_at: None,
         iid: 2,
         project_id: 1,
         title: "Reviewed by me".into(),
@@ -248,6 +251,7 @@ async fn test_involved_filtering() {
         participants: vec![],
     };
     let mr_3 = MergeRequest {
+        updated_at: None,
         iid: 3,
         project_id: 1,
         title: "Not involved".into(),
