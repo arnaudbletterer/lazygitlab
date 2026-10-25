@@ -517,7 +517,10 @@ impl App {
             .into_iter()
             .partition(|m| !failed.contains(&m.project_id));
         let mut oldest: HashMap<u64, &MergeRequest> = HashMap::new();
-        for m in answered.iter().filter(|m| truncated.contains(&m.project_id)) {
+        for m in answered
+            .iter()
+            .filter(|m| truncated.contains(&m.project_id))
+        {
             let slot = oldest.entry(m.project_id).or_insert(m);
             if mr_cmp(m, slot) == Ordering::Greater {
                 *slot = m;

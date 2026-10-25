@@ -152,7 +152,11 @@ impl App {
             filter: self.issue_filter,
             project: None,
             generation: self.issues_fetch_gen,
-            fanout_id: self.fanout_ids.get(&issues_fanout_key(None, self.issue_filter)).copied().unwrap_or(0),
+            fanout_id: self
+                .fanout_ids
+                .get(&issues_fanout_key(None, self.issue_filter))
+                .copied()
+                .unwrap_or(0),
         };
         tokio::spawn(async move {
             let _guard = guard;

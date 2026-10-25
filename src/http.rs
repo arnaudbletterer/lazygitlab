@@ -304,8 +304,7 @@ impl HttpLayer {
                         key: task_key.clone(),
                         token: task_token.clone(),
                     };
-                    let exec =
-                        layer.execute(&http::Method::GET, &url, etag.as_deref(), Vec::new());
+                    let exec = layer.execute(&http::Method::GET, &url, etag.as_deref(), Vec::new());
                     tokio::pin!(exec);
                     let mut grace: Option<std::pin::Pin<Box<tokio::time::Sleep>>> = None;
                     loop {
