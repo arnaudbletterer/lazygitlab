@@ -282,7 +282,7 @@ async fn results_are_applied_as_soon_as_they_arrive() {
     let shown = frames
         .times
         .iter()
-        .find(|(_, text)| text.contains("Startup chain issue"))
+        .find(|(_, text)| text.contains("Startup chain"))
         .map(|(t, _)| *t)
         .expect("the issue was drawn");
     let lag = shown.saturating_duration_since(asked + LATENCY);

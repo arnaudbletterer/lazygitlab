@@ -123,6 +123,7 @@ async fn test_job_log_copy_selection() {
     let (_server, mut app, _rx) = setup_app().await;
     app.active_context = Context::Project;
     app.active_selection = MenuSelection::Pipelines;
+    app.active_panel = Panel::MainDetail;
     app.selected_project = Some(Project {
         id: 1,
         name: "p".into(),

@@ -199,25 +199,27 @@ async fn detail_responses_never_create_a_selection() {
     assert!(app.selected_issue.is_none());
 }
 
-async fn first_put(server: &MockServer) -> Vec<String> {
-    for _ in 0..150 {
-        let puts: Vec<String> = server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .filter(|r| r.method.as_str() == "PUT")
-            .map(|r| r.url.path().to_string())
-            .collect();
-        if !puts.is_empty() {
-            return puts;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    Vec::new()
+async fn all_puts(server: &MockServer) -> Vec<String> {
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "PUT")
+        .map(|r| r.url.path().to_string())
+        .collect()
 }
 
-async fn edit_title_after_jumps(first: char, second: char) -> Vec<String> {
+async fn edit_title(app: &mut App) {
+    app.input_mode = true;
+    app.input_target = InputTarget::EditTitle;
+    app.textarea = ratatui_textarea::TextArea::from(["renamed"]);
+    app.enter().await;
+    app.input_mode = false;
+}
+
+async fn jumps_then_edits(first: char, second: char) -> Vec<String> {
     let (server, mut app) = setup().await;
     Mock::given(method("PUT"))
         .respond_with(ResponseTemplate::new(500))
@@ -228,34 +230,39 @@ async fn edit_title_after_jumps(first: char, second: char) -> Vec<String> {
     app.active_context = Context::Dashboard;
     app.active_selection = MenuSelection::Home;
 
-    for c in [first, second] {
-        app.handle_key(key(KeyCode::Char('g'))).await;
-        app.handle_key(key(KeyCode::Char(c))).await;
-        app.handle_key(key(KeyCode::Char('j'))).await;
-    }
+    app.handle_key(key(KeyCode::Char('g'))).await;
+    app.handle_key(key(KeyCode::Char(first))).await;
+    app.handle_key(key(KeyCode::Char('j'))).await;
+    app.handle_key(key(KeyCode::Char('g'))).await;
+    app.handle_key(key(KeyCode::Char(second))).await;
+    // Right after the jump, before any row of the new screen is selected.
     app.process_update_single(DataUpdate::MRDetail(mr(1))).await;
     app.process_update_single(DataUpdate::IssueDetail(issue(1)))
         .await;
-
-    app.input_mode = true;
-    app.input_target = InputTarget::EditTitle;
-    app.textarea = ratatui_textarea::TextArea::from(["renamed"]);
-    app.enter().await;
-    first_put(&server).await
+    edit_title(&mut app).await;
+    app.handle_key(key(KeyCode::Char('j'))).await;
+    edit_title(&mut app).await;
+    all_puts(&server).await
 }
 
 #[tokio::test]
 async fn edit_after_g_m_then_g_i_targets_the_issue_only() {
-    let puts = edit_title_after_jumps('m', 'i').await;
-    assert_eq!(puts, vec!["/api/v4/projects/1/issues/1".to_string()]);
+    let puts = jumps_then_edits('m', 'i').await;
+    assert!(!puts.is_empty());
+    assert!(
+        puts.iter().all(|p| p == "/api/v4/projects/1/issues/1"),
+        "{puts:?}"
+    );
 }
 
 #[tokio::test]
 async fn edit_after_g_i_then_g_m_targets_the_mr_only() {
-    let puts = edit_title_after_jumps('i', 'm').await;
-    assert_eq!(
-        puts,
-        vec!["/api/v4/projects/1/merge_requests/1".to_string()]
+    let puts = jumps_then_edits('i', 'm').await;
+    assert!(!puts.is_empty());
+    assert!(
+        puts.iter()
+            .all(|p| p == "/api/v4/projects/1/merge_requests/1"),
+        "{puts:?}"
     );
 }
 
@@ -315,7 +322,10 @@ async fn enter_on_filtered_projects_opens_the_right_project_and_never_panics() {
     assert_eq!(app.filtered_projects.len(), 1);
     app.projects_state.select(Some(2));
     app.handle_key(key(KeyCode::Enter)).await;
-    assert!(app.selected_project.is_none(), "stale index opened a project");
+    assert!(
+        app.selected_project.is_none(),
+        "stale index opened a project"
+    );
 
     app.projects_state.select(Some(0));
     app.handle_key(key(KeyCode::Enter)).await;
@@ -412,9 +422,15 @@ struct Script {
 }
 
 impl EventSource for Script {
-    fn next_event(&self, _timeout: Duration) -> impl Future<Output = io::Result<Option<Event>>> + Send {
+    fn next_event(
+        &self,
+        _timeout: Duration,
+    ) -> impl Future<Output = io::Result<Option<Event>>> + Send {
         async move {
-            self.seen.lock().unwrap().push(self.frames.load(Ordering::SeqCst));
+            self.seen
+                .lock()
+                .unwrap()
+                .push(self.frames.load(Ordering::SeqCst));
             let next = self.events.lock().unwrap().pop_front();
             if next.is_none() {
                 tokio::time::sleep(Duration::from_millis(20)).await;

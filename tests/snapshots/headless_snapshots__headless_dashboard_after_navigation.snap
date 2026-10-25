@@ -3,42 +3,42 @@ source: tests/headless_snapshots.rs
 expression: last_frame
 ---
  🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
-╭ ⚡  lazygitlab ───────╮╭ Merge Requests ──────────────────────────────────────────────────────────────────────────────╮
-│ 🏠  Personal Dashboard││ Opened  │  Review  │  Assigned  │  Merged  │  Closed  │  All                                 │
-╰──────────────────────╯│No merge requests match this view or filter.                                                  │
-╭ 🏠  Dashboard ────────╮│                                                                                              │
-│    › Home            ││  • Press n to create a new merge request                                                     │
-│    › To-Dos          ││  • Press [ / ] to cycle status filters                                                       │
-│    › Merge Requests  ││  • Press I to toggle involved-only filter                                                    │
-│    › Issues          ││  • Press r to refresh from GitLab                                                            │
-│    › Pipelines       ││                                                                                              │
-╰──────────────────────╯│                                                                                              │
-╭ 🌐  Explore ──────────╮│                                                                                              │
-│    › Projects        ││                                                                                              │
-│    › Groups          ││                                                                                              │
-╰──────────────────────╯│                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        │                                                                                              │
-                        ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+╭ ⚡  lazygitlab ───────╮╭ Merge Requests ────────────────────────╮╭────────────────────────────────────────────────────╮
+│ 🏠  Personal Dashboard││ Opened  │  Review  │  Assigned  │  Merg││                                                    │
+╰──────────────────────╯│Loading...                              ││                                                    │
+╭ 🏠  Dashboard ────────╮│                                        ││                                                    │
+│    › Home            ││                                        ││                                                    │
+│    › To-Dos          ││                                        ││                                                    │
+│    › Merge Requests  ││                                        ││                                                    │
+│    › Issues          ││                                        ││                                                    │
+│    › Pipelines       ││                                        ││                                                    │
+╰──────────────────────╯│                                        ││                                                    │
+╭ 🌐  Explore ──────────╮│                                        ││                                                    │
+│    › Projects        ││                                        ││                                                    │
+│    › Groups          ││                                        ││                                                    │
+╰──────────────────────╯│                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        │                                        ││                                                    │
+                        ╰────────────────────────────────────────╯╰────────────────────────────────────────────────────╯
  LIST  ? help  q quit    Loading projects...
