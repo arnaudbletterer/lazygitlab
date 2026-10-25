@@ -782,11 +782,20 @@ pub struct MrListUpdate {
     pub fetch_gen: u64,
     pub complete: bool,
     pub failed_projects: Vec<u64>,
-    /// Projects whose rows are only the most recently updated window; older local
-    /// rows of these projects are kept.
-    pub truncated_projects: Vec<u64>,
+    /// Projects whose rows are only the most recently updated window.
+    pub truncated_projects: Vec<MrWindow>,
     pub rate_limited_secs: Option<u64>,
     pub error: Option<String>,
+}
+
+/// The window one project answered with when a page cap stopped the fetch: `edge` is the
+/// `updated_at` of its oldest fetched row (before any client-side filtering) and `count`
+/// the number of rows fetched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MrWindow {
+    pub project: u64,
+    pub edge: String,
+    pub count: usize,
 }
 
 /// Incremental refresh bookkeeping for the list currently on screen.

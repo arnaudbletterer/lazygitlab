@@ -655,3 +655,46 @@ async fn aborting_waiters_releases_the_request_budget() {
         "budget still held by aborted requests"
     );
 }
+
+#[tokio::test]
+async fn row_that_left_the_opened_filter_is_not_kept_as_a_ghost() {
+    let server = MockServer::start().await;
+    mount_user(&server).await;
+    let data = dataset(1, 300, "opened");
+    mount_graphql(&server, &data).await;
+    let (mut app, mut rx) = app_for(&server, 1).await;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    assert_eq!(app.merge_requests.len(), 80);
+
+    let old: MergeRequest = serde_json::from_value(rest_mr(1, 1, "opened", &stamp(1))).unwrap();
+    app.merge_requests.push(old);
+    {
+        let mut d = data.lock().unwrap();
+        let row = d.iter_mut().find(|r| r.iid == 1).unwrap();
+        row.state = "merged".into();
+        row.updated = "2026-04-01T00:00:00Z".into();
+    }
+    app.mrs_force_full = true;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+
+    assert!(!iids(&app).contains(&1), "merged row must leave Opened");
+    assert_eq!(app.merge_requests.len(), 80);
+}
+
+#[tokio::test]
+async fn truncated_window_is_announced_in_the_status_line() {
+    let server = MockServer::start().await;
+    mount_user(&server).await;
+    let data = dataset(1, 300, "merged");
+    mount_graphql(&server, &data).await;
+    let (mut app, mut rx) = app_for(&server, 1).await;
+    app.mr_filter = MergeRequestFilter::Merged;
+    app.fetch_global_merge_requests().await.unwrap();
+    settle(&mut app, &mut rx).await;
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("showing the 80 most recently updated per project")
+    );
+}

@@ -85,6 +85,32 @@ fn rest_path(q: &MrFetch, pid: u64) -> String {
     path
 }
 
+/// Per-project window of the rows fetched so far, for the projects `capped` names.
+fn windows_of<'a>(
+    rows: impl Iterator<Item = &'a MergeRequest>,
+    capped: impl Fn(u64) -> bool,
+) -> Vec<MrWindow> {
+    let mut map: std::collections::BTreeMap<u64, MrWindow> = Default::default();
+    for m in rows.filter(|m| capped(m.project_id)) {
+        let ts = m
+            .updated_at
+            .as_deref()
+            .or(m.created_at.as_deref())
+            .unwrap_or_default()
+            .to_string();
+        let w = map.entry(m.project_id).or_insert_with(|| MrWindow {
+            project: m.project_id,
+            edge: ts.clone(),
+            count: 0,
+        });
+        w.count += 1;
+        if ts < w.edge {
+            w.edge = ts;
+        }
+    }
+    map.into_values().collect()
+}
+
 fn meta_of(mr: &MergeRequest) -> MrMeta {
     MrMeta {
         pipeline_id: mr
@@ -152,6 +178,10 @@ pub async fn fetch_global_mrs(
         .await
         {
             Ok(res) if !(res.rows.is_empty() && !res.complete && !res.rate_limited) => {
+                let windows = windows_of(
+                    res.rows.iter().map(|r| &r.mr),
+                    |pid| res.truncated_projects.contains(&pid),
+                );
                 for row in res.rows {
                     if q.since.is_none() && !involves(&row.mr, q.scope, q.user_id) {
                         continue;
@@ -168,9 +198,9 @@ pub async fn fetch_global_mrs(
                 out.complete = res.complete;
                 out.failed_projects = res.failed_projects;
                 if q.since.is_some() {
-                    out.complete &= res.truncated_projects.is_empty();
+                    out.complete &= windows.is_empty();
                 } else {
-                    out.truncated_projects = res.truncated_projects;
+                    out.truncated_projects = windows;
                 }
                 if res.rate_limited {
                     out.rate_limited_secs = Some(http::DEFAULT_RETRY_AFTER.as_secs());
@@ -234,6 +264,18 @@ async fn rest_fan_out(
         }
     }
     results.sort_by_key(|(pid, _)| *pid);
+    if q.since.is_none() {
+        let cap = (REST_MAX_PAGES * http::PER_PAGE) as usize;
+        let capped: Vec<u64> = results
+            .iter()
+            .filter(|(_, p)| p.complete && p.items.len() >= cap)
+            .map(|(pid, _)| *pid)
+            .collect();
+        out.truncated_projects = windows_of(
+            results.iter().flat_map(|(_, p)| p.items.iter()),
+            |pid| capped.contains(&pid),
+        );
+    }
     for (pid, pages) in results {
         if !pages.complete {
             out.complete = false;
@@ -641,7 +683,9 @@ impl App {
             for (k, m) in u.meta.drain(..) {
                 self.mr_meta.insert(k, m);
             }
-            changed = self.merge_mr_rows(u.rows, &failed, &u.truncated_projects, replace);
+            let keeps_older = matches!(scope, MergeRequestFilter::Merged | MergeRequestFilter::All);
+            let windows: &[MrWindow] = if keeps_older { &u.truncated_projects } else { &[] };
+            changed = self.merge_mr_rows(u.rows, &failed, windows, replace);
         }
         if !dropped.is_empty() {
             for k in &dropped {
@@ -673,12 +717,16 @@ impl App {
             if changed || !u.incremental {
                 self.write_mr_cache(&key, self.mrs_sync.cursor.clone());
             }
-            if self
-                .status_message
-                .as_deref()
-                .is_some_and(|m| m.starts_with("Fetching") || m.starts_with("Rate limited"))
-            {
+            if self.status_message.as_deref().is_some_and(|m| {
+                m.starts_with("Fetching")
+                    || m.starts_with("Rate limited")
+                    || m.starts_with("showing the")
+            }) {
                 self.status_message = None;
+            }
+            if let Some(n) = u.truncated_projects.iter().map(|w| w.count).max() {
+                self.status_message =
+                    Some(format!("showing the {n} most recently updated per project"));
             }
         } else {
             self.mrs_stale = true;
