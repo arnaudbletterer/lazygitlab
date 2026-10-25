@@ -73,8 +73,23 @@ impl App {
 
                 let mut all_lists = match res {
                     Ok(Ok(data)) => data,
-                    _ => Vec::new(),
+                    Ok(Err(e)) => {
+                        let _ = tx.send(DataUpdate::Error(format!(
+                            "Board lists fetch failed: {}",
+                            e
+                        )));
+                        return;
+                    }
+                    Err(_) => {
+                        let _ = tx.send(DataUpdate::Error("Board lists fetch timed out".into()));
+                        return;
+                    }
                 };
+
+                if !matches!(det_res, Ok(Ok(_))) && have_lists {
+                    let _ = tx.send(DataUpdate::Error("Board details fetch failed".into()));
+                    return;
+                }
 
                 if let Ok(Ok(det)) = det_res {
                     // GitLab board details can include "backlog_list" and "closed_list"

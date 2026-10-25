@@ -231,19 +231,34 @@ impl App {
                 Result<Vec<Author>, _>,
             ) = tokio::join!(mr_endpoint.query_async(&client), pager.query_async(&client));
 
-            let participants: Vec<Author> = pres.unwrap_or_default();
+            let participants: Vec<Author> = match pres {
+                Ok(p) => p,
+                Err(e) => {
+                    let _ = tx.send(DataUpdate::Error(format!(
+                        "Participants fetch failed: {}",
+                        e
+                    )));
+                    prev_participants
+                }
+            };
 
             if let Ok(mut mr) = mr_res {
                 let emoji_endpoint = MergeRequestAwardEmoji {
                     project: project_id,
                     merge_request: mr_iid,
                 };
-                let reaction_values: Vec<serde_json::Value> =
+                let reaction_values: Result<Vec<serde_json::Value>, _> =
                     gitlab::api::paged(emoji_endpoint, gitlab::api::Pagination::All)
                         .query_async(&client)
-                        .await
-                        .unwrap_or_default();
-                mr.reactions = crate::app::parse_reactions(reaction_values);
+                        .await;
+                mr.reactions = match reaction_values {
+                    Ok(values) => crate::app::parse_reactions(values),
+                    Err(e) => {
+                        let _ =
+                            tx.send(DataUpdate::Error(format!("Reactions fetch failed: {}", e)));
+                        prev_reactions
+                    }
+                };
                 mr.participants = participants;
                 let _ = tx.send(DataUpdate::MRDetail(mr));
             }

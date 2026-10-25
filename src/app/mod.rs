@@ -1744,6 +1744,9 @@ impl App {
         let client = self.gitlab.clone();
         let tx = self.tx.clone();
         let fetches_in_progress = self.project_metadata_fetches_in_progress.clone();
+        let prev_labels = self.project_label_cache.get(&project_id).cloned();
+        let prev_milestones = self.project_milestone_cache.get(&project_id).cloned();
+        let prev_members = self.project_member_cache.get(&project_id).cloned();
         tokio::spawn(async move {
             let lp_ep = ProjectLabels {
                 project: project_id,
@@ -1768,39 +1771,47 @@ impl App {
                 )
             );
 
-            let labels: Vec<Label> = match l_res {
-                Ok(Ok(data)) => data,
+            let mut failed: Vec<&str> = Vec::new();
+            let labels: Option<Vec<Label>> = match l_res {
+                Ok(Ok(data)) => Some(data),
                 Ok(Err(err)) => {
                     tracing::error!(
                         "Failed to fetch project labels for project {}: {:?}",
                         project_id,
                         err
                     );
-                    Vec::new()
+                    None
                 }
                 Err(_) => {
                     tracing::error!("Timeout fetching project labels for project {}", project_id);
-                    Vec::new()
+                    None
                 }
             };
-            let milestones: Vec<Milestone> = match m_res {
-                Ok(Ok(data)) => data,
+            if labels.is_none() {
+                failed.push("labels");
+            }
+            let milestones: Option<Vec<Milestone>> = match m_res {
+                Ok(Ok(data)) => Some(data),
                 Ok(Err(err)) => {
                     tracing::error!(
                         "Failed to fetch project milestones for project {}: {:?}",
                         project_id,
                         err
                     );
-                    Vec::new()
+                    None
                 }
                 Err(_) => {
                     tracing::error!(
                         "Timeout fetching project milestones for project {}",
                         project_id
                     );
-                    Vec::new()
+                    None
                 }
             };
+            if milestones.is_none() {
+                failed.push("milestones");
+            }
+            let mut members_ok = true;
             let mut members: Vec<Author> = match mem_all_res {
                 Ok(Ok(data)) => data,
                 Ok(Err(err)) => {
@@ -1809,6 +1820,7 @@ impl App {
                         project_id,
                         err
                     );
+                    members_ok = false;
                     Vec::new()
                 }
                 Err(_) => {
@@ -1816,6 +1828,7 @@ impl App {
                         "Timeout fetching all project members for project {}",
                         project_id
                     );
+                    members_ok = false;
                     Vec::new()
                 }
             };
@@ -1834,6 +1847,7 @@ impl App {
                 {
                     Ok(Ok(data)) => {
                         members = data;
+                        members_ok = true;
                     }
                     Ok(Err(err)) => {
                         tracing::warn!(
@@ -1865,6 +1879,7 @@ impl App {
                 {
                     Ok(Ok(data)) => {
                         members = data;
+                        members_ok = true;
                     }
                     Ok(Err(err)) => {
                         tracing::error!(
@@ -1882,7 +1897,23 @@ impl App {
                 }
             }
 
-            if !labels.is_empty() || !milestones.is_empty() || !members.is_empty() {
+            if !members_ok {
+                failed.push("members");
+            }
+            if !failed.is_empty() {
+                let _ = tx.send(DataUpdate::Error(format!(
+                    "Project metadata fetch failed ({})",
+                    failed.join(", ")
+                )));
+            }
+            let labels = labels.or(prev_labels);
+            let milestones = milestones.or(prev_milestones);
+            let members = if members_ok {
+                Some(members)
+            } else {
+                prev_members
+            };
+            if let (Some(labels), Some(milestones), Some(members)) = (labels, milestones, members) {
                 tracing::info!(
                     "Sending metadata for project {}: {} labels, {} milestones, {} members",
                     project_id,
