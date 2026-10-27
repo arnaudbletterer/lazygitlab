@@ -13,7 +13,7 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -21,7 +21,7 @@ jobs:
         components: rustfmt, clippy
         
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -36,4 +36,10 @@ jobs:
       run: cargo clippy --all-targets -- -D warnings
       
     - name: Run Tests (Wiremock)
-      run: cargo test --all
+      shell: bash
+      run: |
+        status=0
+        cargo test --all --no-fail-fast > test.log 2>&1 || status=$?
+        grep -E '^test result|^test .* FAILED' test.log || true
+        grep -E '^test .* FAILED|panicked at|^error' -A4 test.log | head -60 | while IFS= read -r line; do echo "::error::${line}"; done
+        exit $status
