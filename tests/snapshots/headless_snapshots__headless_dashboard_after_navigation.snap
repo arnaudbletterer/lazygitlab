@@ -2,7 +2,7 @@
 source: tests/headless_snapshots.rs
 expression: last_frame
 ---
- 🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
+ 🦊  GitLab  ❯ Personal Dashboard  ● STALE                                                                               
 ╭ ⚡  lazygitlab ───────╮╭ Merge Requests ────────────────────────╮╭────────────────────────────────────────────────────╮
 │ 🏠  Personal Dashboard││ Opened  │  Review  │  Assigned  │  Merg││                                                    │
 ╰──────────────────────╯│Loading...                              ││                                                    │
@@ -41,4 +41,4 @@ expression: last_frame
                         │                                        ││                                                    │
                         │                                        ││                                                    │
                         ╰────────────────────────────────────────╯╰────────────────────────────────────────────────────╯
- LIST  ? help  q quit    Loading projects...
+ LIST  ? help  q quit    Error: Todos fetch failed: gitlab internal server error 404 Not F

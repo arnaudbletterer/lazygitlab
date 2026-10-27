@@ -77,9 +77,12 @@ async fn test_headless_dashboard_initial() {
     .await;
     wait_for_loading_finish(&mut app, &mut rx).await;
 
-    let frames = frames.lock().unwrap();
-    assert!(!frames.is_empty(), "expected at least one captured frame");
-    let frame = frames.last().unwrap();
+    assert!(
+        !frames.lock().unwrap().is_empty(),
+        "expected at least one captured frame"
+    );
+    terminal.draw(|f| lazygitlab::ui::ui(f, &mut app)).unwrap();
+    let frame = sanitize(render_to_string(&terminal));
     insta::assert_snapshot!("headless_dashboard_initial", frame);
 }
 
@@ -124,8 +127,13 @@ async fn test_headless_dashboard_after_navigation() {
     )
     .await;
 
-    let frames = frames.lock().unwrap();
-    assert!(!frames.is_empty(), "expected at least one captured frame");
-    let last_frame = frames.last().unwrap();
+    wait_for_loading_finish(&mut app, &mut rx).await;
+
+    assert!(
+        !frames.lock().unwrap().is_empty(),
+        "expected at least one captured frame"
+    );
+    terminal.draw(|f| lazygitlab::ui::ui(f, &mut app)).unwrap();
+    let last_frame = sanitize(render_to_string(&terminal));
     insta::assert_snapshot!("headless_dashboard_after_navigation", last_frame);
 }

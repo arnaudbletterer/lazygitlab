@@ -2,7 +2,7 @@
 source: tests/headless_snapshots.rs
 expression: frame
 ---
- 🦊  GitLab  ❯ Personal Dashboard  ● LOADING                                                                             
+ 🦊  GitLab  ❯ Personal Dashboard  ● STALE                                                                               
 ╭ ⚡  lazygitlab ───────╮╭ ⚡  Home • Quick Launchpad ───────────────────────────────────────────────────────────────────╮
 │ 🏠  Personal Dashboard││                           _                       _ _   _       _                            │
 ╰──────────────────────╯│                          | | __ _ _____   _  __ _(_) |_| | __ _| |__                         │
@@ -12,7 +12,7 @@ expression: frame
 │    › Merge Requests  ││                                       |___/ |___/                                            │
 │    › Issues          ││                       > The fast, keyboard-driven Terminal UI for GitLab                     │
 │    › Pipelines       ││╭────────────────────────────────────────────────────────────────────────────────────────────╮│
-╰──────────────────────╯││ 👤  User: Connected  │  📂  Project: None (press P to select)                                ││
+╰──────────────────────╯││ 👤  User: @u  │  📂d Project: None (press P to select)                                       ││
 ╭ 🌐  Explore ──────────╮│╰────────────────────────────────────────────────────────────────────────────────────────────╯│
 │    › Projects        ││╭─────────────────────────────────────────────╮╭─────────────────────────────────────────────╮│
 │    › Groups          │││  [m] Merge Requests  (Review queue)         ││  [t] To-Dos Inbox  (Zero inbox)             ││
@@ -41,4 +41,4 @@ expression: frame
                         │╰─────────────────────────────────────────────╯╰─────────────────────────────────────────────╯│
                         │ [h/j/k/l/arrows] Select Card  [Enter] Launch  [m/t/i/b/p/r/P/?] Direct Jump  [g h] Home  [q] │
                         ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
- LIST  ? help  q quit    Fetching Todos...
+ LIST  ? help  q quit    Error: Todos fetch failed: gitlab internal server error 404 Not F
