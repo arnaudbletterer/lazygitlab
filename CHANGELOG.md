@@ -6,6 +6,12 @@ All notable changes to `lazygitlab` are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-11
+
+### Fixed
+- **Release builds:** the release workflow builds the x86_64 macOS binary on `macos-latest` (the old `macos-13` runner is retired).
+- **CI:** the headless snapshot tests no longer depend on git tags or on how fast the mock answers, and a failing run prints the failing tests and snapshot differences as annotations.
+
 ## [0.17.0] - 2026-10-25
 
 ### Added
