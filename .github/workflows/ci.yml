@@ -39,7 +39,12 @@ jobs:
       shell: bash
       run: |
         status=0
+        export INSTA_UPDATE=new
         cargo test --all --no-fail-fast > test.log 2>&1 || status=$?
+        for f in tests/snapshots/*.snap.new; do
+          [ -e "$f" ] || continue
+          diff "${f%.new}" "$f" | head -30 | while IFS= read -r line; do echo "::error::snapshot ${f##*/}: ${line}"; done
+        done
         grep -E '^test result|^test .* FAILED' test.log || true
         grep -E '^test .* FAILED|panicked at|^error' -A4 test.log | head -60 | while IFS= read -r line; do echo "::error::${line}"; done
         exit $status
