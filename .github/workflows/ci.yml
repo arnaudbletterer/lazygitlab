@@ -38,6 +38,7 @@ jobs:
     - name: Run Tests (Wiremock)
       shell: bash
       run: |
+        set +e +o pipefail
         status=0
         export INSTA_UPDATE=new
         cargo test --all --no-fail-fast > test.log 2>&1 || status=$?
